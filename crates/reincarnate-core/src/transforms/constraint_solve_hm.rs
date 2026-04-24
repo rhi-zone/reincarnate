@@ -23,7 +23,7 @@
 //!    into `func.value_types`. Unresolved vars are left unchanged in the IR;
 //!    only the emit step converts residual `Type::Var` to `unknown`.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use crate::entity::EntityRef;
 use crate::error::CoreError;
@@ -992,7 +992,7 @@ impl Transform for ConstraintSolveHM {
             use crate::ir::ty::TypeVarId;
 
             // Group: TypeVarId → set of field names still unresolved on that var.
-            let mut var_fields: HashMap<TypeVarId, HashSet<String>> = HashMap::new();
+            let mut var_fields: BTreeMap<TypeVarId, BTreeSet<String>> = BTreeMap::new();
             for c in &stalled_deferred {
                 if let TypeConstraint::HasField {
                     ty: Type::Var(var_id),
