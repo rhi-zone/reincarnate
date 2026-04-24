@@ -1432,6 +1432,23 @@ By code:
 | F | ~500 | Fields assigned in Step/Draw/Alarm events missed — ConstructorStructInfer only walks Create events. | Landmine: earlier attempt caused Union regressions (reverted). Design decision needed before retrying. |
 | G | ~400 | Long tail: `event14_0` (77), reserved identifiers (`__enum__`, `__class__`), etc. | Not yet categorized. |
 
+**Unknown-propagation bucket breakdown (7,958 across TS2345/TS2571/TS18046/TS2769 — triaged Session 27):**
+
+TS2769 is 100% downstream — all 847 sites are `add_any`/`sub_any`/`mul_any`/`div_any`/`neg_any`
+overload failures where at least one operand is `unknown`. Fixing Bucket 1 eliminates TS2769.
+
+| # | Root cause | Scale | Fix location |
+|---|-----------|-------|--------------|
+| U1 | Class field types declared `unknown` or `T \| unknown` (two assignment sites produced different TypeVars that were unioned instead of unified; or one branch yielded Unknown and solver preserved it in the union). | 1,515 / 3,679 class fields. Drives most TS2571, all 847 TS2769, chunks of TS2345. Example: `WanderingStar.ts:17` `declare starParticle: unknown` despite assignment from `part_type_create(): number`. `OAnyaFinalRank.ts:44` `declare textAlphaLerp: number \| unknown`. | `constraint_solve_hm.rs` field-type unification. LANDMINE: "drop Unknown from T\|Unknown" would be suppression — the real fix is making the second constraint produce a concrete type. Investigate *why* it doesn't, first. |
+| U2 | `getInstanceField` returns `unknown` by signature; emitter sometimes lowers to direct typed access (`as number`) and sometimes doesn't. | Several hundred TS2571/TS18046. Example: `_init.ts:1048` casts `(… as number)` correctly; `_init.ts:3554` `_rt.getInstanceField(_rt.global, "destroy")()` does not. | Emitter dispatch — audit why direct-access lowering fires only sometimes when the field name is a literal and receiver type is known. |
+| U3 | `GameGlobalState` fields all `unknown` | Steady share across all four codes wherever `_rt.global` is touched. | Global-state builder — same inference failure as U1 but for globals. |
+| U4 | Script-function params `unknown` despite default literal (`= 0.0`) and concrete call-site args. | 478 occurrences of `argumentN: unknown` in `_init.ts`. ~500+ TS2345, big TS18046 slice. Example: `_init.ts:2243` `healAnyaExt(_rt, self, argument0: unknown = 0.0)`. | Forward call-graph param inference: (a) default-value literal type, (b) concrete types observed at call sites. NO backward inference from in-body uses (forbidden by Law). |
+| U5 | `withInstances(keyword_id, ...)` callbacks emit `_self: unknown` (e.g. -9 = `other`); the typed form works for concrete class targets (e.g. `OTentacleChunks.ts:386` has `_self: OTentacleChunks`). | 120 occurrences, ~246 TS18046. Example: `_init.ts:3555` `_rt.withInstances(-9.0, (_self: unknown): void => {...})`. | `withInstances` lowering — keyword-id branch should resolve `other` to caller's `_other` type, not fall back to `unknown`. |
+| U6 | Array/ds_list element types `unknown` | Small TS2571/TS18046. Example: `BloodController.ts:85` `b[2.0] * 1.5` where `b` is unknown-element array. | Array-field element inference in `constraint_solve_hm.rs`. Subset of U1 when the field is array-shaped. |
+| U7 | `_other.*` field access typed `unknown` | 54+ TS18046. Example: `OStickyBomb.ts:82` `_self.damage = _other.damage * 15.0`. | Same pass as U5 — `_other` should be parameterized with caller's instance type. |
+
+Priority: U1 (highest ROI) > U4 > U5 > U3 > U2 > U7 > U6.
+
 **Session 26 (HM inference improvements — Dead Estate 5→24249):**
 
 This session focused on error count reduction after a structural regression: emit was switched
