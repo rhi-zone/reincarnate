@@ -802,8 +802,20 @@ fn run_translation_loop(
                         }
                         _ => None,
                     });
-                    if target_i64 == Some(-9) {
-                        instance_class = ctx.class_name;
+                    match target_i64 {
+                        Some(-9) => {
+                            // `with (self)` — type `_self` as the enclosing class.
+                            instance_class = ctx.class_name;
+                        }
+                        Some(-3) | Some(-4) => {
+                            // `-3 = all`: any instance. Type `_self` as GMLObject (the
+                            //   universal base). Field accesses will TS2339 correctly —
+                            //   that's the honest shape of "any instance".
+                            // `-4 = noone`: block is unreachable at runtime but still has
+                            //   to type-check. GMLObject is safe without requiring new ops.
+                            instance_class = Some("GMLObject");
+                        }
+                        _ => {}
                     }
                 }
 
