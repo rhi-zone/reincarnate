@@ -1394,12 +1394,14 @@ Session 24 fixes:
 - TS2322 (2): Sansshadowgen `y = comparison` (game-author `===` instead of `=`),
   UndergroundExit `z = instance_create()` (game-author using built-in `z` to store instance)
 
-**Session 27 (Dead Estate 24,249 → 20,955 — `any` removal + targeted inference fixes):**
+**Session 27 (Dead Estate → 21,156 stable — `any` removal + determinism + targeted inference):**
 
 Removed `[key: string]: any` from `GMLObject` (commit `ba08b31`) — this was the primary
-suppression hiding ~19k errors. Honest post-removal baseline: **22,029 errors**.
+suppression hiding ~19k errors. Pre-session baseline was unmeasurable: error counts varied
+~200 run-to-run due to pipeline non-determinism (HashMap iteration order in GM frontend
+FuncId registration + HM solver). After determinism fixes, stable baseline is **21,156**.
 
-Session 27 fixes applied (22,029 → 20,955):
+Session 27 fixes applied (→ 21,156 stable):
 - `_rt.global` typed as `GameGlobalState` intersection: emits `_global_state.ts` alongside
   `_globals.ts`; constant-key `Global.get`/`Global.set` rewrites cast `_rt.global` to it.
   Closed ~9,548 TS2339. (commits `8c5e4c7`, `691e91a`)
@@ -1408,17 +1410,22 @@ Session 27 fixes applied (22,029 → 20,955):
 - Lifted script/event `self` typed from CODE entry name rather than hardcoded `GMLObject`.
   `anon@<n>@gml_Object_<Owner>_<Event>_N` pattern parsed in one localized helper.
   `translate_scripts` now passes `class_name: Some(owner)` for recognized patterns. (commit `ac96a09`)
+- Pipeline determinism: `register_function_stub` now iterates `function_names` in sorted
+  FUNC-index order (`lib.rs:195`); `param_concrete_types` and `var_fields` in
+  `constraint_solve_hm.rs` use `BTreeMap` so constraint insertion / HasField narrowing are
+  order-independent. `TypeVarId` gained `Ord` via the `define_entity!` macro.
 
-**Dead Estate error breakdown (20,955 after Session 27):**
+**Dead Estate error breakdown (21,156 stable after Session 27):**
 
 By code:
 - 12,743 TS2339 "Property X does not exist on type"
-- 3,494 TS2345 — type argument mismatches
-- 2,668 TS2571 — Object of type 'unknown'
-- 949 TS18046 — 'x' is of type 'unknown'
+- 3,342 TS2345 — type argument mismatches
+- 2,634 TS2571 — Object of type 'unknown'
 - 847 TS2769 — no overload matches
-- 433 TS2322 — type not assignable
-- 280 TS2551 — property doesn't exist on type
+- 672 TS18046 — 'x' is of type 'unknown'
+- 447 TS2322 — type not assignable
+- 299 TS2551 — property doesn't exist on type
+- 85 TS7053, 24 TS2362, 22 TS2349, 10 TS2365, long tail
 
 **TS2339 bucket breakdown (12,743 — triaged Session 27):**
 
