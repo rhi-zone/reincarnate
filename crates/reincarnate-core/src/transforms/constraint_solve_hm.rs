@@ -23,7 +23,7 @@
 //!    into `func.value_types`. Unresolved vars are left unchanged in the IR;
 //!    only the emit step converts residual `Type::Var` to `unknown`.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::entity::EntityRef;
 use crate::error::CoreError;
@@ -572,7 +572,7 @@ impl Transform for ConstraintSolveHM {
         // -----------------------------------------------------------------------
         // Accumulates concrete types flowing into each param var from multiple call sites.
         // Drained after the interprocedural loop to emit union constraints.
-        let mut param_concrete_types: HashMap<TypeVarId, Vec<Type>> = HashMap::new();
+        let mut param_concrete_types: BTreeMap<TypeVarId, Vec<Type>> = BTreeMap::new();
 
         // Step 3: emit interprocedural call-site constraints.
         //

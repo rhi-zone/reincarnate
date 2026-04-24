@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Trait for entity references — typed `u32` indices into arenas.
-pub trait EntityRef: Copy + Eq + std::hash::Hash + std::fmt::Debug {
+pub trait EntityRef: Copy + Eq + Ord + std::hash::Hash + std::fmt::Debug {
     fn new(index: u32) -> Self;
     fn index(self) -> u32;
 }
@@ -15,7 +15,18 @@ pub trait EntityRef: Copy + Eq + std::hash::Hash + std::fmt::Debug {
 #[macro_export]
 macro_rules! define_entity {
     ($name:ident) => {
-        #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, serde::Serialize, serde::Deserialize)]
+        #[derive(
+            Clone,
+            Copy,
+            PartialEq,
+            Eq,
+            PartialOrd,
+            Ord,
+            Hash,
+            Debug,
+            serde::Serialize,
+            serde::Deserialize,
+        )]
         pub struct $name(u32);
 
         impl $crate::entity::EntityRef for $name {
