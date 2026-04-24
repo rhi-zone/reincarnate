@@ -192,8 +192,11 @@ impl Frontend for GameMakerFrontend {
         // builtins are call references, not user definitions.  Registering stubs for
         // them would shadow the runtime's typed signatures with void/empty stubs.
         let runtime_reg = mb.runtime_registry().clone();
-        let user_func_registry: HashMap<String, FuncId> = function_names
-            .values()
+        let mut sorted_entries: Vec<(&u32, &String)> = function_names.iter().collect();
+        sorted_entries.sort_by_key(|(k, _)| **k);
+        let user_func_registry: HashMap<String, FuncId> = sorted_entries
+            .into_iter()
+            .map(|(_, name)| name)
             .filter(|name| !runtime_reg.contains_key(name.as_str()))
             .map(|name| (name.clone(), mb.register_function_stub(name)))
             .collect();
