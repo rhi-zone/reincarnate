@@ -926,6 +926,34 @@ impl Transform for ConstraintSolveHM {
             }
         }
 
+        // Seed param TypeVars from sig.defaults so default-argument types contribute
+        // alongside call-site types. Skips already-concrete params (same guard as
+        // call-site seeding above).
+        for (callee_idx, (_, func)) in module.functions.iter().enumerate() {
+            let callee_data = &func_data[callee_idx];
+            let entry = func.entry;
+            let entry_params = &func.blocks[entry].params;
+            for (i, default) in func.sig.defaults.iter().enumerate() {
+                let Some(constant) = default else { continue };
+                if i >= entry_params.len() {
+                    break;
+                }
+                let param_val = entry_params[i].value;
+                let param_ty = &func.value_types[param_val];
+                if is_concrete(param_ty) {
+                    continue;
+                }
+                let Some(&param_var) = callee_data.value_vars.get(&param_val) else {
+                    continue;
+                };
+                let default_ty = constant.ty();
+                param_concrete_types
+                    .entry(param_var)
+                    .or_default()
+                    .push(default_ty);
+            }
+        }
+
         // Emit union constraints for params called with multiple concrete types.
         for (param_var, types) in param_concrete_types {
             let mut deduped: Vec<Type> = Vec::new();
