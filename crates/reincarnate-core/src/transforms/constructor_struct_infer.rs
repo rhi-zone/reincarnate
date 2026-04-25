@@ -13,7 +13,8 @@ use crate::pipeline::{Transform, TransformResult};
 ///
 /// Rules:
 /// - Functions with `method_kind == MethodKind::Constructor` or `MethodKind::Instance`
-///   are scanned.  `MethodKind::Closure` is skipped (different self convention).
+///   are scanned.  `MethodKind::Closure` is also scanned when param[0] is
+///   `Type::Instance(id)` — these are `withInstances` closures with a resolved target.
 /// - Fields are accumulated per class name across all matching functions, then committed
 ///   once per class.
 /// - Only `SetField` ops whose `object` is the first entry-block parameter (the `self`
@@ -102,14 +103,30 @@ impl Transform for ConstructorStructInfer {
         for (func_id, func) in module.functions.iter() {
             let func_name = module.func_name(func_id);
             // Scan Constructor and Instance methods for SetField on self.
-            // Skip Closure — closures have a different self convention.
+            // Also scan Closure functions whose first param is Type::Instance(_) —
+            // these are withInstances closures where the with-target is a known class.
+            let entry_block = &func.blocks[func.entry];
             let is_constructor = func.method_kind == MethodKind::Constructor;
             let is_instance = func.method_kind == MethodKind::Instance;
-            if !is_constructor && !is_instance {
+            // Gate on Instance self type for closures; Var/Unknown means unresolved target.
+            let with_closure_type_id = if func.method_kind == MethodKind::Closure {
+                match entry_block.params.first().map(|p| &p.ty) {
+                    Some(Type::Instance(id)) => Some(*id),
+                    _ => None,
+                }
+            } else {
+                None
+            };
+            let is_with_closure = with_closure_type_id.is_some();
+            if !is_constructor && !is_instance && !is_with_closure {
                 continue;
             }
 
-            let name = struct_name(func, func_name);
+            let name = if let Some(type_id) = with_closure_type_id {
+                module.type_name(type_id).to_string()
+            } else {
+                struct_name(func, func_name)
+            };
 
             // For pure-script inferred structs (not in known_struct_names): skip if
             // the struct was already fully inferred by a prior pass run.
@@ -125,8 +142,6 @@ impl Transform for ConstructorStructInfer {
                 }
             }
 
-            // Get the self param (entry block param[0]).
-            let entry_block = &func.blocks[func.entry];
             let Some(self_param) = entry_block.params.first() else {
                 continue;
             };
