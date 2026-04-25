@@ -1394,6 +1394,39 @@ Session 24 fixes:
 - TS2322 (2): Sansshadowgen `y = comparison` (game-author `===` instead of `=`),
   UndergroundExit `z = instance_create()` (game-author using built-in `z` to store instance)
 
+*Open threads from a previous session. Treat as starting context, not instructions — verify relevance before acting.*
+
+---
+
+## Open threads (session 27 close)
+
+### Subtype constraint design — the real unifier for call-site param inference
+
+The core inference gap driving the bulk of remaining errors is that `self` and `argumentN` params in global (ownerless) GML scripts are typed `GMLObject` at IR construction time. This makes them concrete (`is_concrete(GMLObject) = true`), so the HM solver's call-site inference loop skips them entirely (guard at `constraint_solve_hm.rs:644`).
+
+The naive fix — init `self` as `Var(fresh)` instead of `GMLObject` — was tried and reverted: it regressed from 21,151 → 26,766 because unresolved vars emit as `unknown`, breaking all GMLObject-level field accesses.
+
+The right model: a `Subtype(A, B)` constraint ("A is assignable to B") so:
+- `self` starts as `Var(fresh)` with an implicit lower bound that it must satisfy GMLObject's field set
+- Call sites add `Subtype(OPlayer, self_var)` etc.
+- Solver resolves to the tightest type satisfying both directions
+
+Key insight from session discussion: the correct param type is NOT the nearest common ancestor in the class hierarchy — it's the **union of call-site arg types** (`OPlayer | OEnemy`), BUT only valid if all union members pass all field-access constraints the function body imposes. Common-ancestor collapsing loses information; TypeScript's union type is the right representation.
+
+Current `Equal`-based union accumulation is partially right in shape but wrong because:
+1. It never runs on `self` params (blocked by `is_concrete` guard)
+2. A union `OPlayer | OEnemy` is only semantically valid if both members have all fields the body accesses — the solver currently doesn't verify this
+
+**Open questions:**
+- What is the minimal `Subtype` constraint representation that fits the existing solver without full subtype lattice machinery?
+- Is the inheritance graph in `module.types` (parent chains) sufficient to check "does type T have field F"? (HasField constraints already walk it — might be enough)
+- Should the solver's fixpoint be extended to iterate until Subtype constraints stabilize, or is one pass sufficient?
+- The GMLObject lower-bound for ownerless scripts: explicit `Subtype(Var, GMLObject)` constraint, or emit GMLObject only at emit time as a fallback when Var stays unresolved?
+
+This is the next high-leverage inference design decision. The TS2339/TS2345/TS2571/TS18046 triage buckets (A residual, U1, U4, U5) are all downstream of this.
+
+---
+
 **Session 27 (Dead Estate → 21,156 stable — `any` removal + determinism + targeted inference):**
 
 Removed `[key: string]: any` from `GMLObject` (commit `ba08b31`) — this was the primary
