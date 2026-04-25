@@ -1398,6 +1398,25 @@ Session 24 fixes:
 
 ---
 
+## Open threads (session 28 close)
+
+### Subtype constraint design — unblocked, next up
+
+Three fixes shipped this session landed 21,151 → **17,257** Dead Estate errors (−3,894):
+- Phase 1 (U4 bucket): seed `argumentN` TypeVars from `sig.defaults` in HM solver (commit `1688012`)
+- Phase 2 (U1 bucket): post-HM struct-field-type resolve, Step 6.5 in `constraint_solve_hm.rs` (commit `0859d81`)
+- Phase 3 (D bucket): extend `ConstructorStructInfer` to scan `withInstances` closures with concrete `Instance` self (commit `4ee2df5`)
+
+Remaining top buckets (after session 28):
+- 1,376 TS2571 — Object of type 'unknown' (property access on unknown receiver)
+- 1,817 TS2345 combined — `unknown` arg to typed param (number, GMLObject, overload)
+- 627 TS2769 — no overload matches (downstream of unknown operands to arithmetic)
+- 252 TS18046 — `_self` is of type 'unknown' in global script functions
+
+The 252 TS18046 `_self: unknown` errors are now a cleaner, discrete signal. This is the Subtype constraint thread from session 27. See below for design context.
+
+---
+
 ## Open threads (session 27 close)
 
 ### Subtype constraint design — the real unifier for call-site param inference
@@ -1467,7 +1486,7 @@ By code:
 | A | ~7,200 (−444 actual) | Lifted script self typed GMLObject — owner class encoded in CODE entry name. Residual: field-type inference after self is correctly typed. | DONE `ac96a09` |
 | B | ~2,000 | GM built-in instance fields missing from GMLObject base: `bbox_*`, `sprite_width/height`, `room_height/width`, `async_load`, `image_blend`, `image_number`, `current_time`, `view_camera`. | Blocked — runtime `object.ts` slated for IR-generation deletion (`06cc501`). Fix direction: add to IR-generated runtime, not handwritten file. |
 | C | ~1,300 | Field set in sibling subclasses, read from shared parent. Example: `OEmptySpaceController.makerStart` (532 hits) set in 7 `LevelController` siblings. | Open — ConstructorStructInfer needs common-ancestor lift. Design decision: trigger condition. |
-| D | ~1,050 | Field set inside `withInstances` closure body, not recorded on target class. Example: `_self.witchItem = []` in `ONoSpillBloodController`. | Open — ConstructorStructInfer doesn't recurse into closures. Design decision: which class owns the field. |
+| D | ~1,050 | Field set inside `withInstances` closure body, not recorded on target class. Example: `_self.witchItem = []` in `ONoSpillBloodController`. | **ADDRESSED (session 28, Phase 3):** `ConstructorStructInfer` now scans `MethodKind::Closure` when `param[0].ty == Type::Instance(id)` — these are `withInstances` closures with a resolved target. Class name derived from `module.type_name(id)`. Commit `4ee2df5`. |
 | E | ~650 (−266 actual) | `InstanceType::Arg` writes routed to `_rt.global` instead of self-field. | DONE `9e12c2d`. Residual: struct shapes still not inferred — downstream of C/D/F. |
 | F | ~500 | Fields assigned in Step/Draw/Alarm events missed — ConstructorStructInfer only walks Create events. | Landmine: earlier attempt caused Union regressions (reverted). Design decision needed before retrying. |
 | G | ~400 | Long tail: `event14_0` (77), reserved identifiers (`__enum__`, `__class__`), etc. | Not yet categorized. |
@@ -1479,10 +1498,10 @@ overload failures where at least one operand is `unknown`. Fixing Bucket 1 elimi
 
 | # | Root cause | Scale | Fix location |
 |---|-----------|-------|--------------|
-| U1 | Class field types declared `unknown` or `T \| unknown` (two assignment sites produced different TypeVars that were unioned instead of unified; or one branch yielded Unknown and solver preserved it in the union). | 1,515 / 3,679 class fields. Drives most TS2571, all 847 TS2769, chunks of TS2345. Example: `WanderingStar.ts:17` `declare starParticle: unknown` despite assignment from `part_type_create(): number`. `OAnyaFinalRank.ts:44` `declare textAlphaLerp: number \| unknown`. | `constraint_solve_hm.rs` field-type unification. LANDMINE: "drop Unknown from T\|Unknown" would be suppression — the real fix is making the second constraint produce a concrete type. Investigate *why* it doesn't, first. |
+| U1 | Class field types declared `unknown` or `T \| unknown` (two assignment sites produced different TypeVars that were unioned instead of unified; or one branch yielded Unknown and solver preserved it in the union). | 1,515 / 3,679 class fields. Drives most TS2571, all 847 TS2769, chunks of TS2345. Example: `WanderingStar.ts:17` `declare starParticle: unknown` despite assignment from `part_type_create(): number`. `OAnyaFinalRank.ts:44` `declare textAlphaLerp: number \| unknown`. | **ADDRESSED (session 28, Phase 2):** `constraint_solve_hm.rs` Step 6.5 resolves stale TypeVars in struct field types post-HM; drops `Unknown` from unions when a concrete alternative exists, mirroring CSI's merge policy. Commit `0859d81`. |
 | U2 | `getInstanceField` returns `unknown` by signature; emitter sometimes lowers to direct typed access (`as number`) and sometimes doesn't. | Several hundred TS2571/TS18046. Example: `_init.ts:1048` casts `(… as number)` correctly; `_init.ts:3554` `_rt.getInstanceField(_rt.global, "destroy")()` does not. | Emitter dispatch — audit why direct-access lowering fires only sometimes when the field name is a literal and receiver type is known. |
 | U3 | `GameGlobalState` fields all `unknown` | Steady share across all four codes wherever `_rt.global` is touched. | Global-state builder — same inference failure as U1 but for globals. |
-| U4 | Script-function params `unknown` despite default literal (`= 0.0`) and concrete call-site args. | 478 occurrences of `argumentN: unknown` in `_init.ts`. ~500+ TS2345, big TS18046 slice. Example: `_init.ts:2243` `healAnyaExt(_rt, self, argument0: unknown = 0.0)`. | Forward call-graph param inference: (a) default-value literal type, (b) concrete types observed at call sites. NO backward inference from in-body uses (forbidden by Law). |
+| U4 | Script-function params `unknown` despite default literal (`= 0.0`) and concrete call-site args. | 478 occurrences of `argumentN: unknown` in `_init.ts`. ~500+ TS2345, big TS18046 slice. Example: `_init.ts:2243` `healAnyaExt(_rt, self, argument0: unknown = 0.0)`. | **ADDRESSED (session 28, Phase 1):** HM solver now seeds param TypeVars from `sig.defaults` alongside call-site types. Commit `1688012`. |
 | U5 | `withInstances(keyword_id, ...)` callbacks emit `_self: unknown` (e.g. -9 = `other`); the typed form works for concrete class targets (e.g. `OTentacleChunks.ts:386` has `_self: OTentacleChunks`). | 120 occurrences, ~246 TS18046. Example: `_init.ts:3555` `_rt.withInstances(-9.0, (_self: unknown): void => {...})`. | `withInstances` lowering — keyword-id branch should resolve `other` to caller's `_other` type, not fall back to `unknown`. |
 | U6 | Array/ds_list element types `unknown` | Small TS2571/TS18046. Example: `BloodController.ts:85` `b[2.0] * 1.5` where `b` is unknown-element array. | Array-field element inference in `constraint_solve_hm.rs`. Subset of U1 when the field is array-shaped. |
 | U7 | `_other.*` field access typed `unknown` | 54+ TS18046. Example: `OStickyBomb.ts:82` `_self.damage = _other.damage * 15.0`. | Same pass as U5 — `_other` should be parameterized with caller's instance type. |
