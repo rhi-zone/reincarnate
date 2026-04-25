@@ -1236,6 +1236,79 @@ impl Transform for ConstraintSolveHM {
         }
 
         // -----------------------------------------------------------------------
+        // Step 6.5: resolve stale TypeVars in struct field types.
+        //
+        // ConstructorStructInfer commits field types before HM runs, so any
+        // field whose type was Type::Var(v) at CSI time still holds that Var
+        // after HM write-back.  Walk module.structs and module.types here and
+        // resolve every field type.  Unions have Unknown stripped when a
+        // concrete alternative exists — matching CSI's merge_field_type rule.
+        // -----------------------------------------------------------------------
+        {
+            fn resolve_field_ty(ty: Type, arena: &TypeVarArena) -> Type {
+                let resolved = resolve(ty, arena);
+                match resolved {
+                    Type::Union(variants) => {
+                        let resolved_variants: Vec<Type> =
+                            variants.into_iter().map(|v| resolve(v, arena)).collect();
+                        let has_concrete = resolved_variants
+                            .iter()
+                            .any(|v| !matches!(v, Type::Unknown | Type::Var(_)));
+                        let filtered: Vec<Type> = resolved_variants
+                            .into_iter()
+                            .filter(|v| {
+                                if has_concrete {
+                                    !matches!(v, Type::Unknown)
+                                } else {
+                                    true
+                                }
+                            })
+                            .collect();
+                        let deduped: Vec<Type> = {
+                            let mut d: Vec<Type> = Vec::new();
+                            for t in filtered {
+                                if !d.contains(&t) {
+                                    d.push(t);
+                                }
+                            }
+                            d
+                        };
+                        if deduped.len() == 1 {
+                            deduped.into_iter().next().unwrap()
+                        } else {
+                            Type::Union(deduped)
+                        }
+                    }
+                    other => other,
+                }
+            }
+
+            for s in &mut module.structs {
+                for field in &mut s.fields {
+                    if matches!(field.ty, Type::Var(_) | Type::Union(_)) {
+                        let new_ty = resolve_field_ty(field.ty.clone(), &arena);
+                        if new_ty != field.ty {
+                            field.ty = new_ty;
+                        }
+                    }
+                }
+            }
+
+            for decl in module.types.values_mut() {
+                if let TypeDecl::Object { ref mut fields, .. } = decl {
+                    for field in fields.iter_mut() {
+                        if matches!(field.ty, Type::Var(_) | Type::Union(_)) {
+                            let new_ty = resolve_field_ty(field.ty.clone(), &arena);
+                            if new_ty != field.ty {
+                                field.ty = new_ty;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // -----------------------------------------------------------------------
         // Step 8: emit inference failure diagnostics for values that remain
         // Unknown after solving.
         // -----------------------------------------------------------------------
