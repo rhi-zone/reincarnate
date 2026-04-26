@@ -395,6 +395,7 @@ impl Frontend for GameMakerFrontend {
                     bytecode_version: bc_version,
                     classref_types: &classref_types,
                     instance_types: &instance_types,
+                    gml_object_type_id: gml_object_id,
                     registry: &combined_registry,
                 };
 
@@ -901,6 +902,7 @@ fn translate_scripts(
             bytecode_version: bc_version,
             classref_types: &classref_types,
             instance_types: &instance_types,
+            gml_object_type_id: gml_object_id,
             registry,
         };
 
@@ -1022,6 +1024,7 @@ fn translate_global_inits(
             bytecode_version: bc_version,
             classref_types: &classref_types,
             instance_types: &instance_types,
+            gml_object_type_id: gml_object_id,
             registry,
         };
 
@@ -1135,6 +1138,7 @@ fn translate_room_creation(
             bytecode_version: bc_version,
             classref_types: &classref_types,
             instance_types: &instance_types,
+            gml_object_type_id: gml_object_id,
             registry,
         };
 

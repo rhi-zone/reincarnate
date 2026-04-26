@@ -147,6 +147,7 @@ pub fn translate_objects(
                         bytecode_version: bc_version,
                         classref_types: &classref_types,
                         instance_types: &instance_types,
+                        gml_object_type_id: gml_object_id,
                         registry,
                     };
 

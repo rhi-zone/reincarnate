@@ -292,12 +292,12 @@ pub(super) fn translate_with_body(
     // than Unknown.  The outer self type is the enclosing class (if known) or
     // GMLObject (the universal base class).
     let outer_self_ty = if wctx.has_outer_self {
-        wctx.ctx
-            .class_name
-            .and_then(|n| instance_types.get(n).copied())
-            .or_else(|| instance_types.get("GMLObject").copied())
-            .map(Type::Instance)
-            .unwrap_or_else(|| fb.fresh_var())
+        Type::Instance(
+            wctx.ctx
+                .class_name
+                .and_then(|n| instance_types.get(n).copied())
+                .unwrap_or(wctx.ctx.gml_object_type_id),
+        )
     } else {
         fb.fresh_var()
     };
@@ -401,6 +401,7 @@ pub(super) fn translate_with_body(
         bytecode_version: ctx.bytecode_version,
         classref_types: ctx.classref_types,
         instance_types: ctx.instance_types,
+        gml_object_type_id: ctx.gml_object_type_id,
         registry: ctx.registry,
     };
 

@@ -86,6 +86,9 @@ fn make_ctx<'a>(
         bytecode_version: datawin::BytecodeVersion(17),
         classref_types: &EMPTY_CLASSREF_TYPES,
         instance_types: &EMPTY_INSTANCE_TYPES,
+        // Tests do not exercise has_self/has_other paths that use gml_object_type_id;
+        // TypeId::new(0) is a harmless sentinel for the struct field requirement.
+        gml_object_type_id: TypeId::new(0),
         registry,
     }
 }

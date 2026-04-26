@@ -104,6 +104,10 @@ pub struct TranslateCtx<'a> {
     /// Callers pre-populate this by calling `mb.intern_type(name)` for each
     /// object name before translation begins.
     pub instance_types: &'a HashMap<String, TypeId>,
+    /// Pre-resolved TypeId for `GMLObject` — the IR base class for all GML
+    /// instances. Stored directly to avoid repeated string lookups and silent
+    /// `None` failures when the key is missing.
+    pub gml_object_type_id: TypeId,
     /// Name-to-FuncId registry for resolving named calls during translation.
     ///
     /// Installed on each `FunctionBuilder` before translation so that
@@ -263,23 +267,17 @@ fn build_signature_with_args(ctx: &TranslateCtx, arg_count: u16) -> FunctionSig 
         // Use the declared class type if available; fall back to GMLObject so
         // that script functions (class_name = None) get a typed self rather
         // than unknown, enabling property access type-checking.
-        let self_ty = ctx
-            .class_name
-            .and_then(|name| ctx.instance_types.get(name).copied())
-            .or_else(|| ctx.instance_types.get("GMLObject").copied())
-            .map(Type::Instance)
-            .unwrap_or_else(&mut fresh);
+        let self_ty = Type::Instance(
+            ctx.class_name
+                .and_then(|name| ctx.instance_types.get(name).copied())
+                .unwrap_or(ctx.gml_object_type_id),
+        );
         params.push(self_ty);
         defaults.push(None);
     }
     if ctx.has_other {
         // `other` is always a GML object instance (e.g. collision partner).
-        let other_ty = ctx
-            .instance_types
-            .get("GMLObject")
-            .copied()
-            .map(Type::Instance)
-            .unwrap_or_else(&mut fresh);
+        let other_ty = Type::Instance(ctx.gml_object_type_id);
         params.push(other_ty);
         defaults.push(None);
     }
