@@ -955,6 +955,10 @@ impl Transform for ConstraintSolveHM {
         }
 
         // Emit union constraints for params called with multiple concrete types.
+        // Collected separately so they can be prepended before HasField constraints —
+        // call-site types must bind param vars before HasField narrowing fires, so
+        // that HasField sees the concrete union type rather than preempting it.
+        let mut union_constraints: Vec<TypeConstraint> = Vec::new();
         for (param_var, types) in param_concrete_types {
             let mut deduped: Vec<Type> = Vec::new();
             for ty in types {
@@ -967,7 +971,7 @@ impl Transform for ConstraintSolveHM {
             } else {
                 Type::Union(deduped)
             };
-            all_constraints.push(TypeConstraint::Equal(constraint_ty, Type::Var(param_var)));
+            union_constraints.push(TypeConstraint::Equal(constraint_ty, Type::Var(param_var)));
         }
 
         // -----------------------------------------------------------------------
@@ -981,7 +985,9 @@ impl Transform for ConstraintSolveHM {
         //   (a) the deferred list is empty (all resolved), or
         //   (b) a full pass made no progress (deferred list no shorter than before).
         // -----------------------------------------------------------------------
-        let mut pending: Vec<TypeConstraint> = all_constraints;
+        // Prepend union constraints so they fire before HasField constraints.
+        union_constraints.extend(all_constraints);
+        let mut pending: Vec<TypeConstraint> = union_constraints;
         let stalled_deferred: Vec<TypeConstraint>;
         loop {
             let pending_count = pending.len();
