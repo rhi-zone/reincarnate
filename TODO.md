@@ -1400,30 +1400,39 @@ Session 24 fixes:
 
 ## Open threads (session 29 close)
 
-### Subtype lower-bound design — attempted, reverted, mechanism verified
+### Subtype lower-bound design — attempted, root cause found, reverted
 
 **Baseline after session 29:** 17,235 Dead Estate errors (−22 from session 28's 17,257).
 
-One fix shipped this session:
+Two changes shipped this session:
 - Union constraint prepending (`abd07dc`): union constraints from `param_concrete_types` are now prepended before HasField constraints in the fixpoint. Prevents HasField single-candidate narrowing from preempting call-site union bindings. −1,517 TS2339, +1,156 TS2345, +414 TS18046; net −22.
+- `gml_object_type_id: TypeId` on `TranslateCtx` (`20feea0`): replaced all `instance_types.get("GMLObject")` string lookups with a typed field initialized from `mb.intern_type("GMLObject")` at `TranslateCtx` construction. Eliminates silent None when GMLObject is not yet registered.
 
-**What was attempted and reverted:** The full `param_lower_bounds` approach — changing ownerless script `self` from `Instance(GMLObject)` to `Var(fresh) + lower-bound fallback`, collected via a new `FunctionSig.param_lower_bounds` field and applied as Step 4.6 in the HM solver after the fixpoint. The unit test for this mechanism passes. But the Dead Estate run showed 92 functions with `self: unknown` instead of the expected `GMLObject`, causing a net regression of +2k errors.
+**What was attempted and reverted:** The full `param_lower_bounds` approach — changing ownerless script `self` from `Instance(GMLObject)` to `Var(fresh) + lower-bound fallback`, collected via `FunctionSig.param_lower_bounds: Vec<Option<Type>>` and `ConstraintSet.param_lower_bounds: Vec<(TypeVarId, Type)>`, applied as Step 4.6 in the HM solver after the fixpoint.
 
-**Root cause unknown.** The mechanism is correct (verified by unit test). The 92 failing functions all have `class_name = None` (ownerless, should have GMLObject lower bound), `has_self = true`, and GMLObject IS in `instance_types` at translation time. Exhaustive reasoning could not explain why the lower bound fails to apply for those 92 functions specifically when it works for the rest. The leading hypothesis: something in the interprocedural Equal-constraint chain or HasField narrowing is binding the solver var to something unexpected before Step 4.6 fires, and the solver var either resolves to Unknown or the param_lower_bounds field is not present at collect_function time for these functions.
+**Root cause of 92 `self: unknown` functions found:** Two HM passes run (separated by `inline`, `mem2reg`, etc.). Between Pass 1 and Pass 2, the intermediate transforms reset `func.value_types[self_val]` from `Instance(GMLObject)` (written by Pass 1) back to `Unknown`. Then in Pass 2's `collect_function`, `should_bind` logic fires: `is_concrete(Unknown) = true` AND the value is an entry-block param → pre-binds the solver Var to `Unknown`. Step 4.6's guard `matches!(resolve(Var(*var)), Type::Var(_))` then fails because the Var already resolved to `Unknown` — the lower bound is never applied.
 
-**What the next session MUST do before retrying:** Add debug logging to Step 4.6 to log: (1) the total size of `all_lower_bounds`, (2) whether each lower-bound var is free or bound when Step 4.6 processes it, and (3) what it's bound to if not free. Also log `func.sig.param_lower_bounds` at the top of `collect_function` for functions named `getAnyaTimeRank` / `getAnyaRank`. This will immediately show whether the lower bound is present in the IR or whether it was lost before the solver.
+**Fix for the should_bind problem (implemented then reverted with the rest):** Add `has_lower_bound` check to `should_bind` — don't pre-bind Unknown entry params that have a lower bound in `func.sig.param_lower_bounds`. This moved 92 → 5 `unknown` functions. But it exposed a second problem:
 
-**Revised design notes (from session 29 investigation):**
-- `TypeConstraint::Subtype { sub, sup }` scaffolding exists in `ir/ty.rs` — wire-up is still the right next step
+**Second regression: TS2345 from incomplete call-site capture.** The interprocedural loop only captures `Op::Call` with concrete-typed args into `param_concrete_types`. Class method callers that pass `this` via `Op::MethodCall` (or other paths) are NOT captured. When a script function's only valid callers go uncaptured, the union is biased to only the captured callers (e.g. `OLightParticle`) — all other callers then fail `TS2345: Argument of type 'this' is not assignable to 'OLightParticle'`. Third attempt net result: 19,686 (regression of +2,451).
+
+**Design decision required for next attempt:** The union narrowing approach has a structural gap. Options:
+1. Extend `param_concrete_types` capture to also include `Op::MethodCall` callers — requires identifying the param position each arg maps to through MethodCall dispatch.
+2. Abandon union narrowing for `self` entirely: only apply the GMLObject lower bound (never emit a union). This is safe and correct — any call site that passes a subtype of GMLObject is already valid. 92→5 unknown would still be fixed.
+3. Only apply the lower bound when there are zero captured call-site types (i.e. the union is empty) — use GMLObject as fallback only, not as a merge target when union exists.
+
+Option 2 is lowest risk and directly fixes the `_self: unknown` problem. Option 3 would give the best narrowing but needs Op::MethodCall capture first.
+
+**Design invariants verified this session:**
+- `TypeConstraint::Subtype { sub, sup }` scaffolding exists in `ir/ty.rs` — not yet consumed
 - `FunctionSig.param_lower_bounds: Vec<Option<Type>>` is the right channel (mirrors `defaults`)
 - `ConstraintSet.param_lower_bounds: Vec<(TypeVarId, Type)>` for passing from collector to solver
 - Step 4.6 (apply after fixpoint, before Step 5 write-back) is the right insertion point
-- Union prepending (committed) must remain — it fixes a HasField/union race condition that existed independently
-- The TS2345 in session 29's regressed output were NOT from the lower-bound mechanism itself but from (a) HasField narrowing to wrong Haxe structs for functions with no call sites and (b) cross-module call-site information being correctly captured, exposing real caller mismatches
+- Union prepending (committed) must remain — it fixes a HasField/union race condition independently
 
 **Remaining top buckets (after session 29, 17,235 baseline):**
 - 10,483 TS2339 — property-not-found (bucket A residual = self typed GMLObject instead of specific union; B/C/D/E/F/G)
-- 2,973 TS2345 — type argument mismatches  
+- 2,973 TS2345 — type argument mismatches
 - 1,369 TS2571 — object of type 'unknown' (property access on unknown receiver)
 - 666 TS18046 — 'x' is of type 'unknown' (includes `_self` params from withInstances U5 bucket)
 - 620 TS2769 — no overload matches (downstream of unknown operands)
