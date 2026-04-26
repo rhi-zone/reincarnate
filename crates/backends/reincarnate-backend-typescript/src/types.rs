@@ -347,6 +347,7 @@ fn resolve_type(ty: Type, module_types: &PrimaryMap<TypeId, TypeDecl>) -> Type {
                 return_ty,
                 defaults: sig.defaults,
                 has_rest_param: sig.has_rest_param,
+                param_lower_bounds: vec![],
             }))
         }
         Type::Coroutine {

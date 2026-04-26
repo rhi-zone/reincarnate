@@ -1186,6 +1186,7 @@ fn normalize_type(ty: Type) -> Type {
                 return_ty,
                 defaults: sig.defaults,
                 has_rest_param: sig.has_rest_param,
+                param_lower_bounds: sig.param_lower_bounds,
             }))
         }
         Type::Coroutine {

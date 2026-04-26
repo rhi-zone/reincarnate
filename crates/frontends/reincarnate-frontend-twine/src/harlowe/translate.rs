@@ -59,6 +59,7 @@ pub fn translate_passage(name: &str, ast: &PassageAst, source: &str) -> Translat
         return_ty: Type::Void,
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
     let mut fb = FunctionBuilder::new(&func_name, sig, Visibility::Public);
     let h_param = fb.param(0);
@@ -1192,6 +1193,7 @@ impl TranslateCtx {
                 return_ty: return_ty.clone(),
                 defaults: vec![],
                 has_rest_param: false,
+                param_lower_bounds: vec![],
             }
         } else {
             FunctionSig {
@@ -1199,6 +1201,7 @@ impl TranslateCtx {
                 return_ty: return_ty.clone(),
                 defaults: vec![],
                 has_rest_param: false,
+                param_lower_bounds: vec![],
             }
         };
         let mut cb_fb = FunctionBuilder::new(&cb_name, sig, Visibility::Public);
@@ -1273,6 +1276,7 @@ impl TranslateCtx {
             return_ty: self.fb.fresh_var(),
             defaults: vec![],
             has_rest_param: false,
+            param_lower_bounds: vec![],
         };
         let mut cb_fb = FunctionBuilder::new(&cb_name, sig, Visibility::Public);
         cb_fb.set_method_kind(MethodKind::Closure);
@@ -1397,6 +1401,7 @@ impl TranslateCtx {
             return_ty: Type::Void,
             defaults: vec![],
             has_rest_param: false,
+            param_lower_bounds: vec![],
         };
         let mut cb_fb = FunctionBuilder::new(name, sig, Visibility::Public);
         cb_fb.set_method_kind(MethodKind::Closure);
@@ -2026,6 +2031,7 @@ impl TranslateCtx {
             return_ty: Type::Bool,
             defaults: vec![],
             has_rest_param: false,
+            param_lower_bounds: vec![],
         };
         let cond_fb = FunctionBuilder::new(&cond_name, cond_sig, Visibility::Public);
 
@@ -2156,6 +2162,7 @@ impl TranslateCtx {
             return_ty: Type::Void,
             defaults: vec![],
             has_rest_param: false,
+            param_lower_bounds: vec![],
         };
         let mut cb_fb = FunctionBuilder::new(name, sig, Visibility::Public);
         cb_fb.set_method_kind(MethodKind::Closure);
@@ -2225,6 +2232,7 @@ impl TranslateCtx {
             return_ty,
             defaults: vec![],
             has_rest_param: false,
+            param_lower_bounds: vec![],
         };
         let mut cb_fb = FunctionBuilder::new(name, sig, Visibility::Public);
         cb_fb.set_method_kind(MethodKind::Closure);

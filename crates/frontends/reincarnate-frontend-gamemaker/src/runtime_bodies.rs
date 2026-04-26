@@ -122,6 +122,7 @@ fn attach_body_lengthdir_x(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "lengthdir_x", sig);
@@ -158,6 +159,7 @@ fn attach_body_lengthdir_y(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     // GML uses a y-down coordinate system where angle 0 points right and
@@ -204,6 +206,7 @@ fn attach_body_point_distance(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "point_distance", sig);
@@ -241,6 +244,7 @@ fn attach_body_degtorad(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "degtorad", sig);
@@ -274,6 +278,7 @@ fn attach_body_radtodeg(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "radtodeg", sig);
@@ -307,6 +312,7 @@ fn attach_body_dsin(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "dsin", sig);
@@ -341,6 +347,7 @@ fn attach_body_dcos(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "dcos", sig);
@@ -375,6 +382,7 @@ fn attach_body_dtan(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "dtan", sig);
@@ -409,6 +417,7 @@ fn attach_body_darcsin(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "darcsin", sig);
@@ -443,6 +452,7 @@ fn attach_body_darccos(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "darccos", sig);
@@ -477,6 +487,7 @@ fn attach_body_darctan(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "darctan", sig);
@@ -511,6 +522,7 @@ fn attach_body_darctan2(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "darctan2", sig);
@@ -546,6 +558,7 @@ fn attach_body_arctan2(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "arctan2", sig);
@@ -589,6 +602,7 @@ fn attach_body_point_direction(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "point_direction", sig);
@@ -628,6 +642,7 @@ fn attach_body_sqr(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "sqr", sig);
@@ -660,6 +675,7 @@ fn attach_body_power(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "power", sig);
@@ -693,6 +709,7 @@ fn attach_body_logn(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "logn", sig);
@@ -728,6 +745,7 @@ fn attach_body_log2(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "log2", sig);
@@ -760,6 +778,7 @@ fn attach_body_log10(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "log10", sig);
@@ -792,6 +811,7 @@ fn attach_body_exp(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "exp", sig);
@@ -824,6 +844,7 @@ fn attach_body_clamp(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "clamp", sig);
@@ -859,6 +880,7 @@ fn attach_body_lerp(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "lerp", sig);
@@ -898,6 +920,7 @@ fn attach_body_abs(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "abs", sig);
@@ -930,6 +953,7 @@ fn attach_body_floor(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "floor", sig);
@@ -962,6 +986,7 @@ fn attach_body_ceil(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "ceil", sig);
@@ -997,6 +1022,7 @@ fn attach_body_round(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "round", sig);
@@ -1029,6 +1055,7 @@ fn attach_body_sign(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "sign", sig);
@@ -1061,6 +1088,7 @@ fn attach_body_sqrt(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "sqrt", sig);
@@ -1093,6 +1121,7 @@ fn attach_body_arctan(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "arctan", sig);
@@ -1128,6 +1157,7 @@ fn attach_body_frac(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "frac", sig);
@@ -1166,6 +1196,7 @@ fn attach_body_dot_product(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "dot_product", sig);
@@ -1210,6 +1241,7 @@ fn attach_body_dot_product_3d(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "dot_product_3d", sig);
@@ -1253,6 +1285,7 @@ fn attach_body_color_get_red(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "color_get_red", sig);
@@ -1288,6 +1321,7 @@ fn attach_body_color_get_green(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "color_get_green", sig);
@@ -1325,6 +1359,7 @@ fn attach_body_color_get_blue(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "color_get_blue", sig);
@@ -1360,6 +1395,7 @@ fn attach_body_make_color_rgb(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "make_color_rgb", sig);
@@ -1399,6 +1435,7 @@ fn attach_body_colour_get_red(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "colour_get_red", sig);
@@ -1432,6 +1469,7 @@ fn attach_body_colour_get_green(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "colour_get_green", sig);
@@ -1467,6 +1505,7 @@ fn attach_body_colour_get_blue(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "colour_get_blue", sig);
@@ -1500,6 +1539,7 @@ fn attach_body_make_colour_rgb(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "make_colour_rgb", sig);
@@ -1546,6 +1586,7 @@ fn attach_body_merge_color(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "merge_color", sig);
@@ -1607,6 +1648,7 @@ fn attach_body_merge_colour(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "merge_colour", sig);
@@ -1671,6 +1713,7 @@ fn attach_body_color_get_value(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "color_get_value", sig);
@@ -1716,6 +1759,7 @@ fn attach_body_colour_get_value(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "colour_get_value", sig);
@@ -1769,6 +1813,7 @@ fn attach_body_color_get_saturation(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "color_get_saturation", sig);
@@ -1829,6 +1874,7 @@ fn attach_body_colour_get_saturation(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "colour_get_saturation", sig);
@@ -1903,6 +1949,7 @@ fn attach_body_color_get_hue(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "color_get_hue", sig);
@@ -2023,6 +2070,7 @@ fn attach_body_colour_get_hue(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "colour_get_hue", sig);
@@ -2149,6 +2197,7 @@ fn attach_body_make_color_hsv(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "make_color_hsv", sig);
@@ -2293,6 +2342,7 @@ fn attach_body_make_colour_hsv(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "make_colour_hsv", sig);
@@ -2422,6 +2472,7 @@ fn attach_body_string_length(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "string_length", sig);
@@ -2454,6 +2505,7 @@ fn attach_body_string_upper(module: &mut Module) {
         return_ty: Type::String,
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "string_upper", sig);
@@ -2486,6 +2538,7 @@ fn attach_body_string_lower(module: &mut Module) {
         return_ty: Type::String,
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "string_lower", sig);
@@ -2519,6 +2572,7 @@ fn attach_body_string_char_at(module: &mut Module) {
         return_ty: Type::String,
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "string_char_at", sig);
@@ -2555,6 +2609,7 @@ fn attach_body_string_copy(module: &mut Module) {
         return_ty: Type::String,
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "string_copy", sig);
@@ -2595,6 +2650,7 @@ fn attach_body_string_pos(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "string_pos", sig);
@@ -2632,6 +2688,7 @@ fn attach_body_string_delete(module: &mut Module) {
         return_ty: Type::String,
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "string_delete", sig);
@@ -2675,6 +2732,7 @@ fn attach_body_string_insert(module: &mut Module) {
         return_ty: Type::String,
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "string_insert", sig);
@@ -2719,6 +2777,7 @@ fn attach_body_string_replace_all(module: &mut Module) {
         return_ty: Type::String,
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "string_replace_all", sig);
@@ -2756,6 +2815,7 @@ fn attach_body_string_count(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "string_count", sig);
@@ -2795,6 +2855,7 @@ fn attach_body_string_ord_at(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "string_ord_at", sig);
@@ -2831,6 +2892,7 @@ fn attach_body_string_repeat(module: &mut Module) {
         return_ty: Type::String,
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "string_repeat", sig);
@@ -2866,6 +2928,7 @@ fn attach_body_string_replace(module: &mut Module) {
         return_ty: Type::String,
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "string_replace", sig);
@@ -2902,6 +2965,7 @@ fn attach_body_string_hash_to_newline(module: &mut Module) {
         return_ty: Type::String,
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "string_hash_to_newline", sig);
@@ -2940,6 +3004,7 @@ fn attach_body_string_trim(module: &mut Module) {
         return_ty: Type::String,
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "string_trim", sig);
@@ -2975,6 +3040,7 @@ fn attach_body_array_length(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "array_length", sig);
@@ -3010,6 +3076,7 @@ fn attach_body_array_length_1d(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "array_length_1d", sig);
@@ -3045,6 +3112,7 @@ fn attach_body_array_contains(module: &mut Module) {
         return_ty: Type::Bool,
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "array_contains", sig);
@@ -3079,6 +3147,7 @@ fn attach_body_sin(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "sin", sig);
@@ -3112,6 +3181,7 @@ fn attach_body_cos(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "cos", sig);
@@ -3145,6 +3215,7 @@ fn attach_body_tan(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "tan", sig);
@@ -3178,6 +3249,7 @@ fn attach_body_arcsin(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "arcsin", sig);
@@ -3211,6 +3283,7 @@ fn attach_body_arccos(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "arccos", sig);
@@ -3245,6 +3318,7 @@ fn attach_body_ord(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "ord", sig);
@@ -3280,6 +3354,7 @@ fn attach_body_string_byte_at(module: &mut Module) {
         return_ty: Type::Float(64),
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "string_byte_at", sig);
@@ -3321,6 +3396,7 @@ fn attach_body_chr(module: &mut Module) {
         return_ty: Type::String,
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
 
     let mut b = make_builder(module, "chr", sig);

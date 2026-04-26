@@ -555,6 +555,7 @@ impl Transform for ConstraintSolveHM {
         struct FuncData {
             value_vars: HashMap<ValueId, crate::ir::ty::TypeVarId>,
             return_var: crate::ir::ty::TypeVarId,
+            constraint_set_param_lower_bounds: Vec<(TypeVarId, Type)>,
         }
 
         let mut all_constraints: Vec<TypeConstraint> = Vec::new();
@@ -566,6 +567,7 @@ impl Transform for ConstraintSolveHM {
             func_data.push(FuncData {
                 value_vars: set.value_vars,
                 return_var: set.return_var,
+                constraint_set_param_lower_bounds: set.param_lower_bounds,
             });
         }
 
@@ -1114,6 +1116,35 @@ impl Transform for ConstraintSolveHM {
                     break;
                 }
                 pending2 = deferred;
+            }
+        }
+
+        // -----------------------------------------------------------------------
+        // Step 4.6: apply param lower bounds.
+        //
+        // If a param TypeVar is still free after the fixpoint (no call-site
+        // narrowed it), bind it to the lower bound declared in the signature.
+        // This ensures ownerless GML script `self` params default to GMLObject
+        // rather than remaining unresolved (which emits `unknown`).
+        // -----------------------------------------------------------------------
+        {
+            let all_lower_bounds: Vec<(TypeVarId, Type)> = func_data
+                .iter()
+                .flat_map(|fd| fd.constraint_set_param_lower_bounds.iter().cloned())
+                .collect();
+
+            for (var, lb) in &all_lower_bounds {
+                let resolved = resolve(Type::Var(*var), &arena);
+                let is_free = matches!(resolved, Type::Var(_));
+                if is_free {
+                    // resolved is Type::Var(free_id) — bind the terminal free var,
+                    // not the original var (which may already be bound to free_id).
+                    if let Type::Var(free_id) = resolved {
+                        if arena.binding_of(free_id).is_none() {
+                            arena.bind(free_id, lb.clone());
+                        }
+                    }
+                }
             }
         }
 

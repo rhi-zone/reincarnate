@@ -512,6 +512,7 @@ fn generate_hal_init_function(
         return_ty: Type::Void,
         defaults: vec![],
         has_rest_param: false,
+        param_lower_bounds: vec![],
     };
     let mut fb = FunctionBuilder::new("__user_script_hal_init", sig, Visibility::Public);
 

@@ -263,16 +263,24 @@ fn build_signature_with_args(ctx: &TranslateCtx, arg_count: u16) -> FunctionSig 
 
     let mut params = Vec::new();
     let mut defaults = Vec::new();
+    let mut param_lower_bounds: Vec<Option<Type>> = Vec::new();
     if ctx.has_self {
         // Use the declared class type if available; fall back to GMLObject so
         // that script functions (class_name = None) get a typed self rather
         // than unknown, enabling property access type-checking.
-        let self_ty = Type::Instance(
-            ctx.class_name
-                .and_then(|name| ctx.instance_types.get(name).copied())
-                .unwrap_or(ctx.gml_object_type_id),
-        );
-        params.push(self_ty);
+        if let Some(type_id) = ctx
+            .class_name
+            .and_then(|name| ctx.instance_types.get(name).copied())
+        {
+            // Class script: concrete type known — no lower bound needed.
+            params.push(Type::Instance(type_id));
+            param_lower_bounds.push(None);
+        } else {
+            // Ownerless script: emit Unknown so the param var stays free, with
+            // GMLObject as the lower bound fallback if no call-site narrows it.
+            params.push(Type::Unknown);
+            param_lower_bounds.push(Some(Type::Instance(ctx.gml_object_type_id)));
+        }
         defaults.push(None);
     }
     if ctx.has_other {
@@ -280,10 +288,12 @@ fn build_signature_with_args(ctx: &TranslateCtx, arg_count: u16) -> FunctionSig 
         let other_ty = Type::Instance(ctx.gml_object_type_id);
         params.push(other_ty);
         defaults.push(None);
+        param_lower_bounds.push(None);
     }
     for _ in 0..arg_count {
         params.push(fresh());
         defaults.push(None);
+        param_lower_bounds.push(None);
     }
     // Event handlers are fire-and-forget: the GML runtime discards their return
     // value.  Declaring the return type as Void lets the constraint solver keep
@@ -297,6 +307,7 @@ fn build_signature_with_args(ctx: &TranslateCtx, arg_count: u16) -> FunctionSig 
         params,
         defaults,
         return_ty,
+        param_lower_bounds,
         ..Default::default()
     }
 }

@@ -65,6 +65,13 @@ pub struct FunctionSig {
     /// Whether the last parameter is a rest/variadic parameter (`...args`).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub has_rest_param: bool,
+    /// Lower bounds for parameters (parallel vec, `None` = no lower bound).
+    ///
+    /// When the solver cannot narrow a parameter via call-site inference,
+    /// it falls back to this lower bound.  Used for ownerless GML scripts
+    /// whose `self` param should default to `GMLObject` rather than `unknown`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub param_lower_bounds: Vec<Option<Type>>,
 }
 
 impl Default for FunctionSig {
@@ -74,6 +81,7 @@ impl Default for FunctionSig {
             return_ty: Type::Void,
             defaults: Vec::new(),
             has_rest_param: false,
+            param_lower_bounds: Vec::new(),
         }
     }
 }

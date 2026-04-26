@@ -488,6 +488,7 @@ fn translate_class_method(
         return_ty: return_type,
         defaults,
         has_rest_param: has_rest,
+        param_lower_bounds: vec![],
     };
 
     let func = translate_method_body(

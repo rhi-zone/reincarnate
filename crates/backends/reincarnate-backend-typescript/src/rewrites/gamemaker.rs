@@ -1460,6 +1460,7 @@ fn try_rewrite_system_call(
                 return_ty: closure_func.return_ty.clone(),
                 defaults: Vec::new(),
                 has_rest_param: closure_func.has_rest_param,
+                param_lower_bounds: vec![],
             }));
             Some(JsExpr::Call {
                 callee: Box::new(JsExpr::ArrowFunction {

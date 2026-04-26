@@ -153,6 +153,7 @@ pub fn resolve(ty: Type, arena: &TypeVarArena) -> Type {
                 return_ty,
                 defaults: sig.defaults,
                 has_rest_param: sig.has_rest_param,
+                param_lower_bounds: sig.param_lower_bounds,
             }))
         }
         Type::Coroutine {
@@ -405,6 +406,7 @@ pub fn unify(a: Type, b: Type, arena: &mut TypeVarArena) -> Result<Type, UnifyEr
                 return_ty,
                 defaults: sa.defaults,
                 has_rest_param: sa.has_rest_param,
+                param_lower_bounds: sa.param_lower_bounds,
             })))
         }
         (
@@ -463,6 +465,11 @@ pub struct ConstraintSet {
     /// enabling bidirectional return-type propagation even when the callee's
     /// `sig.return_ty` is not yet concrete.
     pub return_var: TypeVarId,
+    /// Lower bounds for entry param TypeVars — if a param var remains free
+    /// after the fixpoint, bind it to this lower bound type.
+    ///
+    /// Populated from `func.sig.param_lower_bounds` in [`collect_function`].
+    pub param_lower_bounds: Vec<(TypeVarId, Type)>,
 }
 
 // ---------------------------------------------------------------------------
@@ -617,16 +624,22 @@ pub fn collect_function(
     //   Pre-binding any of these to Unknown blocks the `(Unknown, _)` arm of
     //   unify from ever binding that TypeVar to a useful type.
     // -----------------------------------------------------------------------
-    let entry_param_ids: HashSet<ValueId> = func.blocks[func.entry]
+    let entry_param_pos: HashMap<ValueId, usize> = func.blocks[func.entry]
         .params
         .iter()
-        .map(|p| p.value)
+        .enumerate()
+        .map(|(i, p)| (p.value, i))
         .collect();
 
     for (vid, ty) in func.value_types.iter() {
         let var = arena.fresh();
-        let should_bind =
-            is_concrete(ty) && (!matches!(ty, Type::Unknown) || entry_param_ids.contains(&vid));
+        let param_pos = entry_param_pos.get(&vid).copied();
+        let has_lower_bound = param_pos
+            .and_then(|i| func.sig.param_lower_bounds.get(i))
+            .and_then(|b| b.as_ref())
+            .is_some();
+        let should_bind = is_concrete(ty)
+            && (!matches!(ty, Type::Unknown) || (param_pos.is_some() && !has_lower_bound));
         if should_bind {
             arena.bind(var, ty.clone());
         }
@@ -1105,10 +1118,23 @@ pub fn collect_function(
         }
     }
 
+    // Collect param lower bounds from the function signature.
+    let mut param_lower_bounds: Vec<(TypeVarId, Type)> = Vec::new();
+    for (i, lower_bound) in func.sig.param_lower_bounds.iter().enumerate() {
+        if let Some(lb) = lower_bound {
+            if let Some(param) = func.blocks[func.entry].params.get(i) {
+                if let Some(&var) = value_vars.get(&param.value) {
+                    param_lower_bounds.push((var, lb.clone()));
+                }
+            }
+        }
+    }
+
     ConstraintSet {
         constraints,
         value_vars,
         return_var,
+        param_lower_bounds,
     }
 }
 

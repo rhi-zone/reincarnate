@@ -1490,6 +1490,7 @@ fn translate_op(
                         return_ty: closure_return,
                         defaults: closure_defaults,
                         has_rest_param: has_rest,
+                        param_lower_bounds: vec![],
                     };
                     match translate_method_body(
                         abc,

@@ -83,6 +83,7 @@ impl TranslateCtx {
             return_ty: Type::Void,
             defaults: vec![],
             has_rest_param: false,
+            param_lower_bounds: vec![],
         };
         let fb = FunctionBuilder::new(name, sig, Visibility::Public);
         Self {
@@ -1078,6 +1079,7 @@ impl TranslateCtx {
             return_ty: ret_ty,
             defaults: vec![],
             has_rest_param: false,
+            param_lower_bounds: vec![],
         };
         let mut arrow_fb = FunctionBuilder::new(&arrow_name, sig, Visibility::Private);
 
@@ -1572,6 +1574,7 @@ impl TranslateCtx {
                 return_ty: Type::Void,
                 defaults: vec![],
                 has_rest_param: false,
+                param_lower_bounds: vec![],
             };
             let setter_fb = FunctionBuilder::new(&setter_name, sig, Visibility::Public);
 
