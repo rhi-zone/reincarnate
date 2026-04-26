@@ -1439,6 +1439,35 @@ Option 2 is lowest risk and directly fixes the `_self: unknown` problem. Option 
 
 ---
 
+## Open threads (session 30 close)
+
+### Subtype lower-bound — shipped, regressions diagnosed and fixed
+
+**Baseline after session 30:** 16,501 Dead Estate errors (−734 from session 29's 17,235).
+
+Three changes shipped this session:
+- `param_lower_bounds` mechanism (`7596a5c`): ownerless script self now declared as `Unknown` with a `GMLObject` lower bound in `FunctionSig::param_lower_bounds`. Step 4.6 in the HM solver applies the lower bound when the Var is still free after the fixpoint. `should_bind` in `constraint_collect` leaves Unknown entry params with a lower bound free (not pre-bound). 519 scripts narrowed by call-site inference to concrete types; 835 fell back to GMLObject; `self: unknown` eliminated. −1,095 TS2339, +332 TS2345, net −427.
+- `instance_destroy` param fix (`38649cb` partial): first param `Int(32)` → `Unknown` — was incorrectly constraining withInstances closure `_self` to number when body called `instance_destroy(_self)`.
+- 41 additional instance/object builtins (`38649cb`): same wrong `Int(32)` pattern for params typed "Object Instance or Object Asset" — `instance_exists`, `object_is_ancestor`, `variable_instance_*`, etc. DS handle IDs (`ds_list_*`, `ds_map_*`, etc.) retained `Int(32)` — those are genuine integer handles. Net −307.
+
+**Root cause of wrong Int(32) params:** Auto-generated builtins used `Type::Int(32)` for all GML "Object Instance or Object Asset" params. The constraint emitter's conflict guard (`arg_ty != param_ty`) only skips when `arg_ty` is a concrete non-Unknown type. Ownerless script self is now `Unknown`, so the conflict guard never fires → wrong `Equal(self_var, Int(32))` constraint was applied.
+
+**Remaining top buckets (after session 30, 16,501 baseline):**
+- 9,375 TS2339 — property-not-found (bucket B: GM built-ins missing from GMLObject; C: sibling field lift; F: Step/Draw/Alarm events; G: long tail)
+- 2,983 TS2345 — type argument mismatches (pre-existing; net +10 from baseline, all from pre-existing patterns)
+- 1,380 TS2571 — object of type 'unknown'
+- 811 TS18046 — 'x' is of type 'unknown' (241 from withInstances keyword-id U5; rest from other unknown fields/params)
+- 651 TS2769 — no overload matches (downstream of unknown)
+- 613 TS2322 — type assignment mismatch
+
+**Immediately actionable next buckets:**
+- **U5** (241 TS18046): `withInstances(keyword_id, ...)` callbacks emit `_self: unknown` for keyword IDs (-9 = other, etc.). Fix: resolve keyword to caller's `_other` type in withInstances lowering.
+- **Bucket C** (~1,300 TS2339): fields set in sibling subclasses read from shared parent. `ConstructorStructInfer` common-ancestor lift — design decision on trigger condition.
+- **Bucket B** (~2,000 TS2339): GM built-in instance fields missing from GMLObject (`bbox_*`, `sprite_width/height`, `room_*`, `image_blend`, etc.). Blocked on runtime IR-generation migration but fields could be added to the existing handwritten runtime as a stopgap.
+- **Bucket F** (~500 TS2339): fields set in Step/Draw/Alarm events — ConstructorStructInfer only walks Create. Landmine: earlier attempt caused regressions. Needs careful design before retrying.
+
+---
+
 ## Open threads (session 27 close)
 
 ### Subtype constraint design — the real unifier for call-site param inference
