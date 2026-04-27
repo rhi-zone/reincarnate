@@ -46,6 +46,7 @@ pub(super) fn translate_push(
     compound_2d_pending: &mut bool,
     global_arg_count: u16,
     preceded_by_dup: bool,
+    rt_val: ValueId,
 ) -> Result<(), String> {
     match &inst.operand {
         Operand::Int16(v) => stack.push(fb.const_float(*v as f64)),
@@ -77,6 +78,7 @@ pub(super) fn translate_push(
                 compound_2d_pending,
                 global_arg_count,
                 preceded_by_dup,
+                rt_val,
             )?;
         }
         _ => {
@@ -103,6 +105,7 @@ pub(super) fn translate_push_variable(
     compound_2d_pending: &mut bool,
     global_arg_count: u16,
     preceded_by_dup: bool,
+    rt_val: ValueId,
 ) -> Result<(), String> {
     let var_name = resolve_variable_name(inst, ctx);
 
@@ -112,20 +115,22 @@ pub(super) fn translate_push_variable(
     // the "self" pattern — resolve to the self parameter directly.
     if is_stacktop_ref(var_ref, instance) {
         let raw_target = pop(stack, inst)?;
+        // param 0 is _rt; param 1 is self.
+        let self_param = fb.param(1);
         let target = if ctx.has_self {
             if fb
                 .try_resolve_const(raw_target)
                 .and_then(|c| const_as_i64(&c))
                 == Some(-9)
             {
-                fb.param(0)
+                self_param
             } else {
                 raw_target
             }
         } else {
             raw_target
         };
-        if ctx.has_self && target == fb.param(0) {
+        if ctx.has_self && target == self_param {
             let ty = fb.fresh_var();
             let val = fb.get_field(target, &var_name, ty);
             stack.push(val);
@@ -140,18 +145,27 @@ pub(super) fn translate_push_variable(
                 };
                 let name_val = fb.const_string(&var_name);
                 let ty = fb.fresh_var();
-                let val = fb.call_named("GameMaker.Instance.getOn", &[obj_id, name_val], ty);
+                let val =
+                    fb.call_named("GameMaker.Instance.getOn", &[rt_val, obj_id, name_val], ty);
                 stack.push(val);
             } else {
                 let name_val = fb.const_string(&var_name);
                 let ty = fb.fresh_var();
-                let val = fb.call_named("GameMaker.Instance.getField", &[target, name_val], ty);
+                let val = fb.call_named(
+                    "GameMaker.Instance.getField",
+                    &[rt_val, target, name_val],
+                    ty,
+                );
                 stack.push(val);
             }
         } else {
             let name_val = fb.const_string(&var_name);
             let ty = fb.fresh_var();
-            let val = fb.call_named("GameMaker.Instance.getField", &[target, name_val], ty);
+            let val = fb.call_named(
+                "GameMaker.Instance.getField",
+                &[rt_val, target, name_val],
+                ty,
+            );
             stack.push(val);
         }
         return Ok(());
@@ -178,9 +192,9 @@ pub(super) fn translate_push_variable(
         };
         let name_val = fb.const_string(&var_name);
         let args: Vec<ValueId> = if is_scalar {
-            vec![obj_id, name_val]
+            vec![rt_val, obj_id, name_val]
         } else {
-            vec![obj_id, name_val, dim1]
+            vec![rt_val, obj_id, name_val, dim1]
         };
         let ty = fb.fresh_var();
         let val = fb.call_named("GameMaker.Instance.getOn", &args, ty);
@@ -225,8 +239,9 @@ pub(super) fn translate_push_variable(
                     let ty = fb.fresh_var();
                     stack.push(fb.load(slot, ty));
                 } else {
+                    // +1 for _rt at param 0.
                     let param_offset =
-                        if ctx.has_self { 1 } else { 0 } + if ctx.has_other { 1 } else { 0 };
+                        1 + if ctx.has_self { 1 } else { 0 } + if ctx.has_other { 1 } else { 0 };
                     let param = fb.param(param_offset + n);
                     stack.push(param);
                 }
@@ -240,7 +255,8 @@ pub(super) fn translate_push_variable(
                 } else {
                     let name_val = fb.const_string(&var_name);
                     let ty = fb.fresh_var();
-                    let val = fb.call_named("GameMaker.Instance.getField", &[dim1, name_val], ty);
+                    let val =
+                        fb.call_named("GameMaker.Instance.getField", &[rt_val, dim1, name_val], ty);
                     stack.push(val);
                 }
             }
@@ -270,7 +286,8 @@ pub(super) fn translate_push_variable(
                         stack.push(indexed);
                     }
                 } else if fb.param_count() > 0 {
-                    let self_param = fb.param(0);
+                    // param 0 is _rt; param 1 is self (when has_self).
+                    let self_param = fb.param(1);
                     if is_scalar {
                         let ty = fb.fresh_var();
                         let field_val = fb.get_field(self_param, &var_name, ty);
@@ -308,9 +325,9 @@ pub(super) fn translate_push_variable(
                 };
                 let name_val = fb.const_string(&var_name);
                 let args: Vec<ValueId> = if is_scalar {
-                    vec![obj_id, name_val]
+                    vec![rt_val, obj_id, name_val]
                 } else {
-                    vec![obj_id, name_val, dim1]
+                    vec![rt_val, obj_id, name_val, dim1]
                 };
                 let ty = fb.fresh_var();
                 let val = fb.call_named("GameMaker.Instance.getOn", &args, ty);
@@ -319,9 +336,9 @@ pub(super) fn translate_push_variable(
                 // Unknown dim2: emit a runtime getOn with the dim2 value as the object.
                 let name_val = fb.const_string(&var_name);
                 let args: Vec<ValueId> = if is_scalar {
-                    vec![dim2, name_val]
+                    vec![rt_val, dim2, name_val]
                 } else {
-                    vec![dim2, name_val, dim1]
+                    vec![rt_val, dim2, name_val, dim1]
                 };
                 let ty = fb.fresh_var();
                 let val = fb.call_named("GameMaker.Instance.getOn", &args, ty);
@@ -340,9 +357,9 @@ pub(super) fn translate_push_variable(
             };
             let name_val = fb.const_string(&var_name);
             let args: Vec<ValueId> = if is_scalar {
-                vec![obj_id, name_val]
+                vec![rt_val, obj_id, name_val]
             } else {
-                vec![obj_id, name_val, dim1]
+                vec![rt_val, obj_id, name_val, dim1]
             };
             let ty = fb.fresh_var();
             let val = fb.call_named("GameMaker.Instance.getOn", &args, ty);
@@ -395,8 +412,9 @@ pub(super) fn translate_push_variable(
                     let ty = fb.fresh_var();
                     stack.push(fb.load(slot, ty));
                 } else {
+                    // +1 for _rt at param 0.
                     let param_offset =
-                        if ctx.has_self { 1 } else { 0 } + if ctx.has_other { 1 } else { 0 };
+                        1 + if ctx.has_self { 1 } else { 0 } + if ctx.has_other { 1 } else { 0 };
                     let param = fb.param(param_offset + arg_idx);
                     stack.push(param);
                 }
@@ -411,14 +429,15 @@ pub(super) fn translate_push_variable(
                     let val = fb.get_field(rest_id, "length", ty);
                     stack.push(val);
                 } else if ctx.has_self {
-                    let self_param = fb.param(0);
+                    // param 0 is _rt; param 1 is self.
+                    let self_param = fb.param(1);
                     let ty = fb.fresh_var();
                     let val = fb.get_field(self_param, &var_name, ty);
                     stack.push(val);
                 } else {
                     let name_val = fb.const_string(&var_name);
                     let ty = fb.fresh_var();
-                    let val = fb.call_named("GameMaker.Global.get", &[name_val], ty);
+                    let val = fb.call_named("GameMaker.Global.get", &[rt_val, name_val], ty);
                     stack.push(val);
                 }
             } else if let Some(constant) = gml_builtin_constant(&var_name) {
@@ -436,7 +455,8 @@ pub(super) fn translate_push_variable(
                     let ty = fb.fresh_var();
                     fb.load(slot, ty)
                 } else {
-                    fb.param(0)
+                    // param 0 is _rt; param 1 is self.
+                    fb.param(1)
                 };
                 let ty = fb.fresh_var();
                 let val = fb.get_field(self_val, &var_name, ty);
@@ -445,7 +465,7 @@ pub(super) fn translate_push_variable(
                 // Script context without self: variable is a global.
                 let name_val = fb.const_string(&var_name);
                 let ty = fb.fresh_var();
-                let val = fb.call_named("GameMaker.Global.get", &[name_val], ty);
+                let val = fb.call_named("GameMaker.Global.get", &[rt_val, name_val], ty);
                 stack.push(val);
             }
         }
@@ -461,8 +481,10 @@ pub(super) fn translate_push_variable(
                         let ty = fb.fresh_var();
                         stack.push(fb.load(slot, ty));
                     } else {
-                        let param_offset =
-                            if ctx.has_self { 1 } else { 0 } + if ctx.has_other { 1 } else { 0 };
+                        // +1 for _rt at param 0.
+                        let param_offset = 1
+                            + if ctx.has_self { 1 } else { 0 }
+                            + if ctx.has_other { 1 } else { 0 };
                         let param = fb.param(param_offset + arg_idx);
                         stack.push(param);
                     }
@@ -480,12 +502,13 @@ pub(super) fn translate_push_variable(
             }
             let name_val = fb.const_string(&var_name);
             let ty = fb.fresh_var();
-            let val = fb.call_named("GameMaker.Global.get", &[name_val], ty);
+            let val = fb.call_named("GameMaker.Global.get", &[rt_val, name_val], ty);
             stack.push(val);
         }
         Some(InstanceType::Other) => {
             if ctx.has_other {
-                let other_idx = if ctx.has_self { 1 } else { 0 };
+                // +1 for _rt at param 0; then +1 if has_self (self is before other).
+                let other_idx = 1 + if ctx.has_self { 1 } else { 0 };
                 let other_param = fb.param(other_idx);
                 let ty = fb.fresh_var();
                 let val = fb.get_field(other_param, &var_name, ty);
@@ -499,14 +522,14 @@ pub(super) fn translate_push_variable(
             } else {
                 let name_val = fb.const_string(&var_name);
                 let ty = fb.fresh_var();
-                let val = fb.call_named("GameMaker.Instance.getOther", &[name_val], ty);
+                let val = fb.call_named("GameMaker.Instance.getOther", &[rt_val, name_val], ty);
                 stack.push(val);
             }
         }
         Some(InstanceType::All) => {
             let name_val = fb.const_string(&var_name);
             let ty = fb.fresh_var();
-            let val = fb.call_named("GameMaker.Instance.getAll", &[name_val], ty);
+            let val = fb.call_named("GameMaker.Instance.getAll", &[rt_val, name_val], ty);
             stack.push(val);
         }
         Some(InstanceType::Stacktop) => {
@@ -514,13 +537,15 @@ pub(super) fn translate_push_variable(
             // In GMS2.3+ struct methods, `Push Int32(-9)` followed by a Stacktop
             // variable access is the "push current struct self" pattern.
             // Resolve to self parameter instead of emitting the literal -9.
+            // param 0 is _rt; param 1 is self.
+            let self_param = fb.param(1);
             let target = if ctx.has_self {
                 if fb
                     .try_resolve_const(raw_target)
                     .and_then(|c| const_as_i64(&c))
                     == Some(-9)
                 {
-                    fb.param(0)
+                    self_param
                 } else {
                     raw_target
                 }
@@ -530,8 +555,9 @@ pub(super) fn translate_push_variable(
             if var_name == "argument" {
                 // argument[N] → function parameter access
                 if let Some(idx) = fb.try_get_const(target).and_then(const_as_i64) {
+                    // +1 for _rt at param 0.
                     let param_offset =
-                        if ctx.has_self { 1 } else { 0 } + if ctx.has_other { 1 } else { 0 };
+                        1 + if ctx.has_self { 1 } else { 0 } + if ctx.has_other { 1 } else { 0 };
                     let param = fb.param(param_offset + idx as usize);
                     stack.push(param);
                 } else if let Some(&rest_id) = locals.get("_args") {
@@ -543,10 +569,14 @@ pub(super) fn translate_push_variable(
                     // Unknown index — fall back to getField
                     let name_val = fb.const_string(&var_name);
                     let ty = fb.fresh_var();
-                    let val = fb.call_named("GameMaker.Instance.getField", &[target, name_val], ty);
+                    let val = fb.call_named(
+                        "GameMaker.Instance.getField",
+                        &[rt_val, target, name_val],
+                        ty,
+                    );
                     stack.push(val);
                 }
-            } else if ctx.has_self && target == fb.param(0) {
+            } else if ctx.has_self && target == self_param {
                 // Self-field read in struct method — use get_field for clean output.
                 let ty = fb.fresh_var();
                 let val = fb.get_field(target, &var_name, ty);
@@ -562,18 +592,27 @@ pub(super) fn translate_push_variable(
                     };
                     let name_val = fb.const_string(&var_name);
                     let ty = fb.fresh_var();
-                    let val = fb.call_named("GameMaker.Instance.getOn", &[obj_id, name_val], ty);
+                    let val =
+                        fb.call_named("GameMaker.Instance.getOn", &[rt_val, obj_id, name_val], ty);
                     stack.push(val);
                 } else {
                     let name_val = fb.const_string(&var_name);
                     let ty = fb.fresh_var();
-                    let val = fb.call_named("GameMaker.Instance.getField", &[target, name_val], ty);
+                    let val = fb.call_named(
+                        "GameMaker.Instance.getField",
+                        &[rt_val, target, name_val],
+                        ty,
+                    );
                     stack.push(val);
                 }
             } else {
                 let name_val = fb.const_string(&var_name);
                 let ty = fb.fresh_var();
-                let val = fb.call_named("GameMaker.Instance.getField", &[target, name_val], ty);
+                let val = fb.call_named(
+                    "GameMaker.Instance.getField",
+                    &[rt_val, target, name_val],
+                    ty,
+                );
                 stack.push(val);
             }
         }
@@ -586,8 +625,9 @@ pub(super) fn translate_push_variable(
                     let ty = fb.fresh_var();
                     stack.push(fb.load(slot, ty));
                 } else {
+                    // +1 for _rt at param 0.
                     let param_offset =
-                        if ctx.has_self { 1 } else { 0 } + if ctx.has_other { 1 } else { 0 };
+                        1 + if ctx.has_self { 1 } else { 0 } + if ctx.has_other { 1 } else { 0 };
                     let idx = param_offset + arg_idx;
                     if idx < fb.param_count() {
                         let param = fb.param(idx);
@@ -596,21 +636,21 @@ pub(super) fn translate_push_variable(
                         // Out-of-range argument access — emit as dynamic lookup.
                         let name_val = fb.const_string(format!("argument{arg_idx}"));
                         let ty = fb.fresh_var();
-                        let val = fb.call_named("GameMaker.Argument.get", &[name_val], ty);
+                        let val = fb.call_named("GameMaker.Argument.get", &[rt_val, name_val], ty);
                         stack.push(val);
                     }
                 }
             } else if ctx.has_self {
                 // Haxe-emitted `argument.field` read on a struct constructor's
-                // class descriptor: route to self-field read on param(0).
-                let self_param = fb.param(0);
+                // class descriptor: route to self-field read on param(1) (after _rt).
+                let self_param = fb.param(1);
                 let ty = fb.fresh_var();
                 let val = fb.get_field(self_param, &var_name, ty);
                 stack.push(val);
             } else {
                 let name_val = fb.const_string(&var_name);
                 let ty = fb.fresh_var();
-                let val = fb.call_named("GameMaker.Global.get", &[name_val], ty);
+                let val = fb.call_named("GameMaker.Global.get", &[rt_val, name_val], ty);
                 stack.push(val);
             }
         }
@@ -624,7 +664,8 @@ pub(super) fn translate_push_variable(
                 };
                 let name_val = fb.const_string(&var_name);
                 let ty = fb.fresh_var();
-                let val = fb.call_named("GameMaker.Instance.getOn", &[obj_id, name_val], ty);
+                let val =
+                    fb.call_named("GameMaker.Instance.getOn", &[rt_val, obj_id, name_val], ty);
                 stack.push(val);
             } else {
                 // GMS2.3+ Static (-15) or other unknown negative instance type.
@@ -644,7 +685,9 @@ pub(super) fn translate_push_variable(
                             let ty = fb.fresh_var();
                             stack.push(fb.load(slot, ty));
                         } else {
-                            let param_offset = if ctx.has_self { 1 } else { 0 }
+                            // +1 for _rt at param 0.
+                            let param_offset = 1
+                                + if ctx.has_self { 1 } else { 0 }
                                 + if ctx.has_other { 1 } else { 0 };
                             let param = fb.param(param_offset + arg_idx);
                             stack.push(param);
@@ -655,7 +698,7 @@ pub(super) fn translate_push_variable(
                 // Treat as global.
                 let name_val = fb.const_string(&var_name);
                 let ty = fb.fresh_var();
-                let val = fb.call_named("GameMaker.Global.get", &[name_val], ty);
+                let val = fb.call_named("GameMaker.Global.get", &[rt_val, name_val], ty);
                 stack.push(val);
             }
         }
@@ -664,6 +707,7 @@ pub(super) fn translate_push_variable(
 }
 
 /// Translate a Pop instruction (store to variable).
+#[allow(clippy::too_many_arguments)]
 pub(super) fn translate_pop(
     inst: &Instruction,
     fb: &mut FunctionBuilder,
@@ -672,6 +716,7 @@ pub(super) fn translate_pop(
     ctx: &TranslateCtx,
     compound_2d_pending: &mut bool,
     global_arg_count: u16,
+    rt_val: ValueId,
 ) -> Result<(), String> {
     if let Operand::Variable { var_ref, instance } = &inst.operand {
         let var_name = resolve_variable_name(inst, ctx);
@@ -683,20 +728,22 @@ pub(super) fn translate_pop(
         if is_stacktop_ref(var_ref, *instance) {
             let raw_target = pop(stack, inst)?; // instance (top of stack)
             let value = pop(stack, inst)?; // value to store (below)
+                                           // param 0 is _rt; param 1 is self.
+            let self_param = fb.param(1);
             let target = if ctx.has_self {
                 if fb
                     .try_resolve_const(raw_target)
                     .and_then(|c| const_as_i64(&c))
                     == Some(-9)
                 {
-                    fb.param(0)
+                    self_param
                 } else {
                     raw_target
                 }
             } else {
                 raw_target
             };
-            if ctx.has_self && target == fb.param(0) {
+            if ctx.has_self && target == self_param {
                 fb.set_field(target, &var_name, value);
             } else if let Some(obj_idx) =
                 fb.try_resolve_const(target).and_then(|c| const_as_i64(&c))
@@ -713,14 +760,14 @@ pub(super) fn translate_pop(
                     let name_val = fb.const_string(&var_name);
                     fb.call_named(
                         "GameMaker.Instance.setOn",
-                        &[obj_id, name_val, value],
+                        &[rt_val, obj_id, name_val, value],
                         Type::Void,
                     );
                 } else {
                     let name_val = fb.const_string(&var_name);
                     fb.call_named(
                         "GameMaker.Instance.setField",
-                        &[target, name_val, value],
+                        &[rt_val, target, name_val, value],
                         Type::Void,
                     );
                 }
@@ -728,7 +775,7 @@ pub(super) fn translate_pop(
                 let name_val = fb.const_string(&var_name);
                 fb.call_named(
                     "GameMaker.Instance.setField",
-                    &[target, name_val, value],
+                    &[rt_val, target, name_val, value],
                     Type::Void,
                 );
             }
@@ -769,7 +816,9 @@ pub(super) fn translate_pop(
                             // Inside a with-body: update the captured argument slot.
                             fb.store(slot, value);
                         } else {
-                            let param_offset = if ctx.has_self { 1 } else { 0 }
+                            // +1 for _rt at param 0.
+                            let param_offset = 1
+                                + if ctx.has_self { 1 } else { 0 }
                                 + if ctx.has_other { 1 } else { 0 };
                             let abs_idx = param_offset + n;
                             if abs_idx < fb.param_count() {
@@ -788,7 +837,7 @@ pub(super) fn translate_pop(
                     let name_val = fb.const_string(&var_name);
                     fb.call_named(
                         "GameMaker.Instance.setField",
-                        &[dim1, name_val, value],
+                        &[rt_val, dim1, name_val, value],
                         Type::Void,
                     );
                 }
@@ -817,7 +866,8 @@ pub(super) fn translate_pop(
                             fb.set_index(arr, dim1, value);
                         }
                     } else if ctx.has_self {
-                        let self_param = fb.param(0);
+                        // param 0 is _rt; param 1 is self.
+                        let self_param = fb.param(1);
                         if is_scalar {
                             fb.set_field(self_param, &var_name, value);
                         } else {
@@ -830,9 +880,9 @@ pub(super) fn translate_pop(
                         let self_id = fb.const_int(-1, 64);
                         let name_val = fb.const_string(&var_name);
                         let args: Vec<ValueId> = if is_scalar {
-                            vec![self_id, name_val, value]
+                            vec![rt_val, self_id, name_val, value]
                         } else {
-                            vec![self_id, name_val, dim1, value]
+                            vec![rt_val, self_id, name_val, dim1, value]
                         };
                         fb.call_named("GameMaker.Instance.setOn", &args, Type::Void);
                     }
@@ -845,18 +895,18 @@ pub(super) fn translate_pop(
                     };
                     let name_val = fb.const_string(&var_name);
                     let args: Vec<ValueId> = if is_scalar {
-                        vec![obj_id, name_val, value]
+                        vec![rt_val, obj_id, name_val, value]
                     } else {
-                        vec![obj_id, name_val, dim1, value]
+                        vec![rt_val, obj_id, name_val, dim1, value]
                     };
                     fb.call_named("GameMaker.Instance.setOn", &args, Type::Void);
                 } else {
                     // Unknown dim2: emit a runtime setOn with the dim2 value as the object.
                     let name_val = fb.const_string(&var_name);
                     let args: Vec<ValueId> = if is_scalar {
-                        vec![dim2, name_val, value]
+                        vec![rt_val, dim2, name_val, value]
                     } else {
-                        vec![dim2, name_val, dim1, value]
+                        vec![rt_val, dim2, name_val, dim1, value]
                     };
                     fb.call_named("GameMaker.Instance.setOn", &args, Type::Void);
                 }
@@ -871,9 +921,9 @@ pub(super) fn translate_pop(
                 };
                 let name_val = fb.const_string(&var_name);
                 let args: Vec<ValueId> = if is_scalar {
-                    vec![obj_id, name_val, value]
+                    vec![rt_val, obj_id, name_val, value]
                 } else {
-                    vec![obj_id, name_val, dim1, value]
+                    vec![rt_val, obj_id, name_val, dim1, value]
                 };
                 fb.call_named("GameMaker.Instance.setOn", &args, Type::Void);
             }
@@ -884,9 +934,9 @@ pub(super) fn translate_pop(
         let value = pop(stack, inst)?;
 
         // Normalize self-referencing instance types (see translate_push_variable).
-        // Not applied inside with-body closures: param(0) there is the iteration
+        // Not applied inside with-body closures: param(1) there is the iteration
         // target, not the outer object. Cross-object writes to the outer object
-        // must go through setOn, not set_field(param(0)).
+        // must go through setOn, not set_field(param(1)).
         let instance = if *instance >= 0
             && ctx.has_self
             && !ctx.is_with_body
@@ -914,8 +964,9 @@ pub(super) fn translate_pop(
             Some(InstanceType::Own) | Some(InstanceType::Builtin) => {
                 if let Some(arg_idx) = parse_argument_index(&var_name) {
                     // Implicit argument variable → store via local slot.
+                    // +1 for _rt at param 0.
                     let param_offset =
-                        if ctx.has_self { 1 } else { 0 } + if ctx.has_other { 1 } else { 0 };
+                        1 + if ctx.has_self { 1 } else { 0 } + if ctx.has_other { 1 } else { 0 };
                     if let Some(&slot) = locals.get(&format!("_argument{arg_idx}")) {
                         // Inside a with-body: update the captured argument slot.
                         fb.store(slot, value);
@@ -937,20 +988,26 @@ pub(super) fn translate_pop(
                         let ty = fb.fresh_var();
                         fb.load(slot, ty)
                     } else {
-                        fb.param(0)
+                        // param 0 is _rt; param 1 is self.
+                        fb.param(1)
                     };
                     fb.set_field(self_val, &var_name, value);
                 } else {
                     let name_val = fb.const_string(&var_name);
-                    fb.call_named("GameMaker.Global.set", &[name_val, value], Type::Void);
+                    fb.call_named(
+                        "GameMaker.Global.set",
+                        &[rt_val, name_val, value],
+                        Type::Void,
+                    );
                 }
             }
             Some(InstanceType::Arg) => {
                 if let Some(arg_idx) = parse_argument_index(&var_name) {
                     // Formal-parameter write → create local slot seeded from the
                     // param so subsequent reads see the updated value.
+                    // +1 for _rt at param 0.
                     let param_offset =
-                        if ctx.has_self { 1 } else { 0 } + if ctx.has_other { 1 } else { 0 };
+                        1 + if ctx.has_self { 1 } else { 0 } + if ctx.has_other { 1 } else { 0 };
                     if let Some(&slot) = locals.get(&format!("_argument{arg_idx}")) {
                         // Inside a with-body: update the captured argument slot.
                         fb.store(slot, value);
@@ -969,12 +1026,16 @@ pub(super) fn translate_pop(
                     }
                 } else if ctx.has_self {
                     // Haxe-emitted `argument.field = ...` write on a struct
-                    // constructor's class descriptor: self-field write on param(0).
-                    let self_param = fb.param(0);
+                    // constructor's class descriptor: self-field write on param(1) (after _rt).
+                    let self_param = fb.param(1);
                     fb.set_field(self_param, &var_name, value);
                 } else {
                     let name_val = fb.const_string(&var_name);
-                    fb.call_named("GameMaker.Global.set", &[name_val, value], Type::Void);
+                    fb.call_named(
+                        "GameMaker.Global.set",
+                        &[rt_val, name_val, value],
+                        Type::Void,
+                    );
                 }
             }
             Some(InstanceType::Global) => {
@@ -983,8 +1044,10 @@ pub(super) fn translate_pop(
                 // subsequent reads see the updated value.
                 if global_arg_count > 0 {
                     if let Some(arg_idx) = parse_argument_index(&var_name) {
-                        let param_offset =
-                            if ctx.has_self { 1 } else { 0 } + if ctx.has_other { 1 } else { 0 };
+                        // +1 for _rt at param 0.
+                        let param_offset = 1
+                            + if ctx.has_self { 1 } else { 0 }
+                            + if ctx.has_other { 1 } else { 0 };
                         let abs_idx = param_offset + arg_idx;
                         if abs_idx < fb.param_count() {
                             let param = fb.param(abs_idx);
@@ -1000,11 +1063,16 @@ pub(super) fn translate_pop(
                     }
                 }
                 let name_val = fb.const_string(&var_name);
-                fb.call_named("GameMaker.Global.set", &[name_val, value], Type::Void);
+                fb.call_named(
+                    "GameMaker.Global.set",
+                    &[rt_val, name_val, value],
+                    Type::Void,
+                );
             }
             Some(InstanceType::Other) => {
                 if ctx.has_other {
-                    let other_idx = if ctx.has_self { 1 } else { 0 };
+                    // +1 for _rt at param 0; then +1 if has_self.
+                    let other_idx = 1 + if ctx.has_self { 1 } else { 0 };
                     let other_param = fb.param(other_idx);
                     fb.set_field(other_param, &var_name, value);
                 } else if let Some(&slot) = locals.get("__with_other__") {
@@ -1015,25 +1083,31 @@ pub(super) fn translate_pop(
                     let name_val = fb.const_string(&var_name);
                     fb.call_named(
                         "GameMaker.Instance.setOther",
-                        &[name_val, value],
+                        &[rt_val, name_val, value],
                         Type::Void,
                     );
                 }
             }
             Some(InstanceType::All) => {
                 let name_val = fb.const_string(&var_name);
-                fb.call_named("GameMaker.Instance.setAll", &[name_val, value], Type::Void);
+                fb.call_named(
+                    "GameMaker.Instance.setAll",
+                    &[rt_val, name_val, value],
+                    Type::Void,
+                );
             }
             Some(InstanceType::Stacktop) => {
                 let raw_target = pop(stack, inst)?;
                 // In GMS2.3+ struct methods, -9 is the self-reference sentinel.
+                // param 0 is _rt; param 1 is self.
+                let self_param = fb.param(1);
                 let target = if ctx.has_self {
                     if fb
                         .try_resolve_const(raw_target)
                         .and_then(|c| const_as_i64(&c))
                         == Some(-9)
                     {
-                        fb.param(0)
+                        self_param
                     } else {
                         raw_target
                     }
@@ -1045,7 +1119,9 @@ pub(super) fn translate_pop(
                     if let Some(idx) = fb.try_get_const(target).and_then(const_as_i64) {
                         if idx >= 0 {
                             let n = idx as usize;
-                            let param_offset = if ctx.has_self { 1 } else { 0 }
+                            // +1 for _rt at param 0.
+                            let param_offset = 1
+                                + if ctx.has_self { 1 } else { 0 }
                                 + if ctx.has_other { 1 } else { 0 };
                             if let Some(&slot) = locals.get(&format!("_argument{n}")) {
                                 // Inside a with-body: update the captured argument slot.
@@ -1068,11 +1144,11 @@ pub(super) fn translate_pop(
                         let name_val = fb.const_string(&var_name);
                         fb.call_named(
                             "GameMaker.Instance.setField",
-                            &[target, name_val, value],
+                            &[rt_val, target, name_val, value],
                             Type::Void,
                         );
                     }
-                } else if ctx.has_self && target == fb.param(0) {
+                } else if ctx.has_self && target == self_param {
                     // Self-field write in struct method — use set_field for clean output.
                     fb.set_field(target, &var_name, value);
                 } else if let Some(obj_idx) =
@@ -1087,14 +1163,14 @@ pub(super) fn translate_pop(
                         let name_val = fb.const_string(&var_name);
                         fb.call_named(
                             "GameMaker.Instance.setOn",
-                            &[obj_id, name_val, value],
+                            &[rt_val, obj_id, name_val, value],
                             Type::Void,
                         );
                     } else {
                         let name_val = fb.const_string(&var_name);
                         fb.call_named(
                             "GameMaker.Instance.setField",
-                            &[target, name_val, value],
+                            &[rt_val, target, name_val, value],
                             Type::Void,
                         );
                     }
@@ -1102,7 +1178,7 @@ pub(super) fn translate_pop(
                     let name_val = fb.const_string(&var_name);
                     fb.call_named(
                         "GameMaker.Instance.setField",
-                        &[target, name_val, value],
+                        &[rt_val, target, name_val, value],
                         Type::Void,
                     );
                 }
@@ -1117,7 +1193,7 @@ pub(super) fn translate_pop(
                     let name_val = fb.const_string(&var_name);
                     fb.call_named(
                         "GameMaker.Instance.setOn",
-                        &[obj_id, name_val, value],
+                        &[rt_val, obj_id, name_val, value],
                         Type::Void,
                     );
                 } else {
@@ -1132,7 +1208,9 @@ pub(super) fn translate_pop(
                         }
                         // Direct function: rewrite to formal param alloc.
                         if global_arg_count > 0 {
-                            let param_offset = if ctx.has_self { 1 } else { 0 }
+                            // +1 for _rt at param 0.
+                            let param_offset = 1
+                                + if ctx.has_self { 1 } else { 0 }
                                 + if ctx.has_other { 1 } else { 0 };
                             let abs_idx = param_offset + arg_idx;
                             if abs_idx < fb.param_count() {
@@ -1149,7 +1227,11 @@ pub(super) fn translate_pop(
                         }
                     }
                     let name_val = fb.const_string(&var_name);
-                    fb.call_named("GameMaker.Global.set", &[name_val, value], Type::Void);
+                    fb.call_named(
+                        "GameMaker.Global.set",
+                        &[rt_val, name_val, value],
+                        Type::Void,
+                    );
                 }
             }
         }

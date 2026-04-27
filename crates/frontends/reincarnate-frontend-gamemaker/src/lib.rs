@@ -141,7 +141,9 @@ impl Frontend for GameMakerFrontend {
         // whose IntrinsicKind encodes the (system, method) pair.  The linear
         // lowering pass maps them back to Expr::SystemCall so all downstream
         // rewrite passes see the same patterns as before.
-        register_gml_syscall_intrinsics(mb.module_mut());
+        let rt_type_id = mb.intern_type("GameRuntime");
+        let rt_ty = Type::Instance(rt_type_id);
+        register_gml_syscall_intrinsics(mb.module_mut(), rt_ty.clone());
 
         // Generate throw-stubs for extension functions (EXTN chunk).
         // These resolve TS2304 "Cannot find name 'FS_*'" errors.
@@ -229,6 +231,7 @@ impl Frontend for GameMakerFrontend {
             bc_version,
             &combined_registry,
             &user_func_registry,
+            &rt_ty,
         )?;
         eprintln!("[gamemaker] translated {script_ok} scripts ({script_err} errors)");
 
@@ -248,6 +251,7 @@ impl Frontend for GameMakerFrontend {
             &script_names,
             bc_version,
             &combined_registry,
+            &rt_ty,
         )
         .map_err(|e| CoreError::Translate {
             file: input.source.clone(),
@@ -275,6 +279,7 @@ impl Frontend for GameMakerFrontend {
             bc_version,
             &combined_registry,
             &user_func_registry,
+            &rt_ty,
         );
         if glob_count > 0 {
             eprintln!("[gamemaker] translated {glob_count} global init scripts");
@@ -297,6 +302,7 @@ impl Frontend for GameMakerFrontend {
             bc_version,
             &combined_registry,
             &user_func_registry,
+            &rt_ty,
         );
         if room_count > 0 {
             eprintln!("[gamemaker] translated {room_count} room creation scripts");
@@ -397,6 +403,7 @@ impl Frontend for GameMakerFrontend {
                     instance_types: &instance_types,
                     gml_object_type_id: gml_object_id,
                     registry: &combined_registry,
+                    rt_ty: rt_ty.clone(),
                 };
 
                 match translate::translate_code_entry(bytecode, func_name, &ctx) {
@@ -755,6 +762,7 @@ fn translate_scripts(
     bc_version: datawin::BytecodeVersion,
     registry: &HashMap<String, FuncId>,
     user_func_registry: &HashMap<String, FuncId>,
+    rt_ty: &Type,
 ) -> Result<(usize, usize), CoreError> {
     let mut translated = 0;
     let mut errors = 0;
@@ -904,6 +912,7 @@ fn translate_scripts(
             instance_types: &instance_types,
             gml_object_type_id: gml_object_id,
             registry,
+            rt_ty: rt_ty.clone(),
         };
 
         match translate::translate_code_entry(bytecode, &func_name, &ctx) {
@@ -957,6 +966,7 @@ fn translate_global_inits(
     bc_version: datawin::BytecodeVersion,
     registry: &HashMap<String, FuncId>,
     user_func_registry: &HashMap<String, FuncId>,
+    rt_ty: &Type,
 ) -> usize {
     let glob = match dw.glob() {
         Ok(Some(g)) => g,
@@ -1026,6 +1036,7 @@ fn translate_global_inits(
             instance_types: &instance_types,
             gml_object_type_id: gml_object_id,
             registry,
+            rt_ty: rt_ty.clone(),
         };
 
         if let Ok((func, extra_funcs)) = translate::translate_code_entry(bytecode, &func_name, &ctx)
@@ -1065,6 +1076,7 @@ fn translate_room_creation(
     bc_version: datawin::BytecodeVersion,
     registry: &HashMap<String, FuncId>,
     user_func_registry: &HashMap<String, FuncId>,
+    rt_ty: &Type,
 ) -> (usize, BTreeMap<usize, String>) {
     let room = match dw.room() {
         Ok(r) => r,
@@ -1140,6 +1152,7 @@ fn translate_room_creation(
             instance_types: &instance_types,
             gml_object_type_id: gml_object_id,
             registry,
+            rt_ty: rt_ty.clone(),
         };
 
         if let Ok((func, extra_funcs)) = translate::translate_code_entry(bytecode, &func_name, &ctx)
@@ -1678,14 +1691,18 @@ fn add_extension_stubs(
 ///
 /// Signatures use empty param lists to avoid adding new sig-based constraints
 /// (the type rules handle all necessary inference).
-pub(crate) fn register_gml_syscall_intrinsics(module: &mut Module) {
-    // Getter sig: unknown return type, no params (type rules handle inference).
+pub(crate) fn register_gml_syscall_intrinsics(module: &mut Module, rt_ty: Type) {
+    // Getter sig: _rt as param 0 (explicit runtime handle), unknown return type.
     let getter = FunctionSig {
+        params: vec![rt_ty.clone()],
         return_ty: Type::Unknown,
         ..Default::default()
     };
-    // Void setter sig.
-    let setter = FunctionSig::default();
+    // Void setter sig: _rt as param 0.
+    let setter = FunctionSig {
+        params: vec![rt_ty.clone()],
+        ..Default::default()
+    };
 
     // GameMaker.Instance field accessors.
     module.register_runtime_intrinsic(
@@ -1770,8 +1787,8 @@ pub(crate) fn register_gml_syscall_intrinsics(module: &mut Module) {
         setter.clone(),
         IntrinsicKind::GameMakerGlobalSet,
         Some(SystemCallTypeRule::GlobalStore {
-            name_arg: 0,
-            value_arg: 1,
+            name_arg: 1,
+            value_arg: 2,
         }),
     );
     // GameMaker.Argument.get.

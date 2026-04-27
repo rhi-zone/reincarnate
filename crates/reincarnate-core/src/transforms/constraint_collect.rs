@@ -544,8 +544,9 @@ fn emit_type_rule_constraints(
             }
         }
         SystemCallTypeRule::ResolveGlobalType => {
+            // args[0] = _rt (runtime handle), args[1] = global name (const string).
             if let (Some(name), Some(rv)) = (
-                args.first().and_then(|&v| const_strings.get(&v).copied()),
+                args.get(1).and_then(|&v| const_strings.get(&v).copied()),
                 result_var,
             ) {
                 if let Some(&gvar) = global_name_vars.get(name) {
@@ -554,10 +555,10 @@ fn emit_type_rule_constraints(
             }
         }
         SystemCallTypeRule::ResolveInstanceField => {
-            // args[0] = receiver, args[1] = field name (const string).
-            if let (Some(recv_var), Some(rv)) = (args.first().and_then(|&v| var_for(v)), result_var)
+            // args[0] = _rt (runtime handle), args[1] = receiver, args[2] = field name (const string).
+            if let (Some(recv_var), Some(rv)) = (args.get(1).and_then(|&v| var_for(v)), result_var)
             {
-                if let Some(field) = args.get(1).and_then(|&v| const_strings.get(&v).copied()) {
+                if let Some(field) = args.get(2).and_then(|&v| const_strings.get(&v).copied()) {
                     constraints.push(TypeConstraint::HasField {
                         ty: recv_var,
                         field: field.to_string(),

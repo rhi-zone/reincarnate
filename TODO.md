@@ -4,6 +4,17 @@ Completed items archived in [COMPLETED.md](COMPLETED.md).
 
 Per-engine roadmaps (gaps, runtime coverage, open work) live in [`docs/targets/`](docs/targets/). This file tracks in-flight and near-term work across all active engines.
 
+## `Op::SystemCall` full elimination (HIGH PRIORITY)
+
+`Op::SystemCall` currently remains in the IR because Flash and Twine frontends still use it. The GML migration (Phases 1–4 of IntrinsicKind elimination) leaves it in place. It must be eliminated from all frontends before the IR is clean.
+
+- **Flash/AS3:** `Op::SystemCall` is used for virtual dispatch patterns and DOM/AVM2 calls. These must become `Op::Call { func: FuncId, args: [receiver, ...] }` where receiver is explicit arg 0. Real virtual dispatch needs a proper dispatch key (vtable slot / method FuncId), not `method: String`.
+- **Twine (SugarCube):** Uses `Op::SystemCall` for engine hooks (`SugarCube.Engine.*`). Must become ordinary `Op::Call` to typed FuncIds registered by the Twine frontend.
+
+Until `Op::SystemCall` is gone from all frontends, the IR carries engine-specific calling-convention knowledge in core. The linear emitter's `Expr::SystemCall` branch and `build_intrinsic_calls_map` are both dead weight.
+
+**Blocked on:** Flash and Twine frontend migration (separate scope from GML IntrinsicKind work).
+
 ## Engine-Specific Logic in `reincarnate-core` (HIGH PRIORITY — MUST FIX BEFORE FURTHER INFERENCE WORK)
 
 **Law 2 violation:** `reincarnate-core` is supposed to be engine-agnostic — frontends know

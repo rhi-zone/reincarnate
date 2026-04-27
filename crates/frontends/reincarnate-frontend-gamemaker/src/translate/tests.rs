@@ -30,8 +30,11 @@ static CORE_MODULE: std::sync::LazyLock<Module> =
 /// Provides the `runtime_registry` for tests that invoke GML syscall paths
 /// (e.g. `getField`, `getOn`, `withInstances`).
 static GML_MODULE: std::sync::LazyLock<Module> = std::sync::LazyLock::new(|| {
+    use reincarnate_core::ir::module::Module;
     let mut m = Module::new("test_gml".to_string());
-    crate::register_gml_syscall_intrinsics(&mut m);
+    let rt_type_id = m.intern_type("GameRuntime");
+    let rt_ty = reincarnate_core::ir::ty::Type::Instance(rt_type_id);
+    crate::register_gml_syscall_intrinsics(&mut m, rt_ty);
     m
 });
 
@@ -90,6 +93,9 @@ fn make_ctx<'a>(
         // TypeId::new(0) is a harmless sentinel for the struct field requirement.
         gml_object_type_id: TypeId::new(0),
         registry,
+        // Tests use a dummy GameRuntime TypeId (0); the type is only used for
+        // signature construction and will not be validated against a real module.
+        rt_ty: reincarnate_core::ir::ty::Type::Instance(TypeId::new(0)),
     }
 }
 
@@ -743,7 +749,9 @@ fn test_call_opcode_emits_ir_call() {
     // Build a per-test module that registers the user function stub so
     // `call_named("show_debug_message", ...)` can resolve it to a FuncId.
     let mut call_module = Module::new("test_call".to_string());
-    crate::register_gml_syscall_intrinsics(&mut call_module);
+    let rt_type_id_call = call_module.intern_type("GameRuntime");
+    let rt_ty_call = reincarnate_core::ir::ty::Type::Instance(rt_type_id_call);
+    crate::register_gml_syscall_intrinsics(&mut call_module, rt_ty_call);
     call_module.register_runtime(
         "show_debug_message".to_string(),
         reincarnate_core::ir::ty::FunctionSig::default(),

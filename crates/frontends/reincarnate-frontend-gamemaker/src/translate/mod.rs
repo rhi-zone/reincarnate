@@ -116,6 +116,9 @@ pub struct TranslateCtx<'a> {
     /// Callers build this from `mb.runtime_registry()` plus any pre-registered
     /// user function stubs.  Tests may pass an empty map if no named calls appear.
     pub registry: &'a HashMap<String, FuncId>,
+    /// The IR type for the `_rt: GameRuntime` explicit runtime handle parameter.
+    /// Used as param 0 in every translated GML function signature.
+    pub rt_ty: Type,
 }
 
 /// Translate a single code entry's bytecode into an IR Function.
@@ -167,8 +170,13 @@ pub fn translate_code_entry(
     let mut fb = FunctionBuilder::new(func_name, sig, Visibility::Public);
     fb.set_registry(ctx.registry.clone());
 
-    // Name parameters.
-    let mut param_idx = 0;
+    // Param 0 is _rt: GameRuntime (prepended by build_signature_with_args).
+    let rt_val = fb.param(0);
+    fb.name_value(rt_val, "_rt".to_string());
+
+    // Name remaining parameters (self, other, argument0..N, rest).
+    // Start at index 1 because param 0 is _rt.
+    let mut param_idx = 1;
     if ctx.has_self {
         fb.name_value(fb.param(param_idx), "self".to_string());
         param_idx += 1;
@@ -241,6 +249,7 @@ pub fn translate_code_entry(
         ctx,
         &mut extra_funcs,
         global_arg_count,
+        rt_val,
     )?;
 
     if !terminated {
@@ -275,6 +284,12 @@ fn build_signature_with_args(ctx: &TranslateCtx, arg_count: u16) -> FunctionSig 
     let mut params = Vec::new();
     let mut defaults = Vec::new();
     let mut param_lower_bounds: Vec<Option<Type>> = Vec::new();
+
+    // Param 0: explicit _rt: GameRuntime handle for all GML-translated functions.
+    params.push(ctx.rt_ty.clone());
+    defaults.push(None);
+    param_lower_bounds.push(None);
+
     if ctx.has_self {
         // Use the declared class type if available; fall back to GMLObject so
         // that script functions (class_name = None) get a typed self rather
@@ -702,6 +717,7 @@ fn run_translation_loop(
     ctx: &TranslateCtx<'_>,
     extra_funcs: &mut Vec<Function>,
     global_arg_count: u16,
+    rt_val: ValueId,
 ) -> Result<bool, String> {
     let mut stack: Vec<ValueId> = Vec::new();
     // Track GML type sizes (in 4-byte units) for each value on the stack.
@@ -835,7 +851,8 @@ fn run_translation_loop(
                             .unwrap_or_else(|| fb.fresh_var());
                         let other_slot = fb.alloc(outer_self_ty);
                         fb.name_value(other_slot, "_with_other".to_string());
-                        fb.store(other_slot, fb.param(0));
+                        // param 0 is _rt; param 1 is self (has_self is true here).
+                        fb.store(other_slot, fb.param(1));
                         locals.insert("__with_other__".to_string(), other_slot);
                     }
 
@@ -917,7 +934,8 @@ fn run_translation_loop(
                             .unwrap_or_else(|| fb.fresh_var());
                         let other_slot = fb.alloc(outer_self_ty);
                         fb.name_value(other_slot, "_with_other".to_string());
-                        fb.store(other_slot, fb.param(0));
+                        // param 0 is _rt; param 1 is self (has_self is true here).
+                        fb.store(other_slot, fb.param(1));
                         locals.insert("__with_other__".to_string(), other_slot);
                     }
 
@@ -954,19 +972,23 @@ fn run_translation_loop(
                 // If the outer context has a self and the body accesses `other`, capture
                 // the outer self as _other (prepended so it becomes the first capture param).
                 let has_outer_self = ctx.has_self && scan_body_uses_other(body_insts, ctx);
-                let mut captured_names: Vec<String> = Vec::new();
-                let mut capture_vals: Vec<ValueId> = Vec::new();
+                // Always capture _rt (the runtime handle) as the first capture so the
+                // with-body closure can pass it to GameMaker.* intrinsic calls.
+                let mut captured_names: Vec<String> = vec!["_rt".to_string()];
+                let mut capture_vals: Vec<ValueId> = vec![rt_val];
                 if has_outer_self {
                     captured_names.push("_other".to_string());
-                    // Outer self is always param 0 (both for regular event handlers and
-                    // nested with-bodies where param 0 is the current iterated _self).
-                    capture_vals.push(fb.param(0));
+                    // Outer self is param 1 (after _rt at param 0). In nested with-bodies
+                    // where the outer function already has _rt as param 0, param 1 is still
+                    // the first real GML param (self or _self for with-body closures).
+                    capture_vals.push(fb.param(1));
                 }
                 // Capture any argument[N] variables the with-body reads from the outer
                 // function.  The inner closure has no argument params of its own, so
                 // each outer argument[N] must be passed in as a named capture.
+                // +1 for _rt param 0; then +has_self + has_other for the GML params.
                 let outer_arg_offset =
-                    if ctx.has_self { 1 } else { 0 } + if ctx.has_other { 1 } else { 0 };
+                    1 + if ctx.has_self { 1 } else { 0 } + if ctx.has_other { 1 } else { 0 };
                 for n in scan_body_argument_indices(body_insts, ctx) {
                     let captured_key = format!("_argument{n}");
                     // In a nested with-body, the outer argument is already in
@@ -1048,6 +1070,7 @@ fn run_translation_loop(
                         has_return_in_with,
                     },
                     extra_funcs,
+                    rt_val,
                 )?;
                 extra_funcs.push(inner_func);
 
@@ -1063,7 +1086,7 @@ fn run_translation_loop(
                 };
                 let with_result = fb.call_named(
                     "GameMaker.Instance.withInstances",
-                    &[target_obj, closure_val],
+                    &[rt_val, target_obj, closure_val],
                     with_return_ty,
                 );
 
@@ -1150,6 +1173,7 @@ fn run_translation_loop(
             global_arg_count,
             &mut obj_ref_values,
             &mut global_scope_on_stack,
+            rt_val,
         )?;
     }
 

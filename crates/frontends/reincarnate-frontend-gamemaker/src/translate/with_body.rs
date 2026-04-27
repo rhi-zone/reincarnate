@@ -330,6 +330,7 @@ pub(super) fn has_exit_popenv(body_insts: &[Instruction]) -> bool {
 pub(super) fn translate_with_body(
     wctx: &WithBodyCtx<'_>,
     extra_funcs: &mut Vec<Function>,
+    outer_rt_val: ValueId,
 ) -> Result<Function, String> {
     // When the with-target is a known OBJT or self-sentinel, type _self as that class.
     // For unknown targets (variables, `all`, etc.) use a fresh type variable so
@@ -388,12 +389,15 @@ pub(super) fn translate_with_body(
     };
     // Pre-allocate capture types before calling add_capture_params to avoid
     // double-borrowing fb inside the map closure.
+    // captured_names[0] is always "_rt" (the runtime handle).
+    // captured_names[1] is "_other" (outer self) when has_outer_self is true.
     let capture_types: Vec<Type> = wctx
         .captured_names
         .iter()
-        .enumerate()
-        .map(|(i, _)| {
-            if wctx.has_outer_self && i == 0 {
+        .map(|name| {
+            if name == "_rt" {
+                wctx.ctx.rt_ty.clone()
+            } else if wctx.has_outer_self && name == "_other" {
                 outer_self_ty.clone()
             } else {
                 fb.fresh_var()
@@ -410,6 +414,16 @@ pub(super) fn translate_with_body(
                 .map(|(n, ty)| (n.clone(), ty, CaptureMode::ByValue))
                 .collect(),
         )
+    };
+
+    // The first capture param is always _rt (prepended by the caller).
+    // Use it as the rt_val for this closure's GameMaker.* intrinsic calls.
+    let inner_rt_val = if !capture_ids.is_empty() {
+        capture_ids[0]
+    } else {
+        // Fallback: if no captures (shouldn't happen), use a dummy value.
+        // In practice captured_names always has "_rt" prepended.
+        outer_rt_val
     };
 
     let inner_with_ranges = find_with_ranges(wctx.body_insts);
@@ -494,6 +508,7 @@ pub(super) fn translate_with_body(
         instance_types: ctx.instance_types,
         gml_object_type_id: ctx.gml_object_type_id,
         registry: ctx.registry,
+        rt_ty: ctx.rt_ty.clone(),
     };
 
     fb.switch_to_block(fb.entry_block());
@@ -512,6 +527,7 @@ pub(super) fn translate_with_body(
         &inner_ctx,
         extra_funcs,
         0, // with-bodies don't have their own argument params
+        inner_rt_val,
     )?;
 
     if !terminated {

@@ -36,6 +36,7 @@ pub(super) fn translate_instruction(
     global_arg_count: u16,
     obj_ref_values: &mut HashMap<ValueId, String>,
     global_scope_on_stack: &mut bool,
+    rt_val: ValueId,
 ) -> Result<(), String> {
     match inst.opcode {
         // Constants (push)
@@ -52,6 +53,7 @@ pub(super) fn translate_instruction(
                 compound_2d_pending,
                 global_arg_count,
                 global_scope_on_stack,
+                rt_val,
             )?;
         }
 
@@ -101,6 +103,7 @@ pub(super) fn translate_instruction(
                 ctx,
                 compound_2d_pending,
                 global_arg_count,
+                rt_val,
             )?;
         }
 
@@ -114,6 +117,7 @@ pub(super) fn translate_instruction(
                 ctx,
                 gml_sizes,
                 global_scope_on_stack,
+                rt_val,
             )?;
         }
 
@@ -148,6 +152,7 @@ pub(super) fn translate_instruction(
                 pushac_array,
                 compound_popaf_pending,
                 obj_ref_values,
+                rt_val,
             )?;
         }
     }
@@ -173,6 +178,7 @@ fn translate_push_instruction(
     compound_2d_pending: &mut bool,
     global_arg_count: u16,
     global_scope_on_stack: &mut bool,
+    rt_val: ValueId,
 ) -> Result<(), String> {
     // Skip PushI -9 sentinel for cross-object stacktop field access.
     // Pattern: PushLoc/PushGlb/Push target → PushI -9 → Push.v/Pop.v [ref_type=0x80]
@@ -233,6 +239,7 @@ fn translate_push_instruction(
         compound_2d_pending,
         global_arg_count,
         preceded_by_dup,
+        rt_val,
     )?;
     // Annotate newly pushed value with its GML type size.
     if stack.len() > depth_before {
@@ -719,6 +726,7 @@ fn translate_stack_op(
 // ============================================================
 
 /// Handle Call, CallV.
+#[allow(clippy::too_many_arguments)]
 fn translate_call_op(
     inst: &Instruction,
     fb: &mut FunctionBuilder,
@@ -727,6 +735,7 @@ fn translate_call_op(
     ctx: &TranslateCtx,
     gml_sizes: &mut HashMap<ValueId, u8>,
     global_scope_on_stack: &mut bool,
+    _rt_val: ValueId,
 ) -> Result<(), String> {
     match inst.opcode {
         Opcode::Call => {
@@ -749,7 +758,8 @@ fn translate_call_op(
                         let ty = fb.fresh_var();
                         fb.load(slot, ty)
                     } else if ctx.has_self {
-                        fb.param(0)
+                        // param 0 is _rt; param 1 is self.
+                        fb.param(1)
                     } else {
                         fb.const_null()
                     };
@@ -780,7 +790,8 @@ fn translate_call_op(
                         let ty = fb.fresh_var();
                         fb.load(slot, ty)
                     } else if ctx.has_self {
-                        fb.param(0)
+                        // param 0 is _rt; param 1 is self.
+                        fb.param(1)
                     } else {
                         fb.const_null()
                     };
@@ -793,7 +804,8 @@ fn translate_call_op(
                         let ty = fb.fresh_var();
                         fb.load(slot, ty)
                     } else {
-                        fb.param(0)
+                        // param 0 is _rt; param 1 is self.
+                        fb.param(1)
                     };
                     args.push(self_val);
                 }
@@ -957,6 +969,7 @@ fn translate_break_op(
     pushac_array: &mut Option<ValueId>,
     compound_popaf_pending: &mut bool,
     obj_ref_values: &mut HashMap<ValueId, String>,
+    rt_val: ValueId,
 ) -> Result<(), String> {
     if let Operand::Break { signal, .. } = inst.operand {
         match signal {
@@ -1118,7 +1131,7 @@ fn translate_break_op(
             _ => {
                 // Unknown break signal, emit as system call.
                 let sig_val = fb.const_int(signal as i64, 64);
-                fb.call_named("GameMaker.Debug.break", &[sig_val], Type::Void);
+                fb.call_named("GameMaker.Debug.break", &[rt_val, sig_val], Type::Void);
             }
         }
     }

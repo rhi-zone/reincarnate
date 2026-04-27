@@ -27,6 +27,7 @@ pub fn translate_objects(
     script_names: &HashSet<String>,
     bc_version: datawin::BytecodeVersion,
     registry: &HashMap<String, FuncId>,
+    rt_ty: &Type,
 ) -> Result<(usize, usize), String> {
     let objt = dw.objt().map_err(|e| e.to_string())?;
     let mut translated = 0;
@@ -149,6 +150,7 @@ pub fn translate_objects(
                         instance_types: &instance_types,
                         gml_object_type_id: gml_object_id,
                         registry,
+                        rt_ty: rt_ty.clone(),
                     };
 
                     match translate::translate_code_entry(bytecode, &func_name, &ctx) {

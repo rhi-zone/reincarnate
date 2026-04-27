@@ -666,10 +666,20 @@ impl<'a> EmitCtx<'a> {
                 } else if let Some((system, method)) = self.config.intrinsic_calls.get(fname) {
                     // Intrinsic call: lower to Expr::SystemCall so that all
                     // existing engine-specific backend rewrite passes work unchanged.
+                    //
+                    // Strip the explicit _rt arg (arg 0) before building SystemCall —
+                    // all GML intrinsics now have _rt as their first parameter, but
+                    // SystemCall convention does not include it; the backend rewrites
+                    // handle _rt access via this._rt. Remove in Phase 2.
+                    let effective_args: &[ValueId] = if !args.is_empty() {
+                        &args[1..]
+                    } else {
+                        &args[..]
+                    };
                     Expr::SystemCall {
                         system: system.clone(),
                         method: method.clone(),
-                        args: args.iter().map(|a| self.build_val(*a)).collect(),
+                        args: effective_args.iter().map(|&a| self.build_val(a)).collect(),
                     }
                 } else {
                     Expr::Call {
