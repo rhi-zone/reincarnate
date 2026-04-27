@@ -7064,6 +7064,10 @@
       "params": [],
       "returns": "any"
     },
+    "getInstancesOf": {
+      "params": ["any"],
+      "returns": "any"
+    },
     "withInstances": {
       "params": [
         "any",
@@ -9004,7 +9008,8 @@
         "getAllField",
         "setAllField",
         "withInstances",
-        "getInstances"
+        "getInstances",
+        "getInstancesOf"
       ],
       "path": "gamemaker/instance",
       "stateful": true

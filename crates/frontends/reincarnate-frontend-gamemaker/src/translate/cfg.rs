@@ -144,6 +144,7 @@ pub(super) fn setup_blocks(
     bytecode_offset: usize,
     func_ref_map: &HashMap<usize, usize>,
     all_with_indices: &HashSet<usize>,
+    classref_with_indices: &HashSet<usize>,
 ) -> (
     HashMap<usize, BlockId>,
     HashMap<usize, Vec<ValueId>>,
@@ -165,7 +166,11 @@ pub(super) fn setup_blocks(
     // outer CFG and must not be filtered out.
     let body_offsets: HashSet<usize> = with_ranges
         .iter()
-        .filter(|(&pi, _)| !self_with_indices.contains(&pi) && !all_with_indices.contains(&pi))
+        .filter(|(&pi, _)| {
+            !self_with_indices.contains(&pi)
+                && !all_with_indices.contains(&pi)
+                && !classref_with_indices.contains(&pi)
+        })
         .flat_map(|(&pi, &popi)| instructions[pi + 1..=popi].iter().map(|i| i.offset))
         .collect();
 

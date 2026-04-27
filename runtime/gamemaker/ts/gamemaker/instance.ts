@@ -54,6 +54,11 @@ export function createInstanceAPI(rt: GameRuntime) {
     return rt.roomVariables.slice();
   }
 
+  /** Get all instances of a given class as a typed array snapshot. */
+  function getInstancesOf<T extends GMLObject>(clazz: new(...args: unknown[]) => T): T[] {
+    return (rt._getInstances(clazz) as T[]).slice();
+  }
+
   /** Execute a block for each instance of a given type (or all).
    * Sets rt._self to the current with-target so alarm_set/event_user work correctly.
    * Returns the last callback return value (supports GML `return X` inside `with`). */
@@ -86,6 +91,6 @@ export function createInstanceAPI(rt: GameRuntime) {
 
   return {
     getInstanceField, setInstanceField, setInstanceFieldIndex,
-    getAllField, setAllField, getInstances, withInstances,
+    getAllField, setAllField, getInstances, getInstancesOf, withInstances,
   };
 }

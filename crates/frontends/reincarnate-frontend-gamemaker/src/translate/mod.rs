@@ -24,9 +24,9 @@ use cfg::{get_branch_args, setup_blocks};
 use ops::translate_instruction;
 use switch::detect_switches;
 use with_body::{
-    find_all_with_indices, find_self_with_indices, find_with_ranges, has_exit_popenv,
-    scan_body_argument_indices, scan_body_local_names, scan_body_uses_other, translate_with_body,
-    WithBodyCtx,
+    find_all_with_indices, find_classref_with_indices, find_self_with_indices, find_with_ranges,
+    has_exit_popenv, scan_body_argument_indices, scan_body_local_names, scan_body_uses_other,
+    translate_with_body, WithBodyCtx,
 };
 
 /// Context for translating a single code entry.
@@ -200,6 +200,8 @@ pub fn translate_code_entry(
         None
     };
 
+    let classref_with_indices = find_classref_with_indices(&instructions, &with_ranges);
+
     let (block_map, block_params, block_entry_depths) = setup_blocks(
         &mut fb,
         &instructions,
@@ -210,6 +212,7 @@ pub fn translate_code_entry(
         ctx.bytecode_offset,
         ctx.func_ref_map,
         &all_with_indices,
+        &classref_with_indices,
     );
 
     // Allocate locals.
@@ -233,6 +236,7 @@ pub fn translate_code_entry(
         &with_ranges,
         &self_with_indices,
         &all_with_indices,
+        &classref_with_indices,
         &mut locals,
         ctx,
         &mut extra_funcs,
@@ -669,6 +673,14 @@ struct WithAllLoopMeta {
     popenv_idx: usize,
 }
 
+/// Metadata for an active Phase B classref-with while-loop.
+struct WithClassrefLoopMeta {
+    loop_header: BlockId,
+    counter_slot: ValueId,
+    has_other: bool,
+    popenv_idx: usize,
+}
+
 /// Core translation loop shared by [`translate_code_entry`] and [`translate_with_body`].
 ///
 /// Handles the `skip_until` mechanism that skips over with-body instruction ranges
@@ -685,6 +697,7 @@ fn run_translation_loop(
     with_ranges: &HashMap<usize, usize>,
     self_with_indices: &HashSet<usize>,
     all_with_indices: &HashSet<usize>,
+    classref_with_indices: &HashSet<usize>,
     locals: &mut HashMap<String, ValueId>,
     ctx: &TranslateCtx<'_>,
     extra_funcs: &mut Vec<Function>,
@@ -698,6 +711,8 @@ fn run_translation_loop(
     let mut terminated = false;
     // Phase C: stack of active all-with while-loops (with(-3) inlined as loops).
     let mut with_all_loop_stack: Vec<WithAllLoopMeta> = Vec::new();
+    // Phase B: stack of active classref-with while-loops (with(ClassName) inlined as loops).
+    let mut with_classref_loop_stack: Vec<WithClassrefLoopMeta> = Vec::new();
     // Set to true when a 2D array VARI read leaves the original dim indices on
     // the stack (compound assignment Dup pattern). The subsequent Pop must use
     // reversed pop order: value on top, dim1 below, _dim2 at bottom.
@@ -845,6 +860,84 @@ fn run_translation_loop(
                     // Make self_slot accessible to body translation.
                     locals.insert("__with_self__".to_string(), self_slot);
                     with_all_loop_stack.push(WithAllLoopMeta {
+                        loop_header,
+                        counter_slot,
+                        has_other: has_outer_self,
+                        popenv_idx,
+                    });
+                    terminated = true;
+                    continue;
+                }
+
+                // Phase B: class-ref with — inline as a filtered instance loop.
+                if classref_with_indices.contains(&inst_idx) {
+                    let body_entry_off = instructions[inst_idx + 1].offset;
+                    let body_entry_block = *block_map.get(&body_entry_off).ok_or_else(|| {
+                        format!(
+                            "{func_name}: no block at classref-with body entry {body_entry_off:#x}"
+                        )
+                    })?;
+                    let loop_exit_off = instructions[popenv_idx + 1].offset;
+                    let loop_exit_block = *block_map.get(&loop_exit_off).ok_or_else(|| {
+                        format!(
+                            "{func_name}: no block at classref-with loop exit {loop_exit_off:#x}"
+                        )
+                    })?;
+
+                    // Look up the TypeId for the target class so we can type the loop variable.
+                    let self_ty = if let Some(class_name) = obj_ref_values.get(&target_obj) {
+                        ctx.classref_types
+                            .get(class_name.as_str())
+                            .copied()
+                            .map(Type::Instance)
+                            .unwrap_or_else(|| Type::Instance(ctx.gml_object_type_id))
+                    } else {
+                        Type::Instance(ctx.gml_object_type_id)
+                    };
+
+                    // Emit pre-loop setup.
+                    let instances_ty = fb.fresh_var();
+                    let instances_val =
+                        fb.call_named("getInstancesOf", &[target_obj], instances_ty);
+                    let n_ty = fb.fresh_var();
+                    let n_val = fb.get_field(instances_val, "length", n_ty);
+                    let counter_slot = fb.alloc(Type::Float(64));
+                    fb.name_value(counter_slot, "_with_i".to_string());
+                    let i_init = fb.const_float(0.0);
+                    fb.store(counter_slot, i_init);
+                    let self_slot = fb.alloc(self_ty.clone());
+                    fb.name_value(self_slot, "_with_self".to_string());
+                    let body_insts_b = &instructions[inst_idx + 1..popenv_idx];
+                    let has_outer_self = ctx.has_self && scan_body_uses_other(body_insts_b, ctx);
+                    if has_outer_self {
+                        let outer_self_ty = ctx
+                            .class_name
+                            .and_then(|n| ctx.instance_types.get(n).copied())
+                            .map(Type::Instance)
+                            .unwrap_or_else(|| fb.fresh_var());
+                        let other_slot = fb.alloc(outer_self_ty);
+                        fb.name_value(other_slot, "_with_other".to_string());
+                        fb.store(other_slot, fb.param(0));
+                        locals.insert("__with_other__".to_string(), other_slot);
+                    }
+
+                    let loop_header = fb.create_block();
+                    fb.br(loop_header, &[]);
+
+                    fb.switch_to_block(loop_header);
+                    let i_h = fb.load(counter_slot, Type::Float(64));
+                    let cond = fb.cmp(CmpKind::Lt, i_h, n_val);
+                    let with_init_block = fb.create_block();
+                    fb.br_if(cond, with_init_block, &[], loop_exit_block, &[]);
+
+                    fb.switch_to_block(with_init_block);
+                    let i_b = fb.load(counter_slot, Type::Float(64));
+                    let self_i = fb.get_index(instances_val, i_b, self_ty);
+                    fb.store(self_slot, self_i);
+                    fb.br(body_entry_block, &[]);
+
+                    locals.insert("__with_self__".to_string(), self_slot);
+                    with_classref_loop_stack.push(WithClassrefLoopMeta {
                         loop_header,
                         counter_slot,
                         has_other: has_outer_self,
@@ -1017,6 +1110,23 @@ fn run_translation_loop(
                         locals.remove("__with_other__");
                     }
                     with_all_loop_stack.pop();
+                    continue;
+                }
+            }
+            // Phase B: intercept the back-edge PopEnv for classref-with loops.
+            if let Some(meta) = with_classref_loop_stack.last() {
+                if inst_idx == meta.popenv_idx {
+                    let i = fb.load(meta.counter_slot, Type::Float(64));
+                    let one = fb.const_float(1.0);
+                    let i_next = fb.add(i, one);
+                    fb.store(meta.counter_slot, i_next);
+                    fb.br(meta.loop_header, &[]);
+                    terminated = true;
+                    locals.remove("__with_self__");
+                    if meta.has_other {
+                        locals.remove("__with_other__");
+                    }
+                    with_classref_loop_stack.pop();
                     continue;
                 }
             }

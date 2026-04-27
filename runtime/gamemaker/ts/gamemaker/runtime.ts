@@ -51,6 +51,7 @@ import type { GmlShader } from "../../data/shaders";
 import { compileProgram, orthoMatrix, makeFullscreenQuad } from "./webgl";
 import type { ShaderProgram } from "./webgl";
 import { GMLObject, __baseproto } from "./object";
+import { createInstanceAPI } from "./instance";
 import { GMLRoom } from "./room";
 import {
   type PartTypeConfig, type PartInst, type PartSystem, type PartEmitter,
@@ -185,7 +186,11 @@ export class GameRuntime {
   // Sprites enum (per-runtime)
   Sprites: Record<string, number> = {};
 
-  constructor() {}
+  private _instanceAPI: ReturnType<typeof createInstanceAPI>;
+
+  constructor() {
+    this._instanceAPI = createInstanceAPI(this);
+  }
 
   // ---- Draw API helpers ----
 
@@ -993,7 +998,12 @@ export class GameRuntime {
 
   /** Return a snapshot of all active instances in the room. Used by inlined `with (all)` loops. */
   getInstances(): GMLObject[] {
-    return this.roomVariables.slice();
+    return this._instanceAPI.getInstances();
+  }
+
+  /** Return a typed snapshot of all active instances of a given class. Used by inlined `with (ClassName)` loops. */
+  getInstancesOf<T extends GMLObject>(clazz: new(...args: unknown[]) => T): T[] {
+    return this._instanceAPI.getInstancesOf<T>(clazz);
   }
 
   // ---- Per-runtime instance tracking ----
