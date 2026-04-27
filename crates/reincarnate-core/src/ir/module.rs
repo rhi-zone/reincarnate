@@ -1053,6 +1053,16 @@ impl Module {
             },
         );
         self.core_builtin_fids.insert(fid);
+        // to_number_str: (String) -> Float(64)  — emit as Number(x)
+        let fid = self.register_runtime(
+            "to_number_str",
+            FunctionSig {
+                params: vec![Type::String],
+                return_ty: Type::Float(64),
+                ..Default::default()
+            },
+        );
+        self.core_builtin_fids.insert(fid);
         // to_string_unknown: (Unknown) -> String  — emit as String(x)
         let fid = self.register_runtime(
             "to_string_unknown",

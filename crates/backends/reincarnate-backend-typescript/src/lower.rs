@@ -527,7 +527,7 @@ fn lower_builtin_opt(op_name: &str, args: &[Expr], ctx: &LowerCtx) -> Option<JsE
             callee: Box::new(build_dotted_path("String.fromCharCode")),
             args: vec![lower_expr(&args[0], ctx)],
         }),
-        "to_number_unknown" => Some(JsExpr::Call {
+        "to_number_unknown" | "to_number_str" => Some(JsExpr::Call {
             callee: Box::new(JsExpr::Var("Number".to_string())),
             args: vec![lower_expr(&args[0], ctx)],
         }),

@@ -96,6 +96,7 @@ pub fn register_runtime_bodies(module: &mut Module) {
     attach_body_ln(module);
     attach_body_math_get_epsilon(module);
     attach_body_is_bool(module);
+    attach_body_real(module);
 }
 
 // ---------------------------------------------------------------------------
@@ -3504,6 +3505,39 @@ fn attach_body_is_bool(module: &mut Module) {
     let x = b.param(0);
 
     let result = b.type_check(x, Type::Bool);
+    b.ret(Some(result));
+
+    let built = b.build();
+    let stub = &mut module.functions[fid];
+    stub.blocks = built.blocks;
+    stub.insts = built.insts;
+    stub.value_types = built.value_types;
+    stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
+}
+
+// ---------------------------------------------------------------------------
+// real(s: String) -> Float(64)  =  to_number_str(s)
+// ---------------------------------------------------------------------------
+
+fn attach_body_real(module: &mut Module) {
+    let fid = match module.lookup_runtime("real") {
+        Some(id) => id,
+        None => return,
+    };
+
+    let sig = FunctionSig {
+        params: vec![Type::String],
+        return_ty: Type::Float(64),
+        defaults: vec![],
+        has_rest_param: false,
+        param_lower_bounds: vec![],
+    };
+
+    let mut b = make_builder(module, "real", sig);
+    let s = b.param(0);
+
+    let result = b.call_named("to_number_str", &[s], Type::Float(64));
     b.ret(Some(result));
 
     let built = b.build();

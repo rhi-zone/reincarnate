@@ -2522,7 +2522,7 @@ fn cast_struct_uses_as_type() {
 }
 
 #[test]
-fn coerce_int_emits_int_call() {
+fn coerce_int_emits_inline_bitor() {
     let out = build_and_emit(|mb| {
         let sig = FunctionSig {
             params: vec![Type::Unknown],
@@ -2537,8 +2537,8 @@ fn coerce_int_emits_int_call() {
     });
 
     assert!(
-        out.contains("int(v0)"),
-        "Coerce+Int(32) should emit int():\n{out}"
+        out.contains("(v0) | 0"),
+        "Coerce+Int(32) should emit inline `(x) | 0`:\n{out}"
     );
 }
 
@@ -2564,7 +2564,7 @@ fn coerce_float_emits_number_call() {
 }
 
 #[test]
-fn coerce_uint_emits_uint_call() {
+fn coerce_uint_emits_inline_ushr() {
     let out = build_and_emit(|mb| {
         let sig = FunctionSig {
             params: vec![Type::Unknown],
@@ -2579,8 +2579,8 @@ fn coerce_uint_emits_uint_call() {
     });
 
     assert!(
-        out.contains("uint(v0)"),
-        "Coerce+UInt(32) should emit uint():\n{out}"
+        out.contains("(v0) >>> 0"),
+        "Coerce+UInt(32) should emit inline `(x) >>> 0`:\n{out}"
     );
 }
 

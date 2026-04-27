@@ -3585,12 +3585,6 @@
       ],
       "returns": "int"
     },
-    "int": {
-      "params": [
-        "any"
-      ],
-      "returns": "number"
-    },
     "int64": {
       "params": [
         "number"
@@ -4968,12 +4962,6 @@
     },
     "randomize": {
       "returns": "void"
-    },
-    "real": {
-      "params": [
-        "*"
-      ],
-      "returns": "number"
     },
     "rectangle_in_rectangle": {
       "params": [
@@ -6725,12 +6713,6 @@
       ],
       "returns": "void"
     },
-    "uint": {
-      "params": [
-        "any"
-      ],
-      "returns": "number"
-    },
     "url_get_domain": {
       "params": [],
       "returns": "string"
@@ -7898,9 +7880,6 @@
         "mean",
         "median",
         "int64",
-        "int",
-        "uint",
-        "real",
         "string"
       ],
       "path": "gamemaker/math"

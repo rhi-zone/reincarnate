@@ -2276,6 +2276,22 @@ Audit all `throw Error("X: not yet implemented")` stubs in the GML runtime. For 
 - **OS/Platform** — `os_*`, `file_*`, `ini_*`, `directory_*`. Needs platform abstraction (browser vs native).
 - **3D / Primitives** — `d3d_*`, `vertex_*`, `matrix_*`. Needs WebGL 3D pipeline.
 
+### Known type/emit gaps requiring prerequisite work
+
+- **`int64` bigint**: `int64()` return type is currently registered as `Unknown` and the
+  handwritten TS stub emits `n | 0` (lossy 32-bit truncation). The correct return type is
+  `Type::Int(64)`. TypeScript emit should use `bigint` / `BigInt(x)`. Proper fix requires
+  int64 type representation throughout the backend (separate TS type, separate arithmetic ops).
+  Do not close this gap with a widened `number` return — that silently loses the upper 32 bits.
+
+- **`string` format lowering**: The multi-arg form `string(fmt, v1, v2, ...)` uses GML
+  format-string placeholders (`{0}`, `{1}`, ...). The frontend should lower format-string calls
+  to explicit IR string operations at the call site (same pattern as `with`-inlining in Phase
+  B/C). The 1-arg form `string(val)` maps to `to_string_unknown`. No IR body is attached to
+  `string` because the stub has `has_rest_param: true` — attaching a 1-arg body would silently
+  produce wrong output for multi-arg calls (extra args ignored). The correct fix is to lower
+  format-string calls to explicit IR at the frontend before any body is attached.
+
 ### Straightforward stubs (implement immediately when encountered)
 
 These need no design — just correct GML semantics → TypeScript translation:

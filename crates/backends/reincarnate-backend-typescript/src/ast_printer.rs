@@ -92,9 +92,9 @@ pub fn instance_type_short_name(id: TypeId) -> String {
 
 /// Unwrap nested `Cast(x, T, Coerce)` when the inner is also a Coerce to the
 /// same type — collapses `String(String(x))` → `String(x)`, etc.
-/// Also unwraps `Call(Var("String"), [x])` inside `Cast(_, String, Coerce)` (and
-/// similarly for Number/int/uint/Boolean), since the Call is semantically
-/// identical to the outer Coerce.
+/// Also unwraps `Call(Var("String"), [x])` / `Call(Var("Number"), [x])` /
+/// `Call(Var("Boolean"), [x])` inside the corresponding Coerce, since the
+/// Call is semantically identical to the outer Coerce.
 fn unwrap_coerce<'a>(expr: &'a JsExpr, target_ty: &Type) -> &'a JsExpr {
     match expr {
         JsExpr::Cast {
@@ -106,8 +106,6 @@ fn unwrap_coerce<'a>(expr: &'a JsExpr, target_ty: &Type) -> &'a JsExpr {
             let wrapper_name = match target_ty {
                 Type::String => Some("String"),
                 Type::Float(_) => Some("Number"),
-                Type::Int(32) => Some("int"),
-                Type::UInt(32) => Some("uint"),
                 Type::Bool => Some("Boolean"),
                 _ => None,
             };
@@ -1169,13 +1167,13 @@ fn print_expr(expr: &JsExpr) -> String {
                 (CastKind::Coerce, Type::Int(64)) => {
                     format!("Number({})", print_expr(unwrap_coerce(inner, ty)))
                 }
-                // Coerce + Int(32) → int(x).
+                // Coerce + Int(32) → (x) | 0.
                 (CastKind::Coerce, Type::Int(32)) => {
-                    format!("int({})", print_expr(unwrap_coerce(inner, ty)))
+                    format!("({}) | 0", print_expr(unwrap_coerce(inner, ty)))
                 }
-                // Coerce + UInt(32) → uint(x).
+                // Coerce + UInt(32) → (x) >>> 0.
                 (CastKind::Coerce, Type::UInt(32)) => {
-                    format!("uint({})", print_expr(unwrap_coerce(inner, ty)))
+                    format!("({}) >>> 0", print_expr(unwrap_coerce(inner, ty)))
                 }
                 // Coerce + String → String(x).
                 (CastKind::Coerce, Type::String) => {
@@ -1381,22 +1379,17 @@ fn print_expr_operand(expr: &JsExpr) -> String {
 /// Whether an expression needs parentheses when used as an operand.
 fn needs_parens(expr: &JsExpr) -> bool {
     match expr {
-        // Function-call forms (asType, Number, int, etc.) don't need parens.
-        // Only `x as T` forms need them.
+        // Cast expressions: function-call forms (asType, Number, etc.) don't need
+        // parens; `x as T` assertion forms and inline binary operators do.
         JsExpr::Cast { ty, kind, .. } => match (kind, ty) {
             // NullableCoerce + Instance → function call form (asType(x, Foo)!) — no parens needed.
             (CastKind::NullableCoerce, Type::Instance(_)) => false,
             // Coerce + Instance → `x as Foo` assertion — needs parens as operand.
             (CastKind::Coerce, Type::Instance(_)) => true,
-            (
-                CastKind::Coerce,
-                Type::Float(_)
-                | Type::Int(32)
-                | Type::Int(64)
-                | Type::UInt(32)
-                | Type::String
-                | Type::Bool,
-            ) => false,
+            // Coerce + Int(32)/UInt(32) → binary expression `(x) | 0` / `(x) >>> 0`.
+            // These need parens when used as an operand (binary expr has lower precedence).
+            (CastKind::Coerce, Type::Int(32) | Type::UInt(32)) => true,
+            (CastKind::Coerce, Type::Float(_) | Type::Int(64) | Type::String | Type::Bool) => false,
             (CastKind::Coerce, _) => false,        // passthrough
             (CastKind::NullableCoerce, _) => true, // `x as T` / `x as any`
         },
