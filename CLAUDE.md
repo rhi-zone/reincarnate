@@ -28,9 +28,7 @@ Reincarnate translates games from any source engine into working, type-safe, hig
 
 **Conversation is not memory.** Anything said in chat evaporates at session end. Behavioral changes go in CLAUDE.md immediately.
 
-**Corrections are documentation lag, not model failure.** When the same mistake recurs, the fix is writing the invariant down — not repeating the correction. Every correction that doesn't produce a CLAUDE.md edit will happen again. Exception: during active design, corrections are the work itself — don't prematurely document a design that hasn't settled yet.
-
-**A correct principle that doesn't prevent bad behavior isn't doing its job.** When a rule fails to stop a mistake, make it more specific — don't add new rules.
+**Corrections are documentation lag, not model failure.** When the same mistake recurs, the fix is writing the invariant down — not repeating the correction. Exception: during active design, corrections are the work itself — don't prematurely document a design that hasn't settled yet.
 
 ## Fundamental Laws
 
