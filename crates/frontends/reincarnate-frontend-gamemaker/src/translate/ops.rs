@@ -106,7 +106,15 @@ pub(super) fn translate_instruction(
 
         // Function calls
         Opcode::Call | Opcode::CallV => {
-            translate_call_op(inst, fb, stack, ctx, gml_sizes, global_scope_on_stack)?;
+            translate_call_op(
+                inst,
+                fb,
+                stack,
+                locals,
+                ctx,
+                gml_sizes,
+                global_scope_on_stack,
+            )?;
         }
 
         // Type conversion
@@ -715,6 +723,7 @@ fn translate_call_op(
     inst: &Instruction,
     fb: &mut FunctionBuilder,
     stack: &mut Vec<ValueId>,
+    locals: &HashMap<String, ValueId>,
     ctx: &TranslateCtx,
     gml_sizes: &mut HashMap<ValueId, u8>,
     global_scope_on_stack: &mut bool,
@@ -736,7 +745,10 @@ fn translate_call_op(
                 // self parameter avoids emitting a `this` expression in free functions
                 // (which have no implicit `this` binding).
                 if func_name == "@@This@@" && argc == 0 {
-                    let val = if ctx.has_self {
+                    let val = if let Some(&slot) = locals.get("__with_self__") {
+                        let ty = fb.fresh_var();
+                        fb.load(slot, ty)
+                    } else if ctx.has_self {
                         fb.param(0)
                     } else {
                         fb.const_null()
@@ -764,7 +776,10 @@ fn translate_call_op(
                 }
                 // Scripts receive the caller's instance as an implicit first arg.
                 if ctx.script_names.contains(&func_name) {
-                    let self_val = if ctx.has_self {
+                    let self_val = if let Some(&slot) = locals.get("__with_self__") {
+                        let ty = fb.fresh_var();
+                        fb.load(slot, ty)
+                    } else if ctx.has_self {
                         fb.param(0)
                     } else {
                         fb.const_null()
@@ -774,7 +789,13 @@ fn translate_call_op(
                 // instance_destroy() with no explicit target destroys the calling instance.
                 // Inject self as the first arg so the runtime knows which instance to remove.
                 if func_name == "instance_destroy" && argc == 0 && ctx.has_self {
-                    args.push(fb.param(0));
+                    let self_val = if let Some(&slot) = locals.get("__with_self__") {
+                        let ty = fb.fresh_var();
+                        fb.load(slot, ty)
+                    } else {
+                        fb.param(0)
+                    };
+                    args.push(self_val);
                 }
                 // @@NewGMLArray@@ and @@NewGMLObject@@ are registered with correct
                 // return types in lib.rs before the stub loop, so no call-site

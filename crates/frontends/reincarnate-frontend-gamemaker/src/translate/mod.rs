@@ -24,8 +24,9 @@ use cfg::{get_branch_args, setup_blocks};
 use ops::translate_instruction;
 use switch::detect_switches;
 use with_body::{
-    find_self_with_indices, find_with_ranges, has_exit_popenv, scan_body_argument_indices,
-    scan_body_local_names, scan_body_uses_other, translate_with_body, WithBodyCtx,
+    find_all_with_indices, find_self_with_indices, find_with_ranges, has_exit_popenv,
+    scan_body_argument_indices, scan_body_local_names, scan_body_uses_other, translate_with_body,
+    WithBodyCtx,
 };
 
 /// Context for translating a single code entry.
@@ -142,6 +143,7 @@ pub fn translate_code_entry(
     // Pre-detect with-block ranges so we can exclude their blocks from the outer CFG.
     let with_ranges = find_with_ranges(&instructions);
     let self_with_indices = find_self_with_indices(&instructions, &with_ranges);
+    let all_with_indices = find_all_with_indices(&instructions, &with_ranges);
 
     // Pass 1 & 2: Create IR blocks, excluding with-body offsets.
     // Old-style scripts may use argumentN without declaring parameters —
@@ -207,6 +209,7 @@ pub fn translate_code_entry(
         ctx.function_names,
         ctx.bytecode_offset,
         ctx.func_ref_map,
+        &all_with_indices,
     );
 
     // Allocate locals.
@@ -229,6 +232,7 @@ pub fn translate_code_entry(
         &block_entry_depths,
         &with_ranges,
         &self_with_indices,
+        &all_with_indices,
         &mut locals,
         ctx,
         &mut extra_funcs,
@@ -657,6 +661,14 @@ fn resolve_fallthrough(
 // Core translation loop
 // ---------------------------------------------------------------------------
 
+/// Metadata for an active Phase C all-with while-loop.
+struct WithAllLoopMeta {
+    loop_header: BlockId,
+    counter_slot: ValueId,
+    has_other: bool,
+    popenv_idx: usize,
+}
+
 /// Core translation loop shared by [`translate_code_entry`] and [`translate_with_body`].
 ///
 /// Handles the `skip_until` mechanism that skips over with-body instruction ranges
@@ -672,6 +684,7 @@ fn run_translation_loop(
     block_entry_depths: &HashMap<usize, usize>,
     with_ranges: &HashMap<usize, usize>,
     self_with_indices: &HashSet<usize>,
+    all_with_indices: &HashSet<usize>,
     locals: &mut HashMap<String, ValueId>,
     ctx: &TranslateCtx<'_>,
     extra_funcs: &mut Vec<Function>,
@@ -683,6 +696,8 @@ fn run_translation_loop(
     // (e.g., Variable = 4 units vs Int16 = 1 unit).
     let mut gml_sizes: HashMap<ValueId, u8> = HashMap::new();
     let mut terminated = false;
+    // Phase C: stack of active all-with while-loops (with(-3) inlined as loops).
+    let mut with_all_loop_stack: Vec<WithAllLoopMeta> = Vec::new();
     // Set to true when a 2D array VARI read leaves the original dim indices on
     // the stack (compound assignment Dup pattern). The subsequent Pop must use
     // reversed pop order: value on top, dim1 below, _dim2 at bottom.
@@ -768,6 +783,73 @@ fn run_translation_loop(
                         .unwrap_or(0);
                     let args = get_branch_args(&stack, depth);
                     fb.br(body_entry_block, &args);
+                    terminated = true;
+                    continue;
+                }
+
+                // Phase C: all-with (-3 sentinel) — inline body as a while-loop.
+                if all_with_indices.contains(&inst_idx) {
+                    let body_entry_off = instructions[inst_idx + 1].offset;
+                    let body_entry_block = *block_map.get(&body_entry_off).ok_or_else(|| {
+                        format!("{func_name}: no block at all-with body entry {body_entry_off:#x}")
+                    })?;
+                    let loop_exit_off = instructions[popenv_idx + 1].offset;
+                    let loop_exit_block = *block_map.get(&loop_exit_off).ok_or_else(|| {
+                        format!("{func_name}: no block at all-with loop exit {loop_exit_off:#x}")
+                    })?;
+
+                    // Emit pre-loop setup in the current block.
+                    let instances_ty = fb.fresh_var();
+                    let instances_val = fb.call_named("getInstances", &[], instances_ty);
+                    let n_ty = fb.fresh_var();
+                    let n_val = fb.get_field(instances_val, "length", n_ty);
+                    let counter_slot = fb.alloc(Type::Float(64));
+                    fb.name_value(counter_slot, "_with_i".to_string());
+                    let i_init = fb.const_float(0.0);
+                    fb.store(counter_slot, i_init);
+                    let gml_obj_ty = Type::Instance(ctx.gml_object_type_id);
+                    let self_slot = fb.alloc(gml_obj_ty.clone());
+                    fb.name_value(self_slot, "_with_self".to_string());
+                    let body_insts = &instructions[inst_idx + 1..popenv_idx];
+                    let has_outer_self = ctx.has_self && scan_body_uses_other(body_insts, ctx);
+                    if has_outer_self {
+                        let outer_self_ty = ctx
+                            .class_name
+                            .and_then(|n| ctx.instance_types.get(n).copied())
+                            .map(Type::Instance)
+                            .unwrap_or_else(|| fb.fresh_var());
+                        let other_slot = fb.alloc(outer_self_ty);
+                        fb.name_value(other_slot, "_with_other".to_string());
+                        fb.store(other_slot, fb.param(0));
+                        locals.insert("__with_other__".to_string(), other_slot);
+                    }
+
+                    // Create loop_header block (no params → WhileLoop shape).
+                    let loop_header = fb.create_block();
+                    fb.br(loop_header, &[]);
+
+                    // Emit loop_header: load counter, compare, conditional branch.
+                    fb.switch_to_block(loop_header);
+                    let i_h = fb.load(counter_slot, Type::Float(64));
+                    let cond = fb.cmp(CmpKind::Lt, i_h, n_val);
+                    let with_init_block = fb.create_block();
+                    fb.br_if(cond, with_init_block, &[], loop_exit_block, &[]);
+
+                    // Emit with_init_block: load current instance and store into self_slot.
+                    fb.switch_to_block(with_init_block);
+                    let i_b = fb.load(counter_slot, Type::Float(64));
+                    let self_i = fb.get_index(instances_val, i_b, gml_obj_ty);
+                    fb.store(self_slot, self_i);
+                    fb.br(body_entry_block, &[]);
+
+                    // Make self_slot accessible to body translation.
+                    locals.insert("__with_self__".to_string(), self_slot);
+                    with_all_loop_stack.push(WithAllLoopMeta {
+                        loop_header,
+                        counter_slot,
+                        has_other: has_outer_self,
+                        popenv_idx,
+                    });
                     terminated = true;
                     continue;
                 }
@@ -917,6 +999,26 @@ fn run_translation_loop(
                 // Skip the body instructions and the PopEnv; resume after PopEnv.
                 skip_until = Some(popenv_idx + 1);
                 continue;
+            }
+        }
+
+        // Phase C: intercept the back-edge PopEnv for all-with loops.
+        if inst.opcode == Opcode::PopEnv {
+            if let Some(meta) = with_all_loop_stack.last() {
+                if inst_idx == meta.popenv_idx {
+                    let i = fb.load(meta.counter_slot, Type::Float(64));
+                    let one = fb.const_float(1.0);
+                    let i_next = fb.add(i, one);
+                    fb.store(meta.counter_slot, i_next);
+                    fb.br(meta.loop_header, &[]);
+                    terminated = true;
+                    locals.remove("__with_self__");
+                    if meta.has_other {
+                        locals.remove("__with_other__");
+                    }
+                    with_all_loop_stack.pop();
+                    continue;
+                }
             }
         }
 

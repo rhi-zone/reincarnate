@@ -1745,6 +1745,9 @@ pub(crate) fn register_gml_syscall_intrinsics(module: &mut Module) {
         IntrinsicKind::GameMakerWithInstances,
         None,
     );
+    // getInstances — returns snapshot of all active instances. Registered under the bare
+    // name so the stateful-call rewrite emits `this._rt.getInstances()` directly.
+    module.register_runtime("getInstances", getter.clone());
     // GameMaker.Global get/set.
     module.register_runtime_intrinsic(
         "GameMaker.Global.get",

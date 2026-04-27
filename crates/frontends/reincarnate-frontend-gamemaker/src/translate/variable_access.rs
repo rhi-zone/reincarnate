@@ -432,9 +432,14 @@ pub(super) fn translate_push_variable(
                 };
                 stack.push(val);
             } else if ctx.has_self {
-                let self_param = fb.param(0);
+                let self_val = if let Some(&slot) = locals.get("__with_self__") {
+                    let ty = fb.fresh_var();
+                    fb.load(slot, ty)
+                } else {
+                    fb.param(0)
+                };
                 let ty = fb.fresh_var();
-                let val = fb.get_field(self_param, &var_name, ty);
+                let val = fb.get_field(self_val, &var_name, ty);
                 stack.push(val);
             } else {
                 // Script context without self: variable is a global.
@@ -484,6 +489,12 @@ pub(super) fn translate_push_variable(
                 let other_param = fb.param(other_idx);
                 let ty = fb.fresh_var();
                 let val = fb.get_field(other_param, &var_name, ty);
+                stack.push(val);
+            } else if let Some(&slot) = locals.get("__with_other__") {
+                let obj_ty = fb.fresh_var();
+                let other_val = fb.load(slot, obj_ty);
+                let ty = fb.fresh_var();
+                let val = fb.get_field(other_val, &var_name, ty);
                 stack.push(val);
             } else {
                 let name_val = fb.const_string(&var_name);
@@ -922,8 +933,13 @@ pub(super) fn translate_pop(
                         // else: OOB (with-body uncaptured arg or invalid game code) — skip.
                     }
                 } else if ctx.has_self {
-                    let self_param = fb.param(0);
-                    fb.set_field(self_param, &var_name, value);
+                    let self_val = if let Some(&slot) = locals.get("__with_self__") {
+                        let ty = fb.fresh_var();
+                        fb.load(slot, ty)
+                    } else {
+                        fb.param(0)
+                    };
+                    fb.set_field(self_val, &var_name, value);
                 } else {
                     let name_val = fb.const_string(&var_name);
                     fb.call_named("GameMaker.Global.set", &[name_val, value], Type::Void);
@@ -991,6 +1007,10 @@ pub(super) fn translate_pop(
                     let other_idx = if ctx.has_self { 1 } else { 0 };
                     let other_param = fb.param(other_idx);
                     fb.set_field(other_param, &var_name, value);
+                } else if let Some(&slot) = locals.get("__with_other__") {
+                    let obj_ty = fb.fresh_var();
+                    let other_val = fb.load(slot, obj_ty);
+                    fb.set_field(other_val, &var_name, value);
                 } else {
                     let name_val = fb.const_string(&var_name);
                     fb.call_named(

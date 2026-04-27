@@ -150,6 +150,7 @@ pub fn rewrite_introduced_calls(system: &str, method: &str) -> &'static [&'stati
         ("GameMaker.Instance", "getField") => &["getInstanceField"],
         ("GameMaker.Instance", "setField") => &["setInstanceField"],
         ("GameMaker.Instance", "withInstances") => &["withInstances"],
+        ("GameMaker.Instance", "getInstances") => &["getInstances"],
         // getOther/setOther rewrite to expressions using `other` (the collision partner
         // param). `other` itself is a param reference, not an import — only `setOtherField`
         // needs importing.
@@ -1481,6 +1482,11 @@ fn try_rewrite_system_call(
                 args: cap_vals,
             })
         }
+        // GameMaker.Instance.getInstances() → getInstances()
+        ("GameMaker.Instance", "getInstances") if args.is_empty() => Some(JsExpr::Call {
+            callee: Box::new(JsExpr::Var("getInstances".into())),
+            args: vec![],
+        }),
         // GameMaker.Instance.withInstances(target, closure) → withInstances(target, closure)
         //
         // At this point the closure arg has already been rewritten (children-first)

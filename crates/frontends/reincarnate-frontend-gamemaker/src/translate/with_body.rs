@@ -128,6 +128,35 @@ pub(super) fn find_self_with_indices(
     result
 }
 
+/// Returns the set of PushEnv instruction indices (within `with_ranges`) where
+/// the with-target is the GML "all instances" sentinel (integer -3). These
+/// ranges are inlined as while-loops instead of extracted as closures.
+pub(super) fn find_all_with_indices(
+    instructions: &[Instruction],
+    with_ranges: &HashMap<usize, usize>,
+) -> HashSet<usize> {
+    let mut result = HashSet::new();
+    for &pushenv_idx in with_ranges.keys() {
+        if pushenv_idx == 0 {
+            continue;
+        }
+        let prev = &instructions[pushenv_idx - 1];
+        let is_neg3 = matches!(
+            prev.operand,
+            Operand::Int16(-3) | Operand::Int32(-3) | Operand::Int64(-3)
+        );
+        if is_neg3
+            && matches!(
+                prev.opcode,
+                Opcode::PushI | Opcode::Push | Opcode::PushLoc | Opcode::PushGlb | Opcode::PushBltn
+            )
+        {
+            result.insert(pushenv_idx);
+        }
+    }
+    result
+}
+
 /// Find the names of outer local variables accessed in a slice of instructions.
 ///
 /// Used to determine which locals a with-body closure needs to capture.
@@ -358,6 +387,7 @@ pub(super) fn translate_with_body(
 
     let inner_with_ranges = find_with_ranges(wctx.body_insts);
     let inner_self_with_indices: HashSet<usize> = HashSet::new();
+    let inner_all_with_indices: HashSet<usize> = HashSet::new();
     let entry_offset = wctx.body_insts.first().map_or(0, |inst| inst.offset);
     let (block_map, block_params, block_entry_depths) = setup_blocks(
         &mut fb,
@@ -368,6 +398,7 @@ pub(super) fn translate_with_body(
         wctx.ctx.function_names,
         wctx.ctx.bytecode_offset,
         wctx.ctx.func_ref_map,
+        &inner_all_with_indices,
     );
 
     let ctx = wctx.ctx;
@@ -446,6 +477,7 @@ pub(super) fn translate_with_body(
         &block_entry_depths,
         &inner_with_ranges,
         &inner_self_with_indices,
+        &inner_all_with_indices,
         &mut locals,
         &inner_ctx,
         extra_funcs,

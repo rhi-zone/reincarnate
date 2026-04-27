@@ -311,8 +311,8 @@ pub(super) fn collect_call_names_from_funcs<'a>(
                     // If this is a registered intrinsic, emit the names that the
                     // rewrite pass will introduce (same as Op::SystemCall did) rather
                     // than the intrinsic name itself (which lowers to Expr::SystemCall).
-                    if let Some((system, method)) = intrinsic_calls.and_then(|m| m.get(callee_fid))
-                    {
+                    let lookup = intrinsic_calls.and_then(|m| m.get(callee_fid));
+                    if let Some((system, method)) = lookup {
                         if engine == EngineKind::GameMaker {
                             for introduced in
                                 crate::rewrites::gamemaker::rewrite_introduced_calls(system, method)

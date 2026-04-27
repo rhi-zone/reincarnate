@@ -991,6 +991,11 @@ export class GameRuntime {
     this._self = prevSelf;
   }
 
+  /** Return a snapshot of all active instances in the room. Used by inlined `with (all)` loops. */
+  getInstances(): GMLObject[] {
+    return this.roomVariables.slice();
+  }
+
   // ---- Per-runtime instance tracking ----
 
   _getInstances(clazz: Function): GMLObject[] {
