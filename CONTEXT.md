@@ -66,9 +66,11 @@ _Avoid:_ `Type::Unknown`, inference variable, placeholder
 
 `Type::Var(TypeVarId)` is an unresolved type variable allocated during constraint collection and resolved by the HM solver. It is a pre-inference placeholder — normal and expected in IR before `constraint-solve-hm` runs.
 
-`Type::Unknown` is a post-inference signal that the solver could not determine the type. It represents an inference gap and is emitted as `unknown` in TypeScript. Every `Unknown` in output IR is a defect — inference was not good enough.
+`Type::Unknown` has two distinct uses:
+- **Legitimate pre-inference**: `Constant::Null` types as `Type::Option(Type::Unknown)` to represent "nullable, type not yet known." Type coercion fallbacks also return Unknown when numeric coercion cannot determine the type, before constraint solving.
+- **Post-inference defect**: Unknown remaining after `constraint-solve-hm` represents an inference gap. Every such Unknown in output IR is a defect — inference was not good enough.
 
-Confusing them causes wrong fixes: suppressing `Unknown` at emit time or widening types to avoid it are monkeypatches. The correct fix is improving inference so the `TypeVar` resolves to a concrete type.
+Confusing them causes wrong fixes: suppressing post-inference `Unknown` at emit time or widening types to avoid it are monkeypatches. The correct fix is improving inference so the `TypeVar` resolves to a concrete type. But pre-inference `Unknown` in `Constant::Null` is correct and should not be "fixed."
 
 ---
 
