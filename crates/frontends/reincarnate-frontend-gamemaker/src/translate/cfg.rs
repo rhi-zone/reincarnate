@@ -133,11 +133,12 @@ pub(super) fn find_block_starts(
 /// - With-body offsets (inside any PushEnv/PopEnv range in `with_ranges`) are
 ///   excluded from block creation — they will be handled by separate closure
 ///   functions and must not appear as dead blocks in the outer function's CFG.
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub(super) fn setup_blocks(
     fb: &mut FunctionBuilder,
     instructions: &[Instruction],
     with_ranges: &HashMap<usize, usize>,
+    self_with_indices: &HashSet<usize>,
     entry_offset: usize,
     function_names: &HashMap<u32, String>,
     bytecode_offset: usize,
@@ -159,8 +160,11 @@ pub(super) fn setup_blocks(
 
     // Collect offsets that belong to with-body ranges (body + PopEnv).
     // Blocks at these offsets are owned by extracted closures, not the outer function.
+    // Self-with ranges (target = -9) are excluded: their bodies are inlined into the
+    // outer CFG and must not be filtered out.
     let body_offsets: HashSet<usize> = with_ranges
         .iter()
+        .filter(|(&pi, _)| !self_with_indices.contains(&pi))
         .flat_map(|(&pi, &popi)| instructions[pi + 1..=popi].iter().map(|i| i.offset))
         .collect();
 

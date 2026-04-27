@@ -99,6 +99,35 @@ pub(super) fn find_with_ranges(instructions: &[Instruction]) -> HashMap<usize, u
     result
 }
 
+/// Returns the set of PushEnv instruction indices (within `with_ranges`) where
+/// the with-target is the GML self-sentinel (integer -9). These ranges are
+/// inlined directly into the outer function's CFG instead of extracted as closures.
+pub(super) fn find_self_with_indices(
+    instructions: &[Instruction],
+    with_ranges: &HashMap<usize, usize>,
+) -> HashSet<usize> {
+    let mut result = HashSet::new();
+    for &pushenv_idx in with_ranges.keys() {
+        if pushenv_idx == 0 {
+            continue;
+        }
+        let prev = &instructions[pushenv_idx - 1];
+        let is_neg9 = matches!(
+            prev.operand,
+            Operand::Int16(-9) | Operand::Int32(-9) | Operand::Int64(-9)
+        );
+        if is_neg9
+            && matches!(
+                prev.opcode,
+                Opcode::PushI | Opcode::Push | Opcode::PushLoc | Opcode::PushGlb | Opcode::PushBltn
+            )
+        {
+            result.insert(pushenv_idx);
+        }
+    }
+    result
+}
+
 /// Find the names of outer local variables accessed in a slice of instructions.
 ///
 /// Used to determine which locals a with-body closure needs to capture.
@@ -328,11 +357,13 @@ pub(super) fn translate_with_body(
     };
 
     let inner_with_ranges = find_with_ranges(wctx.body_insts);
+    let inner_self_with_indices: HashSet<usize> = HashSet::new();
     let entry_offset = wctx.body_insts.first().map_or(0, |inst| inst.offset);
     let (block_map, block_params, block_entry_depths) = setup_blocks(
         &mut fb,
         wctx.body_insts,
         &inner_with_ranges,
+        &inner_self_with_indices,
         entry_offset,
         wctx.ctx.function_names,
         wctx.ctx.bytecode_offset,
@@ -414,6 +445,7 @@ pub(super) fn translate_with_body(
         &block_params,
         &block_entry_depths,
         &inner_with_ranges,
+        &inner_self_with_indices,
         &mut locals,
         &inner_ctx,
         extra_funcs,

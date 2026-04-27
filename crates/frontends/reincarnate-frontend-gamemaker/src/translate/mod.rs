@@ -24,8 +24,8 @@ use cfg::{get_branch_args, setup_blocks};
 use ops::translate_instruction;
 use switch::detect_switches;
 use with_body::{
-    find_with_ranges, has_exit_popenv, scan_body_argument_indices, scan_body_local_names,
-    scan_body_uses_other, translate_with_body, WithBodyCtx,
+    find_self_with_indices, find_with_ranges, has_exit_popenv, scan_body_argument_indices,
+    scan_body_local_names, scan_body_uses_other, translate_with_body, WithBodyCtx,
 };
 
 /// Context for translating a single code entry.
@@ -141,6 +141,7 @@ pub fn translate_code_entry(
 
     // Pre-detect with-block ranges so we can exclude their blocks from the outer CFG.
     let with_ranges = find_with_ranges(&instructions);
+    let self_with_indices = find_self_with_indices(&instructions, &with_ranges);
 
     // Pass 1 & 2: Create IR blocks, excluding with-body offsets.
     // Old-style scripts may use argumentN without declaring parameters —
@@ -201,6 +202,7 @@ pub fn translate_code_entry(
         &mut fb,
         &instructions,
         &with_ranges,
+        &self_with_indices,
         0,
         ctx.function_names,
         ctx.bytecode_offset,
@@ -226,6 +228,7 @@ pub fn translate_code_entry(
         &block_params,
         &block_entry_depths,
         &with_ranges,
+        &self_with_indices,
         &mut locals,
         ctx,
         &mut extra_funcs,
@@ -668,6 +671,7 @@ fn run_translation_loop(
     block_params: &HashMap<usize, Vec<ValueId>>,
     block_entry_depths: &HashMap<usize, usize>,
     with_ranges: &HashMap<usize, usize>,
+    self_with_indices: &HashSet<usize>,
     locals: &mut HashMap<String, ValueId>,
     ctx: &TranslateCtx<'_>,
     extra_funcs: &mut Vec<Function>,
@@ -745,6 +749,29 @@ fn run_translation_loop(
         if inst.opcode == Opcode::PushEnv {
             if let Some(&popenv_idx) = with_ranges.get(&inst_idx) {
                 let target_obj = pop(&mut stack, inst)?;
+
+                // Self-with (-9 sentinel): inline body into outer CFG, no closure needed.
+                if self_with_indices.contains(&inst_idx) {
+                    let body_entry_inst = instructions.get(inst_idx + 1).ok_or_else(|| {
+                        format!("{func_name}: PushEnv at {:#x} has empty body", inst.offset)
+                    })?;
+                    let body_entry_block =
+                        *block_map.get(&body_entry_inst.offset).ok_or_else(|| {
+                            format!(
+                                "{func_name}: no block at self-with body entry {:#x}",
+                                body_entry_inst.offset
+                            )
+                        })?;
+                    let depth = block_entry_depths
+                        .get(&body_entry_inst.offset)
+                        .copied()
+                        .unwrap_or(0);
+                    let args = get_branch_args(&stack, depth);
+                    fb.br(body_entry_block, &args);
+                    terminated = true;
+                    continue;
+                }
+
                 let body_insts = &instructions[inst_idx + 1..popenv_idx];
 
                 // Determine which outer locals the body needs to capture.
