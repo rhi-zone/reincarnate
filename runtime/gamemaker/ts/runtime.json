@@ -7893,7 +7893,6 @@
   "function_modules": [
     {
       "names": [
-        "ln",
         "max",
         "min",
         "mean",
@@ -7902,9 +7901,7 @@
         "int",
         "uint",
         "real",
-        "string",
-        "math_get_epsilon",
-        "is_bool"
+        "string"
       ],
       "path": "gamemaker/math"
     },

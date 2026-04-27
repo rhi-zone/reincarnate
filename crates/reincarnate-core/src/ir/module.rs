@@ -782,10 +782,11 @@ impl Module {
     ///
     /// Breakdown: 5 arith ops × 4 types = 20, concat_str = 1, neg × 4 = 4,
     /// not/and/or bool = 3, 5 bitwise ops × 1 type (i32) = 5, bitnot × 1 = 1 → 34.
-    /// Math single-arg f64 = 17, math binary f64 = 5, string ops = 12, array ops = 2 → 70.
+    /// Math single-arg f64 = 17, math binary f64 = 5, string ops = 12, array ops = 2,
+    /// coercion ops = 4 (to_number_unknown, to_string_unknown, to_i32_f64, to_u32_f64) → 74.
     /// Polymorphic `_any` stubs are GML-specific and registered by the GML frontend,
     /// not by `register_core_builtins`, so they are not counted here.
-    pub const NUM_CORE_BUILTINS: u32 = 70;
+    pub const NUM_CORE_BUILTINS: u32 = 74;
 
     pub fn new(name: String) -> Self {
         let mut module = Self {
@@ -1038,6 +1039,46 @@ impl Module {
             FunctionSig {
                 params: vec![Type::Array(Box::new(Type::Unknown)), Type::Unknown],
                 return_ty: Type::Bool,
+                ..Default::default()
+            },
+        );
+        self.core_builtin_fids.insert(fid);
+        // to_number_unknown: (Unknown) -> Float(64)  — emit as Number(x)
+        let fid = self.register_runtime(
+            "to_number_unknown",
+            FunctionSig {
+                params: vec![Type::Unknown],
+                return_ty: Type::Float(64),
+                ..Default::default()
+            },
+        );
+        self.core_builtin_fids.insert(fid);
+        // to_string_unknown: (Unknown) -> String  — emit as String(x)
+        let fid = self.register_runtime(
+            "to_string_unknown",
+            FunctionSig {
+                params: vec![Type::Unknown],
+                return_ty: Type::String,
+                ..Default::default()
+            },
+        );
+        self.core_builtin_fids.insert(fid);
+        // to_i32_f64: (Float(64)) -> Float(64)  — emit as x | 0
+        let fid = self.register_runtime(
+            "to_i32_f64",
+            FunctionSig {
+                params: vec![Type::Float(64)],
+                return_ty: Type::Float(64),
+                ..Default::default()
+            },
+        );
+        self.core_builtin_fids.insert(fid);
+        // to_u32_f64: (Float(64)) -> Float(64)  — emit as x >>> 0
+        let fid = self.register_runtime(
+            "to_u32_f64",
+            FunctionSig {
+                params: vec![Type::Float(64)],
+                return_ty: Type::Float(64),
                 ..Default::default()
             },
         );

@@ -22,6 +22,7 @@ pub enum BinOp {
     BitXor,
     Shl,
     Shr,
+    Ushr,
 }
 
 /// Unary operators.

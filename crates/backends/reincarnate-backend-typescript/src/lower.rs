@@ -527,6 +527,28 @@ fn lower_builtin_opt(op_name: &str, args: &[Expr], ctx: &LowerCtx) -> Option<JsE
             callee: Box::new(build_dotted_path("String.fromCharCode")),
             args: vec![lower_expr(&args[0], ctx)],
         }),
+        "to_number_unknown" => Some(JsExpr::Call {
+            callee: Box::new(JsExpr::Var("Number".to_string())),
+            args: vec![lower_expr(&args[0], ctx)],
+        }),
+        "to_string_unknown" => Some(JsExpr::Call {
+            callee: Box::new(JsExpr::Var("String".to_string())),
+            args: vec![lower_expr(&args[0], ctx)],
+        }),
+        "to_i32_f64" => Some(JsExpr::Binary {
+            op: BinOp::BitOr,
+            lhs: Box::new(lower_expr(&args[0], ctx)),
+            rhs: Box::new(JsExpr::Literal(
+                reincarnate_core::ir::value::Constant::Float(0.0),
+            )),
+        }),
+        "to_u32_f64" => Some(JsExpr::Binary {
+            op: BinOp::Ushr,
+            lhs: Box::new(lower_expr(&args[0], ctx)),
+            rhs: Box::new(JsExpr::Literal(
+                reincarnate_core::ir::value::Constant::Float(0.0),
+            )),
+        }),
 
         // --- Not a core builtin ---
         _ => None,

@@ -93,6 +93,9 @@ pub fn register_runtime_bodies(module: &mut Module) {
     attach_body_ord(module);
     attach_body_string_byte_at(module);
     attach_body_chr(module);
+    attach_body_ln(module);
+    attach_body_math_get_epsilon(module);
+    attach_body_is_bool(module);
 }
 
 // ---------------------------------------------------------------------------
@@ -3403,6 +3406,104 @@ fn attach_body_chr(module: &mut Module) {
     let n = b.param(0);
 
     let result = b.call_named("chr_f64", &[n], Type::String);
+    b.ret(Some(result));
+
+    let built = b.build();
+    let stub = &mut module.functions[fid];
+    stub.blocks = built.blocks;
+    stub.insts = built.insts;
+    stub.value_types = built.value_types;
+    stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
+}
+
+// ---------------------------------------------------------------------------
+// ln(x: f64) -> f64  =  ln_f64(x)
+// ---------------------------------------------------------------------------
+
+fn attach_body_ln(module: &mut Module) {
+    let fid = match module.lookup_runtime("ln") {
+        Some(id) => id,
+        None => return,
+    };
+
+    let sig = FunctionSig {
+        params: vec![Type::Float(64)],
+        return_ty: Type::Float(64),
+        defaults: vec![],
+        has_rest_param: false,
+        param_lower_bounds: vec![],
+    };
+
+    let mut b = make_builder(module, "ln", sig);
+    let x = b.param(0);
+
+    let result = b.call_named("ln_f64", &[x], Type::Float(64));
+    b.ret(Some(result));
+
+    let built = b.build();
+    let stub = &mut module.functions[fid];
+    stub.blocks = built.blocks;
+    stub.insts = built.insts;
+    stub.value_types = built.value_types;
+    stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
+}
+
+// ---------------------------------------------------------------------------
+// math_get_epsilon() -> f64  =  0.00001
+// ---------------------------------------------------------------------------
+
+fn attach_body_math_get_epsilon(module: &mut Module) {
+    let fid = match module.lookup_runtime("math_get_epsilon") {
+        Some(id) => id,
+        None => return,
+    };
+
+    let sig = FunctionSig {
+        params: vec![],
+        return_ty: Type::Float(64),
+        defaults: vec![],
+        has_rest_param: false,
+        param_lower_bounds: vec![],
+    };
+
+    let mut b = make_builder(module, "math_get_epsilon", sig);
+
+    let result = b.const_float(0.00001);
+    b.ret(Some(result));
+
+    let built = b.build();
+    let stub = &mut module.functions[fid];
+    stub.blocks = built.blocks;
+    stub.insts = built.insts;
+    stub.value_types = built.value_types;
+    stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
+}
+
+// ---------------------------------------------------------------------------
+// is_bool(x: Unknown) -> Bool  =  type_check(x, Bool)
+// ---------------------------------------------------------------------------
+
+fn attach_body_is_bool(module: &mut Module) {
+    let fid = match module.lookup_runtime("is_bool") {
+        Some(id) => id,
+        None => return,
+    };
+
+    let sig = FunctionSig {
+        params: vec![Type::Unknown],
+        return_ty: Type::Bool,
+        defaults: vec![],
+        has_rest_param: false,
+        param_lower_bounds: vec![],
+    };
+
+    let mut b = make_builder(module, "is_bool", sig);
+    let x = b.param(0);
+
+    let result = b.type_check(x, Type::Bool);
     b.ret(Some(result));
 
     let built = b.build();
