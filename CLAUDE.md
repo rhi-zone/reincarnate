@@ -83,7 +83,6 @@ Always pass `--include-ignored`. Edit all files first, then build once.
 - No backward type propagation in core transforms (inferring a value's type from how it is used downstream)
 - No `any` anywhere — unconditionally forbidden in emitted TypeScript, handwritten runtime code, and Rust emit paths. No exceptions.
 - No widening runtime types to match wrong emitter output — fix the inference
-- No Claude Code auto-memory (`~/.claude/projects/.*./memory/`) — unversioned and invisible; write behavioral changes to CLAUDE.md instead
 - No path dependencies in Cargo.toml
 - No `--no-verify`
 - No interactive git commands (`git rebase -i`, `git add -i`, `git add -p`) — stage by name
