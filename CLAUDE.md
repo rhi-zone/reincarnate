@@ -26,9 +26,27 @@ Reincarnate translates games from any source engine into working, type-safe, hig
 
 **Wrong code causes cascading damage.** Wasted time, risky reverts, corrupted `git blame`, misdirected future work.
 
-**Conversation is not memory.** Anything said in chat evaporates at session end. Behavioral changes go in CLAUDE.md immediately.
+## Context Is The Only Scarce Resource
 
-**Corrections are documentation lag, not model failure.** When the same mistake recurs, the fix is writing the invariant down — not repeating the correction. Exception: during active design, corrections are the work itself — don't prematurely document a design that hasn't settled yet.
+Every byte that enters the main session stays in the main session for its entire lifetime. File contents, command output, search results — once read, it lingers and shapes every downstream token. There is no "just looking."
+
+**All exploration runs in subagents.** Investigations, audits, deep dives, surveys — if the purpose is to find out something you don't yet know, it runs in a subagent. The subagent returns a distilled summary; the raw output stays in the subagent. The main context is for coordination: decisions, review, direction.
+
+## Durability
+
+Subagent reports, mid-session realizations, "I'll remember this" — none of these outlast the session. Anything worth keeping goes into CLAUDE.md, code, docs, or a commit. If it isn't written down, it is gone.
+
+## Authenticity
+
+When asked to analyze X, read X. Claims must correspond to evidence produced this session, not conversation memory or prior summaries.
+
+**Something unexpected is a signal.** Surprising output, anomalous numbers, a file containing what it shouldn't — stop and find out why. Do not accept the anomaly and proceed.
+
+## Discipline
+
+Corrections from the user are conversation, not material for new rules. A single correction does not warrant a CLAUDE.md edit. Rules are added when a failure mode is observed repeatedly and the rule names the failure it prevents. Exception: during active design, corrections are the work itself — don't prematurely document a design that hasn't settled yet.
+
+Do not announce actions ("I will now…"). Act.
 
 ## Fundamental Laws
 
@@ -77,7 +95,7 @@ Always pass `--include-ignored`. Edit all files first, then build once.
 1. Commit-diff: `git log --oneline --since="2 weeks ago"`, batch ~60 commits per haiku agent, flag violations.
 2. Conversation-log: `~/git/rhizone/normalize/target/debug/normalize sessions messages --days 14 --role assistant --limit 0`, split into ~700-line batches, flag suppression patterns.
 
-## Constraints
+## Hard Constraints
 
 - No engine-specific logic in `reincarnate-core` — no named engine functions, no engine-specific heuristics, no backward inference that compensates for engine gaps
 - No backward type propagation in core transforms (inferring a value's type from how it is used downstream)
