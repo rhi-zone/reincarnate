@@ -606,12 +606,12 @@ fn test_argument_2d_array_push_maps_to_param() {
         "argument[N] must map to param, not intrinsic call; ops: {ops:?}"
     );
 
-    // The function must have been given 2 params (argument0, argument1)
-    // because scan_implicit_args detected argument[1].
+    // The function must have been given 3 params (_rt, argument0, argument1)
+    // because _rt is prepended as param 0 and scan_implicit_args detected argument[1].
     assert_eq!(
         func.sig.params.len(),
-        2,
-        "expected 2 params for implicit argument[1]"
+        3,
+        "expected 3 params (_rt + argument0 + argument1) for implicit argument[1]"
     );
 }
 
