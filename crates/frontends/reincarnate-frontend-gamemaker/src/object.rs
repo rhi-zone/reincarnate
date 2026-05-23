@@ -27,6 +27,7 @@ pub fn translate_objects(
     script_names: &HashSet<String>,
     bc_version: datawin::BytecodeVersion,
     registry: &HashMap<String, FuncId>,
+    user_func_names: &HashSet<String>,
     rt_ty: &Type,
 ) -> Result<(usize, usize), String> {
     let objt = dw.objt().map_err(|e| e.to_string())?;
@@ -150,6 +151,7 @@ pub fn translate_objects(
                         instance_types: &instance_types,
                         gml_object_type_id: gml_object_id,
                         registry,
+                        user_func_names,
                         rt_ty: rt_ty.clone(),
                         stateful_runtime_names: &crate::stateful_funs::STATEFUL_RUNTIME_FUNS,
                     };

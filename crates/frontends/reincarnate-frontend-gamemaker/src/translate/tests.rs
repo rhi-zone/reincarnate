@@ -18,6 +18,9 @@ static EMPTY_INSTANCE_TYPES: std::sync::LazyLock<HashMap<String, TypeId>> =
 static EMPTY_REGISTRY: std::sync::LazyLock<HashMap<String, FuncId>> =
     std::sync::LazyLock::new(HashMap::new);
 
+static EMPTY_USER_FUNC_NAMES: std::sync::LazyLock<HashSet<String>> =
+    std::sync::LazyLock::new(HashSet::new);
+
 /// A module with core builtins only (from `Module::new()`).
 ///
 /// Provides the `runtime_registry` for tests that use arithmetic builtins
@@ -93,6 +96,7 @@ fn make_ctx<'a>(
         // TypeId::new(0) is a harmless sentinel for the struct field requirement.
         gml_object_type_id: TypeId::new(0),
         registry,
+        user_func_names: &EMPTY_USER_FUNC_NAMES,
         // Tests use a dummy GameRuntime TypeId (0); the type is only used for
         // signature construction and will not be validated against a real module.
         rt_ty: reincarnate_core::ir::ty::Type::Instance(TypeId::new(0)),

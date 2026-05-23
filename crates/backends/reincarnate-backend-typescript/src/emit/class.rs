@@ -2,7 +2,7 @@
 // Class grouping, class emission, and function emission
 // ---------------------------------------------------------------------------
 
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Write;
 
 use reincarnate_core::entity::PrimaryMap;
@@ -173,15 +173,8 @@ pub(super) fn emit_functions(
     // downstream emit functions so they don't need direct module access.
     let effective_lowering = lowering_config_for_engine(lowering_config, engine, Some(module));
     let effective_lowering_ref: &LoweringConfig = &effective_lowering;
-    let stateful_lower_names = crate::lower::collect_stateful_runtime_names(module);
-    let closure_bodies = compile_closures(
-        &closure_fids,
-        module,
-        effective_lowering_ref,
-        engine,
-        debug,
-        &stateful_lower_names,
-    );
+    let closure_bodies =
+        compile_closures(&closure_fids, module, effective_lowering_ref, engine, debug);
     let object_ts_names = resolve_object_ts_names(&module.object_names, class_names);
     let name_map: HashMap<String, String> = module
         .object_names
@@ -192,8 +185,6 @@ pub(super) fn emit_functions(
         .collect();
     for id in all_ids {
         if module.functions[id].method_kind != MethodKind::Closure {
-            let no_stateful = BTreeSet::new();
-            let no_free_fns = HashSet::new();
             let overloads = collect_overloads(&module.functions, id);
             let func_name = module.name_table.func_name(id).to_string();
             emit_function(
@@ -208,9 +199,6 @@ pub(super) fn emit_functions(
                 &module.sprite_names,
                 &object_ts_names,
                 &closure_bodies,
-                &no_stateful,
-                &stateful_lower_names,
-                &no_free_fns,
                 stateful_system_aliases,
                 runtime_config,
                 unique_static_fields,
@@ -242,9 +230,6 @@ pub(super) fn emit_function(
     sprite_names: &[String],
     object_names: &[String],
     closure_bodies: &HashMap<String, JsFunction>,
-    stateful_names: &BTreeSet<String>,
-    stateful_lower_names: &BTreeSet<String>,
-    free_func_names: &HashSet<String>,
     stateful_system_aliases: &BTreeMap<String, String>,
     runtime_config: Option<&RuntimeConfig>,
     unique_static_fields: &HashMap<String, String>,
@@ -274,8 +259,7 @@ pub(super) fn emit_function(
     );
     let ctx = crate::lower::LowerCtx {
         self_param_name: None,
-        stateful_names: stateful_lower_names.clone(),
-        // Free functions receive `_rt` as an explicit parameter.
+        stateful_names: Default::default(),
         rt_via_this: false,
     };
     let mut js_func = crate::lower::lower_function(&ast, &ctx);
@@ -352,21 +336,6 @@ pub(super) fn emit_function(
     if js_func.return_ty == Type::Void {
         crate::ast_passes::strip_void_returns(&mut js_func);
     }
-    // PHASE 3 DEBT: prepend_rt_arg_to_free_calls / rewrite_stateful_calls are
-    // workarounds — see the block comments in rewrites.rs for the full explanation.
-    // Delete both calls when Phase 3 ships (see TODO.md).
-    //
-    // Rewrite calls to free functions: prepend `_rt` as first argument.
-    // Includes recursive self-calls — do NOT remove self from the set.
-    if !free_func_names.is_empty() {
-        rewrites::prepend_rt_arg_to_free_calls(&mut js_func.body, free_func_names, false);
-    }
-    // Phase 3: stateful runtime calls are now lowered directly by `lower_call`
-    // (via `LowerCtx::stateful_names`) as `_rt.foo(args)` based on the IR
-    // signature — the IR has `_rt: GameRuntime` as param 0 and the call's first
-    // argument is the runtime handle.  The `rewrite_stateful_calls` AST pass is
-    // deleted.  The `_rt` parameter is now part of the IR signature itself.
-    let _ = stateful_names;
     // Build preamble for Twine stateful system aliases (unrelated to GML _rt.foo pattern).
     let preamble = if !stateful_system_aliases.is_empty() {
         // Twine: alias stateful system modules from `_rt` properties.
@@ -426,9 +395,6 @@ pub(super) fn emit_class(
     known_classes: &HashSet<String>,
     lowering_config: &LoweringConfig,
     engine: EngineKind,
-    stateful_names: &BTreeSet<String>,
-    stateful_lower_names: &BTreeSet<String>,
-    free_func_names: &HashSet<String>,
     func_sigs: &BTreeMap<String, ExternalMethodSig>,
     game_global_state_type_id: Option<reincarnate_core::ir::TypeId>,
     debug: &DebugConfig,
@@ -744,7 +710,6 @@ pub(super) fn emit_class(
         effective_lowering_class_ref,
         engine,
         debug,
-        stateful_lower_names,
     );
     let object_ts_names = resolve_object_ts_names(&module.object_names, class_names);
     let name_map: HashMap<String, String> = module
@@ -799,9 +764,6 @@ pub(super) fn emit_class(
             engine,
             &module.sprite_names,
             &object_ts_names,
-            stateful_names,
-            stateful_lower_names,
-            free_func_names,
             func_sigs,
             &name_map,
             game_global_state_type_id,
@@ -955,7 +917,6 @@ pub(super) fn compile_closures(
     lowering_config: &LoweringConfig,
     engine: EngineKind,
     debug: &DebugConfig,
-    stateful_lower_names: &BTreeSet<String>,
 ) -> HashMap<String, JsFunction> {
     use reincarnate_core::ir::linear;
 
@@ -981,9 +942,7 @@ pub(super) fn compile_closures(
         // it with JsExpr::This.
         let ctx = crate::lower::LowerCtx {
             self_param_name: None,
-            stateful_names: stateful_lower_names.clone(),
-            // Closures capture `_rt` as their first capture parameter; the IR
-            // `_rt` value is a local in the closure scope, not `this._rt`.
+            stateful_names: Default::default(),
             rt_via_this: false,
         };
         let mut js_func = crate::lower::lower_function(&ast, &ctx);
@@ -1024,9 +983,6 @@ fn emit_class_method(
     engine: EngineKind,
     sprite_names: &[String],
     object_names: &[String],
-    stateful_names: &BTreeSet<String>,
-    stateful_lower_names: &BTreeSet<String>,
-    free_func_names: &HashSet<String>,
     func_sigs: &BTreeMap<String, ExternalMethodSig>,
     name_map: &HashMap<String, String>,
     game_global_state_type_id: Option<reincarnate_core::ir::TypeId>,
@@ -1090,7 +1046,7 @@ fn emit_class_method(
 
     let ctx = crate::lower::LowerCtx {
         self_param_name,
-        stateful_names: stateful_lower_names.clone(),
+        stateful_names: Default::default(),
         // Class methods access the runtime via `this._rt`, not a JS parameter.
         rt_via_this: true,
     };
@@ -1184,19 +1140,6 @@ fn emit_class_method(
     if js_func.return_ty == Type::Void {
         crate::ast_passes::strip_void_returns(&mut js_func);
     }
-    // PHASE 3 DEBT: prepend_rt_arg_to_free_calls / rewrite_stateful_calls are
-    // workarounds — see the block comments in rewrites.rs for the full explanation.
-    // Delete both calls when Phase 3 ships (see TODO.md).
-    //
-    // Rewrite calls to free functions: prepend `this._rt` as first argument.
-    if !free_func_names.is_empty() {
-        rewrites::prepend_rt_arg_to_free_calls(&mut js_func.body, free_func_names, true);
-    }
-    // Phase 3: stateful runtime calls are lowered directly by `lower_call`
-    // (via `LowerCtx::stateful_names`).  The receiver expression for each call
-    // is the first IR argument, which the frontend wired as `this._rt` for
-    // class-method contexts.  Deleted: rewrites::rewrite_stateful_calls.
-    let _ = stateful_names;
     // GML constructors in derived classes (suppress_super = false) need an explicit
     // `super()` call before any `this` access.  TypeScript enforces this as TS17009.
     // The body already contains `super.create()` (from event_inherited), but that is

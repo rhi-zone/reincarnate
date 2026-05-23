@@ -116,6 +116,12 @@ pub struct TranslateCtx<'a> {
     /// Callers build this from `mb.runtime_registry()` plus any pre-registered
     /// user function stubs.  Tests may pass an empty map if no named calls appear.
     pub registry: &'a HashMap<String, FuncId>,
+    /// Set of user-defined function names (pre-registered stubs from FUNC chunk).
+    ///
+    /// All pre-registered user functions receive `_rt` as IR param 0 (Phase 1
+    /// guarantee).  When a call site targets a name in this set, `rt_val` must
+    /// be prepended as the first argument so the callee receives its runtime handle.
+    pub user_func_names: &'a std::collections::HashSet<String>,
     /// The IR type for the `_rt: GameRuntime` explicit runtime handle parameter.
     /// Used as param 0 in every translated GML function signature.
     pub rt_ty: Type,

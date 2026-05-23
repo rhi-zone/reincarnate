@@ -816,6 +816,11 @@ fn translate_call_op(
                 if ctx.stateful_runtime_names.contains(func_name.as_str()) {
                     args.insert(0, rt_val);
                 }
+                // User-defined functions receive _rt as their first IR param (Phase 1
+                // guarantee). Prepend rt_val so the callee gets its runtime handle.
+                if ctx.user_func_names.contains(&func_name) {
+                    args.insert(0, rt_val);
+                }
                 // @@NewGMLArray@@ and @@NewGMLObject@@ are registered with correct
                 // return types in lib.rs before the stub loop, so no call-site
                 // override is needed — a fresh var lets the constraint solver

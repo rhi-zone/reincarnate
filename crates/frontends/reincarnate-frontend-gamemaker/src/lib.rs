@@ -230,6 +230,10 @@ impl Frontend for GameMakerFrontend {
             .chain(user_func_registry.iter().map(|(k, v)| (k.clone(), *v)))
             .collect();
 
+        // Names of all pre-registered user functions (Phase 1 guarantee: each has _rt as param 0).
+        // Used in translate_call_op to prepend rt_val when calling a user function.
+        let user_func_names: HashSet<String> = user_func_registry.keys().cloned().collect();
+
         // Translate scripts.
         let (script_ok, script_err) = translate_scripts(
             &dw,
@@ -250,6 +254,7 @@ impl Frontend for GameMakerFrontend {
             bc_version,
             &combined_registry,
             &user_func_registry,
+            &user_func_names,
             &rt_ty,
         )?;
         eprintln!("[gamemaker] translated {script_ok} scripts ({script_err} errors)");
@@ -270,6 +275,7 @@ impl Frontend for GameMakerFrontend {
             &script_names,
             bc_version,
             &combined_registry,
+            &user_func_names,
             &rt_ty,
         )
         .map_err(|e| CoreError::Translate {
@@ -298,6 +304,7 @@ impl Frontend for GameMakerFrontend {
             bc_version,
             &combined_registry,
             &user_func_registry,
+            &user_func_names,
             &rt_ty,
         );
         if glob_count > 0 {
@@ -321,6 +328,7 @@ impl Frontend for GameMakerFrontend {
             bc_version,
             &combined_registry,
             &user_func_registry,
+            &user_func_names,
             &rt_ty,
         );
         if room_count > 0 {
@@ -422,6 +430,7 @@ impl Frontend for GameMakerFrontend {
                     instance_types: &instance_types,
                     gml_object_type_id: gml_object_id,
                     registry: &combined_registry,
+                    user_func_names: &user_func_names,
                     rt_ty: rt_ty.clone(),
                     stateful_runtime_names: &stateful_funs::STATEFUL_RUNTIME_FUNS,
                 };
@@ -782,6 +791,7 @@ fn translate_scripts(
     bc_version: datawin::BytecodeVersion,
     registry: &HashMap<String, FuncId>,
     user_func_registry: &HashMap<String, FuncId>,
+    user_func_names: &HashSet<String>,
     rt_ty: &Type,
 ) -> Result<(usize, usize), CoreError> {
     let mut translated = 0;
@@ -932,6 +942,7 @@ fn translate_scripts(
             instance_types: &instance_types,
             gml_object_type_id: gml_object_id,
             registry,
+            user_func_names,
             rt_ty: rt_ty.clone(),
             stateful_runtime_names: &stateful_funs::STATEFUL_RUNTIME_FUNS,
         };
@@ -987,6 +998,7 @@ fn translate_global_inits(
     bc_version: datawin::BytecodeVersion,
     registry: &HashMap<String, FuncId>,
     user_func_registry: &HashMap<String, FuncId>,
+    user_func_names: &HashSet<String>,
     rt_ty: &Type,
 ) -> usize {
     let glob = match dw.glob() {
@@ -1057,6 +1069,7 @@ fn translate_global_inits(
             instance_types: &instance_types,
             gml_object_type_id: gml_object_id,
             registry,
+            user_func_names,
             rt_ty: rt_ty.clone(),
             stateful_runtime_names: &stateful_funs::STATEFUL_RUNTIME_FUNS,
         };
@@ -1098,6 +1111,7 @@ fn translate_room_creation(
     bc_version: datawin::BytecodeVersion,
     registry: &HashMap<String, FuncId>,
     user_func_registry: &HashMap<String, FuncId>,
+    user_func_names: &HashSet<String>,
     rt_ty: &Type,
 ) -> (usize, BTreeMap<usize, String>) {
     let room = match dw.room() {
@@ -1174,6 +1188,7 @@ fn translate_room_creation(
             instance_types: &instance_types,
             gml_object_type_id: gml_object_id,
             registry,
+            user_func_names,
             rt_ty: rt_ty.clone(),
             stateful_runtime_names: &stateful_funs::STATEFUL_RUNTIME_FUNS,
         };

@@ -508,6 +508,7 @@ pub(super) fn translate_with_body(
         instance_types: ctx.instance_types,
         gml_object_type_id: ctx.gml_object_type_id,
         registry: ctx.registry,
+        user_func_names: ctx.user_func_names,
         rt_ty: ctx.rt_ty.clone(),
         stateful_runtime_names: ctx.stateful_runtime_names,
     };
