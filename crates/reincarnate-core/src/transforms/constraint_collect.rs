@@ -673,9 +673,9 @@ pub fn collect_function(
         .map(|fid| (module.func_name(fid), &module.functions[fid].sig))
         .collect();
 
-    // Intrinsic Op::Call rule lookup: call FuncId → type rule.
-    // Intrinsic functions registered via `register_runtime_intrinsic` carry a
-    // `type_rule` on the Function rather than in system_call_type_rules.
+    // Op::Call type-rule lookup: call FuncId → type rule.
+    // Functions registered with `register_runtime` may carry a `type_rule`
+    // on the Function rather than in system_call_type_rules.
     let intrinsic_type_rules: HashMap<FuncId, &SystemCallTypeRule> = module
         .runtime_registry
         .values()

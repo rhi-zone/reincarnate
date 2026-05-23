@@ -1480,6 +1480,11 @@ fn emit_free_functions_file(
 
     // Scan free functions for external class references.
     let intrinsic_calls_free = build_intrinsic_calls_map(module);
+    let free_fid_names: HashMap<FuncId, String> = module
+        .functions
+        .keys()
+        .map(|fid| (fid, module.func_name(fid).to_string()))
+        .collect();
     let mut refs = RefSets::default();
     for &fid in free_funcs {
         let func = &module.functions[fid];
@@ -1497,6 +1502,7 @@ fn emit_free_functions_file(
             &object_ts_names,
             engine,
             Some(&intrinsic_calls_free),
+            Some(&free_fid_names),
             &mut refs,
         );
     }

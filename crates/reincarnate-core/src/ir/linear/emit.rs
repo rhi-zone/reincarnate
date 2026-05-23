@@ -663,24 +663,6 @@ impl<'a> EmitCtx<'a> {
                 // builtin FuncIds registered by `register_core_builtins`).
                 if self.config.pure_fids.contains(callee_fid) {
                     self.build_builtin_expr(fname, args)
-                } else if let Some((system, method)) = self.config.intrinsic_calls.get(fname) {
-                    // Intrinsic call: lower to Expr::SystemCall so that all
-                    // existing engine-specific backend rewrite passes work unchanged.
-                    //
-                    // Strip the explicit _rt arg (arg 0) before building SystemCall —
-                    // all GML intrinsics now have _rt as their first parameter, but
-                    // SystemCall convention does not include it; the backend rewrites
-                    // handle _rt access via this._rt. Remove in Phase 2.
-                    let effective_args: &[ValueId] = if !args.is_empty() {
-                        &args[1..]
-                    } else {
-                        &args[..]
-                    };
-                    Expr::SystemCall {
-                        system: system.clone(),
-                        method: method.clone(),
-                        args: effective_args.iter().map(|&a| self.build_val(a)).collect(),
-                    }
                 } else {
                     Expr::Call {
                         func: fname.to_string(),
@@ -1452,42 +1434,73 @@ impl<'a> EmitCtx<'a> {
             _ => None,
         };
         let expr = {
-            // Look up the (system, method) pair for this op — either from an
-            // explicit Op::SystemCall, or from an intrinsic Op::Call that the
-            // emitter lowers to Expr::SystemCall via `intrinsic_calls`.
-            let system_method: Option<(&str, &str)> = match &op_clone {
-                Op::SystemCall { system, method, .. } => Some((system.as_str(), method.as_str())),
-                Op::Call {
-                    func: callee_fid, ..
-                } => self
-                    .config
-                    .func_names
-                    .get(callee_fid)
-                    .and_then(|fname| self.config.intrinsic_calls.get(fname.as_str()))
-                    .map(|(sys, meth)| (sys.as_str(), meth.as_str())),
-                _ => None,
-            };
-            if let Some((system, method)) = system_method {
-                let in_narrowed = self
-                    .config
-                    .cast_narrowed_syscall_results_for
-                    .iter()
-                    .any(|(s, m)| s == system && m == method);
-                let in_struct_only = matches!(&result_ty, Type::Instance(_))
-                    && self
+            // Determine whether to inject `as <type>` cast for narrowed syscall results.
+            // Checks cast_narrowed_syscall_results_for and cast_struct_syscall_results_for
+            // against the (system, method) pair from:
+            // - Op::SystemCall: directly available.
+            // - Op::Call with dotted name (e.g. "GameMaker.Instance.getField"): split at
+            //   the last dot to get (system, method). Also checks intrinsic_calls map
+            //   for Flash/Twine Op::Call intrinsics.
+            let in_narrowed_or_struct_only = match &op_clone {
+                Op::SystemCall { system, method, .. } => {
+                    let in_narrowed = self
                         .config
-                        .cast_struct_syscall_results_for
+                        .cast_narrowed_syscall_results_for
                         .iter()
                         .any(|(s, m)| s == system && m == method);
-                if let Some(cast_kind) = syscall_cast_kind {
-                    if in_narrowed || in_struct_only {
-                        Expr::Cast {
-                            expr: Box::new(expr),
-                            ty: result_ty.clone(),
-                            kind: cast_kind,
+                    let in_struct_only = matches!(&result_ty, Type::Instance(_))
+                        && self
+                            .config
+                            .cast_struct_syscall_results_for
+                            .iter()
+                            .any(|(s, m)| s == system && m == method);
+                    in_narrowed || in_struct_only
+                }
+                Op::Call {
+                    func: callee_fid, ..
+                } => {
+                    let fname = self.config.func_names.get(callee_fid).map(|s| s.as_str());
+                    if let Some(fname) = fname {
+                        // Check explicit intrinsic_calls map first (Flash/Twine).
+                        let sm_from_map = self
+                            .config
+                            .intrinsic_calls
+                            .get(fname)
+                            .map(|(s, m)| (s.as_str(), m.as_str()));
+                        // Fall back to dotted-name split (GML plain Op::Call).
+                        let sm = sm_from_map.or_else(|| {
+                            fname
+                                .rfind('.')
+                                .map(|dot| (&fname[..dot], &fname[dot + 1..]))
+                        });
+                        if let Some((system, method)) = sm {
+                            let in_narrowed = self
+                                .config
+                                .cast_narrowed_syscall_results_for
+                                .iter()
+                                .any(|(s, m)| s == system && m == method);
+                            let in_struct_only = matches!(&result_ty, Type::Instance(_))
+                                && self
+                                    .config
+                                    .cast_struct_syscall_results_for
+                                    .iter()
+                                    .any(|(s, m)| s == system && m == method);
+                            in_narrowed || in_struct_only
+                        } else {
+                            false
                         }
                     } else {
-                        expr
+                        false
+                    }
+                }
+                _ => false,
+            };
+            if in_narrowed_or_struct_only {
+                if let Some(cast_kind) = syscall_cast_kind {
+                    Expr::Cast {
+                        expr: Box::new(expr),
+                        ty: result_ty.clone(),
+                        kind: cast_kind,
                     }
                 } else {
                     expr

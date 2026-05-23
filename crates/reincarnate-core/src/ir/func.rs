@@ -32,9 +32,15 @@ pub enum InlineHint {
 /// so that all existing engine-specific rewrite passes work unchanged.
 ///
 /// The (system, method) mapping is defined by [`IntrinsicKind::system_method`].
+///
+/// **Note:** GML syscalls (Phase 2+) no longer use `IntrinsicKind` — they are
+/// registered as plain runtime functions and the TS backend rewrite pass matches
+/// on the full dotted call name directly.  `IntrinsicKind` is retained for
+/// other engines (Flash, Twine) that may use it in the future.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum IntrinsicKind {
-    // GameMaker engine intrinsics — see `system_method()` for (system, method) mapping.
+    // GameMaker engine intrinsics — retained for reference; no longer set by the
+    // GML frontend (Phase 2+). Kept for potential use by other engine frontends.
     GameMakerGetField,
     GameMakerSetField,
     GameMakerGetOn,
@@ -195,7 +201,9 @@ pub struct Function {
     /// `Expr::SystemCall { system, method, args }` using [`IntrinsicKind::system_method`],
     /// so that all existing engine-specific rewrite passes work unchanged.
     ///
-    /// `None` for regular functions (emitted as a plain call).
+    /// `None` for regular functions (emitted as a plain call) and for all GML
+    /// syscalls (Phase 2+: those are plain runtime functions whose dotted names
+    /// are matched directly by the TS backend rewrite pass).
     ///
     /// Not serialized — rebuilt by the frontend on every run.
     #[serde(skip)]

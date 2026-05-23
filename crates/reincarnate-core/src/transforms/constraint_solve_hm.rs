@@ -484,9 +484,9 @@ impl Transform for ConstraintSolveHM {
             }
         }
 
-        // Pre-scan for undeclared global names used in intrinsic Op::Call ops
-        // (Phase 3a: GML syscalls registered via register_runtime_intrinsic carry
-        // their type rule on Function::type_rule rather than system_call_type_rules).
+        // Pre-scan for undeclared global names used in Op::Call ops whose
+        // Function::type_rule references globals (GML syscalls carry their
+        // type rule on Function::type_rule rather than system_call_type_rules).
         let intrinsic_has_globals = module.runtime_registry.values().any(|&fid| {
             matches!(
                 module.functions[fid].type_rule,
