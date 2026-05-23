@@ -8011,8 +8011,6 @@
         "array_contains",
         "array_resize",
         "is_array",
-        "is_string",
-        "is_real",
         "is_undefined",
         "is_nan",
         "is_infinity",

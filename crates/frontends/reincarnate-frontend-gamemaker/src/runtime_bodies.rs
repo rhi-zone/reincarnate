@@ -98,6 +98,8 @@ pub fn register_runtime_bodies(module: &mut Module) {
     attach_body_ln(module);
     attach_body_math_get_epsilon(module);
     attach_body_is_bool(module);
+    attach_body_is_real(module);
+    attach_body_is_string(module);
     attach_body_real(module);
 }
 
@@ -3609,6 +3611,74 @@ fn attach_body_is_bool(module: &mut Module) {
     let x = b.param(0);
 
     let result = b.type_check(x, Type::Bool);
+    b.ret(Some(result));
+
+    let built = b.build();
+    let stub = &mut module.functions[fid];
+    stub.blocks = built.blocks;
+    stub.insts = built.insts;
+    stub.value_types = built.value_types;
+    stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
+}
+
+// ---------------------------------------------------------------------------
+// is_real(x: Unknown) -> Bool  =  type_check(x, Float(64))
+// JS semantics: typeof val === "number"
+// ---------------------------------------------------------------------------
+
+fn attach_body_is_real(module: &mut Module) {
+    let fid = match module.lookup_runtime("is_real") {
+        Some(id) => id,
+        None => return,
+    };
+
+    let sig = FunctionSig {
+        params: vec![Type::Unknown],
+        return_ty: Type::Bool,
+        defaults: vec![],
+        has_rest_param: false,
+        param_lower_bounds: vec![],
+    };
+
+    let mut b = make_builder(module, "is_real", sig);
+    let x = b.param(0);
+
+    let result = b.type_check(x, Type::Float(64));
+    b.ret(Some(result));
+
+    let built = b.build();
+    let stub = &mut module.functions[fid];
+    stub.blocks = built.blocks;
+    stub.insts = built.insts;
+    stub.value_types = built.value_types;
+    stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
+}
+
+// ---------------------------------------------------------------------------
+// is_string(x: Unknown) -> Bool  =  type_check(x, String)
+// JS semantics: typeof val === "string"
+// ---------------------------------------------------------------------------
+
+fn attach_body_is_string(module: &mut Module) {
+    let fid = match module.lookup_runtime("is_string") {
+        Some(id) => id,
+        None => return,
+    };
+
+    let sig = FunctionSig {
+        params: vec![Type::Unknown],
+        return_ty: Type::Bool,
+        defaults: vec![],
+        has_rest_param: false,
+        param_lower_bounds: vec![],
+    };
+
+    let mut b = make_builder(module, "is_string", sig);
+    let x = b.param(0);
+
+    let result = b.type_check(x, Type::String);
     b.ret(Some(result));
 
     let built = b.build();
