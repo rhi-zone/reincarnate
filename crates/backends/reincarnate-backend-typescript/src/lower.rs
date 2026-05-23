@@ -550,6 +550,41 @@ fn lower_builtin_opt(op_name: &str, args: &[Expr], ctx: &LowerCtx) -> Option<JsE
             )),
         }),
 
+        // is_array_unknown: (Unknown) -> Bool  — emit as Array.isArray(x)
+        "is_array_unknown" => Some(JsExpr::Call {
+            callee: Box::new(build_dotted_path("Array.isArray")),
+            args: vec![lower_expr(&args[0], ctx)],
+        }),
+
+        // is_struct_unknown: (Unknown) -> Bool
+        // emit as: typeof x === "object" && x != null && !Array.isArray(x)
+        "is_struct_unknown" => {
+            let arg = lower_expr(&args[0], ctx);
+            let is_object = JsExpr::Cmp {
+                kind: CmpKind::Eq,
+                lhs: Box::new(JsExpr::TypeOf(Box::new(arg.clone()))),
+                rhs: Box::new(JsExpr::Literal(
+                    reincarnate_core::ir::value::Constant::String("object".to_string()),
+                )),
+            };
+            let not_null = JsExpr::Cmp {
+                kind: CmpKind::Ne,
+                lhs: Box::new(arg.clone()),
+                rhs: Box::new(JsExpr::Literal(reincarnate_core::ir::value::Constant::Null)),
+            };
+            let not_array = JsExpr::Not(Box::new(JsExpr::Call {
+                callee: Box::new(build_dotted_path("Array.isArray")),
+                args: vec![arg],
+            }));
+            Some(JsExpr::LogicalAnd {
+                lhs: Box::new(JsExpr::LogicalAnd {
+                    lhs: Box::new(is_object),
+                    rhs: Box::new(not_null),
+                }),
+                rhs: Box::new(not_array),
+            })
+        }
+
         // --- Not a core builtin ---
         _ => None,
     }

@@ -1426,11 +1426,13 @@ fn needs_parens(expr: &JsExpr) -> bool {
 fn print_type_check(expr: &JsExpr, ty: &Type, use_instanceof: bool) -> String {
     let operand = print_expr_operand(expr);
     match ty {
+        Type::Void => format!("typeof {operand} === \"undefined\""),
         Type::Bool => format!("typeof {operand} === \"boolean\""),
         Type::Int(_) | Type::UInt(_) | Type::Float(_) => {
             format!("typeof {operand} === \"number\"")
         }
         Type::String => format!("typeof {operand} === \"string\""),
+        Type::Function(_) => format!("typeof {operand} === \"function\""),
         Type::Instance(id) => {
             let ts_name = print_type_id(*id);
             if use_instanceof {

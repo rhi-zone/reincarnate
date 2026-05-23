@@ -100,6 +100,10 @@ pub fn register_runtime_bodies(module: &mut Module) {
     attach_body_is_bool(module);
     attach_body_is_real(module);
     attach_body_is_string(module);
+    attach_body_is_undefined(module);
+    attach_body_is_array(module);
+    attach_body_is_method(module);
+    attach_body_is_struct(module);
     attach_body_real(module);
 }
 
@@ -3679,6 +3683,151 @@ fn attach_body_is_string(module: &mut Module) {
     let x = b.param(0);
 
     let result = b.type_check(x, Type::String);
+    b.ret(Some(result));
+
+    let built = b.build();
+    let stub = &mut module.functions[fid];
+    stub.blocks = built.blocks;
+    stub.insts = built.insts;
+    stub.value_types = built.value_types;
+    stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
+}
+
+// ---------------------------------------------------------------------------
+// is_undefined(x: Unknown) -> Bool  =  type_check(x, Void)
+// JS semantics: typeof val === "undefined"
+// ---------------------------------------------------------------------------
+
+fn attach_body_is_undefined(module: &mut Module) {
+    let fid = match module.lookup_runtime("is_undefined") {
+        Some(id) => id,
+        None => return,
+    };
+
+    let sig = FunctionSig {
+        params: vec![Type::Unknown],
+        return_ty: Type::Bool,
+        defaults: vec![],
+        has_rest_param: false,
+        param_lower_bounds: vec![],
+    };
+
+    let mut b = make_builder(module, "is_undefined", sig);
+    let x = b.param(0);
+
+    let result = b.type_check(x, Type::Void);
+    b.ret(Some(result));
+
+    let built = b.build();
+    let stub = &mut module.functions[fid];
+    stub.blocks = built.blocks;
+    stub.insts = built.insts;
+    stub.value_types = built.value_types;
+    stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
+}
+
+// ---------------------------------------------------------------------------
+// is_array(x: Unknown) -> Bool  =  is_array_unknown(x)
+// JS semantics: Array.isArray(val)
+// ---------------------------------------------------------------------------
+
+fn attach_body_is_array(module: &mut Module) {
+    let fid = match module.lookup_runtime("is_array") {
+        Some(id) => id,
+        None => return,
+    };
+
+    let sig = FunctionSig {
+        params: vec![Type::Unknown],
+        return_ty: Type::Bool,
+        defaults: vec![],
+        has_rest_param: false,
+        param_lower_bounds: vec![],
+    };
+
+    let mut b = make_builder(module, "is_array", sig);
+    let x = b.param(0);
+
+    let result = b.call_named("is_array_unknown", &[x], Type::Bool);
+    b.ret(Some(result));
+
+    let built = b.build();
+    let stub = &mut module.functions[fid];
+    stub.blocks = built.blocks;
+    stub.insts = built.insts;
+    stub.value_types = built.value_types;
+    stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
+}
+
+// ---------------------------------------------------------------------------
+// is_method(x: Unknown) -> Bool  =  type_check(x, Function(...))
+// JS semantics: typeof val === "function"
+// ---------------------------------------------------------------------------
+
+fn attach_body_is_method(module: &mut Module) {
+    let fid = match module.lookup_runtime("is_method") {
+        Some(id) => id,
+        None => return,
+    };
+
+    let sig = FunctionSig {
+        params: vec![Type::Unknown],
+        return_ty: Type::Bool,
+        defaults: vec![],
+        has_rest_param: false,
+        param_lower_bounds: vec![],
+    };
+
+    let mut b = make_builder(module, "is_method", sig);
+    let x = b.param(0);
+
+    // Use a zero-param function type as the representative function type.
+    // The backend dispatches on `Type::Function(_)` and emits `typeof x === "function"`.
+    let fn_ty = Type::Function(Box::new(FunctionSig {
+        params: vec![],
+        return_ty: Type::Unknown,
+        defaults: vec![],
+        has_rest_param: false,
+        param_lower_bounds: vec![],
+    }));
+    let result = b.type_check(x, fn_ty);
+    b.ret(Some(result));
+
+    let built = b.build();
+    let stub = &mut module.functions[fid];
+    stub.blocks = built.blocks;
+    stub.insts = built.insts;
+    stub.value_types = built.value_types;
+    stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
+}
+
+// ---------------------------------------------------------------------------
+// is_struct(x: Unknown) -> Bool  =  is_struct_unknown(x)
+// JS semantics: typeof val === "object" && val != null && !Array.isArray(val)
+// ---------------------------------------------------------------------------
+
+fn attach_body_is_struct(module: &mut Module) {
+    let fid = match module.lookup_runtime("is_struct") {
+        Some(id) => id,
+        None => return,
+    };
+
+    let sig = FunctionSig {
+        params: vec![Type::Unknown],
+        return_ty: Type::Bool,
+        defaults: vec![],
+        has_rest_param: false,
+        param_lower_bounds: vec![],
+    };
+
+    let mut b = make_builder(module, "is_struct", sig);
+    let x = b.param(0);
+
+    let result = b.call_named("is_struct_unknown", &[x], Type::Bool);
     b.ret(Some(result));
 
     let built = b.build();

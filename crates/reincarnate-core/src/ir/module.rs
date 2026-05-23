@@ -783,10 +783,11 @@ impl Module {
     /// Breakdown: 5 arith ops × 4 types = 20, concat_str = 1, neg × 4 = 4,
     /// not/and/or bool = 3, 5 bitwise ops × 1 type (i32) = 5, bitnot × 1 = 1 → 34.
     /// Math single-arg f64 = 17, math binary f64 = 5, string ops = 12, array ops = 2,
-    /// coercion ops = 4 (to_number_unknown, to_string_unknown, to_i32_f64, to_u32_f64) → 74.
+    /// coercion ops = 5 (to_number_unknown, to_number_str, to_string_unknown, to_i32_f64, to_u32_f64) → 75.
+    /// predicate ops = 2 (is_array_unknown, is_struct_unknown) → 77.
     /// Polymorphic `_any` stubs are GML-specific and registered by the GML frontend,
     /// not by `register_core_builtins`, so they are not counted here.
-    pub const NUM_CORE_BUILTINS: u32 = 74;
+    pub const NUM_CORE_BUILTINS: u32 = 77;
 
     pub fn new(name: String) -> Self {
         let mut module = Self {
@@ -1089,6 +1090,26 @@ impl Module {
             FunctionSig {
                 params: vec![Type::Float(64)],
                 return_ty: Type::Float(64),
+                ..Default::default()
+            },
+        );
+        self.core_builtin_fids.insert(fid);
+        // is_array_unknown: (Unknown) -> Bool  — emit as Array.isArray(x)
+        let fid = self.register_runtime(
+            "is_array_unknown",
+            FunctionSig {
+                params: vec![Type::Unknown],
+                return_ty: Type::Bool,
+                ..Default::default()
+            },
+        );
+        self.core_builtin_fids.insert(fid);
+        // is_struct_unknown: (Unknown) -> Bool  — emit as typeof x === "object" && x !== null && !Array.isArray(x)
+        let fid = self.register_runtime(
+            "is_struct_unknown",
+            FunctionSig {
+                params: vec![Type::Unknown],
+                return_ty: Type::Bool,
                 ..Default::default()
             },
         );
