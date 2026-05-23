@@ -791,7 +791,7 @@ impl Module {
     /// expresses structurally is a Law 2 violation.
     /// Polymorphic `_any` stubs are GML-specific and registered by the GML frontend,
     /// not by `register_core_builtins`, so they are not counted here.
-    pub const NUM_CORE_BUILTINS: u32 = 76;
+    pub const NUM_CORE_BUILTINS: u32 = 77;
 
     pub fn new(name: String) -> Self {
         let mut module = Self {
@@ -1044,6 +1044,16 @@ impl Module {
             FunctionSig {
                 params: vec![Type::Array(Box::new(Type::Unknown)), Type::Unknown],
                 return_ty: Type::Bool,
+                ..Default::default()
+            },
+        );
+        self.core_builtin_fids.insert(fid);
+        // string_join_arr: (Array(String), String) -> String  — emit as arr.join(sep)
+        let fid = self.register_runtime(
+            "string_join_arr",
+            FunctionSig {
+                params: vec![Type::Array(Box::new(Type::String)), Type::String],
+                return_ty: Type::String,
                 ..Default::default()
             },
         );

@@ -132,6 +132,15 @@ pub fn register_runtime_bodies(module: &mut Module) {
     attach_body_is_method(module);
     attach_body_is_struct(module);
     attach_body_real(module);
+    attach_body_pass(module);
+    attach_body_try_hook(module);
+    attach_body_try_unhook(module);
+    attach_body_approach(module);
+    attach_body_angle_difference(module);
+    attach_body_rectangle_in_rectangle(module);
+    attach_body_matrix_build(module);
+    attach_body_array_copy(module);
+    attach_body_array_equals(module);
 }
 
 // ---------------------------------------------------------------------------
@@ -1565,7 +1574,7 @@ fn attach_body_string_replace_all(module: &mut Module) {
 
             let arr_ty = Type::Array(Box::new(Type::String));
             let parts = b.call_named("string_split_str", &[content, find], arr_ty);
-            let result = b.call_method(parts, "join", &[replace], Type::String);
+            let result = b.call_named("string_join_arr", &[parts, replace], Type::String);
             b.ret(Some(result));
         },
     );
@@ -1680,7 +1689,7 @@ fn attach_body_string_hash_to_newline(module: &mut Module) {
             let newline = b.const_string("\n");
             let arr_ty = Type::Array(Box::new(Type::String));
             let parts = b.call_named("string_split_str", &[s, hash], arr_ty);
-            let result = b.call_method(parts, "join", &[newline], Type::String);
+            let result = b.call_named("string_join_arr", &[parts, newline], Type::String);
             b.ret(Some(result));
         },
     );
@@ -2021,4 +2030,399 @@ fn attach_body_real(module: &mut Module) {
         let result = b.call_named("to_number_str", &[s], Type::Float(64));
         b.ret(Some(result));
     });
+}
+
+// ---------------------------------------------------------------------------
+// pass() -> void   GML no-op statement
+// ---------------------------------------------------------------------------
+
+fn attach_body_pass(module: &mut Module) {
+    attach_runtime_body(module, "pass", &[], Type::Void, |b| {
+        b.ret(None);
+    });
+}
+
+// ---------------------------------------------------------------------------
+// __try_hook__(begin: f64, end: f64) -> void   GML no-op
+// ---------------------------------------------------------------------------
+
+fn attach_body_try_hook(module: &mut Module) {
+    attach_runtime_body(
+        module,
+        "__try_hook__",
+        &[Type::Float(64), Type::Float(64)],
+        Type::Void,
+        |b| {
+            b.param(0);
+            b.param(1);
+            b.ret(None);
+        },
+    );
+}
+
+// ---------------------------------------------------------------------------
+// __try_unhook__() -> void   GML no-op
+// ---------------------------------------------------------------------------
+
+fn attach_body_try_unhook(module: &mut Module) {
+    attach_runtime_body(module, "__try_unhook__", &[], Type::Void, |b| {
+        b.ret(None);
+    });
+}
+
+// ---------------------------------------------------------------------------
+// approach(value: f64, target: f64, amount: f64) -> f64
+//   if value < target: min(value + amount, target)
+//   else:              max(value - amount, target)
+// ---------------------------------------------------------------------------
+
+fn attach_body_approach(module: &mut Module) {
+    attach_runtime_body(
+        module,
+        "approach",
+        &[Type::Float(64), Type::Float(64), Type::Float(64)],
+        Type::Float(64),
+        |b| {
+            let value = b.param(0);
+            let target = b.param(1);
+            let amount = b.param(2);
+
+            let (merge_block, merge_params) = b.create_block_with_params(&[Type::Float(64)]);
+            let lt_block = b.create_block();
+            let ge_block = b.create_block();
+
+            let val_lt_target = b.cmp(CmpKind::Lt, value, target);
+            b.br_if(val_lt_target, lt_block, &[], ge_block, &[]);
+
+            // value < target: min(value + amount, target)
+            b.switch_to_block(lt_block);
+            let added = b.add(value, amount);
+            let clamped_up = b.call_named("min_f64", &[added, target], Type::Float(64));
+            b.br(merge_block, &[clamped_up]);
+
+            // value >= target: max(value - amount, target)
+            b.switch_to_block(ge_block);
+            let subbed = b.sub(value, amount);
+            let clamped_down = b.call_named("max_f64", &[subbed, target], Type::Float(64));
+            b.br(merge_block, &[clamped_down]);
+
+            b.switch_to_block(merge_block);
+            b.ret(Some(merge_params[0]));
+        },
+    );
+}
+
+// ---------------------------------------------------------------------------
+// angle_difference(a: f64, b: f64) -> f64
+//   ((((a - b) % 360) + 540) % 360) - 180
+// ---------------------------------------------------------------------------
+
+fn attach_body_angle_difference(module: &mut Module) {
+    attach_runtime_body(
+        module,
+        "angle_difference",
+        &[Type::Float(64), Type::Float(64)],
+        Type::Float(64),
+        |b| {
+            let a = b.param(0);
+            let bv = b.param(1);
+            let c360 = b.const_float(360.0);
+            let c540 = b.const_float(540.0);
+            let c180 = b.const_float(180.0);
+            let diff = b.sub(a, bv);
+            let mod1 = b.rem(diff, c360);
+            let plus540 = b.add(mod1, c540);
+            let mod2 = b.rem(plus540, c360);
+            let result = b.sub(mod2, c180);
+            b.ret(Some(result));
+        },
+    );
+}
+
+// ---------------------------------------------------------------------------
+// rectangle_in_rectangle(sx1,sy1,sx2,sy2, dx1,dy1,dx2,dy2: f64) -> f64
+//   0 = no overlap, 1 = partial, 2 = fully inside
+//
+//   if sx2 < dx1 || sx1 > dx2 || sy2 < dy1 || sy1 > dy2 → 0
+//   if sx1 >= dx1 && sx2 <= dx2 && sy1 >= dy1 && sy2 <= dy2 → 2
+//   else → 1
+// ---------------------------------------------------------------------------
+
+fn attach_body_rectangle_in_rectangle(module: &mut Module) {
+    attach_runtime_body(
+        module,
+        "rectangle_in_rectangle",
+        &[
+            Type::Float(64),
+            Type::Float(64),
+            Type::Float(64),
+            Type::Float(64),
+            Type::Float(64),
+            Type::Float(64),
+            Type::Float(64),
+            Type::Float(64),
+        ],
+        Type::Float(64),
+        |b| {
+            let sx1 = b.param(0);
+            let sy1 = b.param(1);
+            let sx2 = b.param(2);
+            let sy2 = b.param(3);
+            let dx1 = b.param(4);
+            let dy1 = b.param(5);
+            let dx2 = b.param(6);
+            let dy2 = b.param(7);
+
+            let zero = b.const_float(0.0);
+            let one = b.const_float(1.0);
+            let two = b.const_float(2.0);
+
+            // No-overlap check: sx2 < dx1 || sx1 > dx2 || sy2 < dy1 || sy1 > dy2
+            let sx2_lt_dx1 = b.cmp(CmpKind::Lt, sx2, dx1);
+            let sx1_gt_dx2 = b.cmp(CmpKind::Gt, sx1, dx2);
+            let sy2_lt_dy1 = b.cmp(CmpKind::Lt, sy2, dy1);
+            let sy1_gt_dy2 = b.cmp(CmpKind::Gt, sy1, dy2);
+            let no_x = b.call_named("or_bool", &[sx2_lt_dx1, sx1_gt_dx2], Type::Bool);
+            let no_y = b.call_named("or_bool", &[sy2_lt_dy1, sy1_gt_dy2], Type::Bool);
+            let no_overlap = b.call_named("or_bool", &[no_x, no_y], Type::Bool);
+
+            let ret_zero_block = b.create_block();
+            let check_inside_block = b.create_block();
+            b.br_if(no_overlap, ret_zero_block, &[], check_inside_block, &[]);
+
+            b.switch_to_block(ret_zero_block);
+            b.ret(Some(zero));
+
+            // Fully-inside check: sx1 >= dx1 && sx2 <= dx2 && sy1 >= dy1 && sy2 <= dy2
+            b.switch_to_block(check_inside_block);
+            let sx1_ge_dx1 = b.cmp(CmpKind::Ge, sx1, dx1);
+            let sx2_le_dx2 = b.cmp(CmpKind::Le, sx2, dx2);
+            let sy1_ge_dy1 = b.cmp(CmpKind::Ge, sy1, dy1);
+            let sy2_le_dy2 = b.cmp(CmpKind::Le, sy2, dy2);
+            let in_x = b.call_named("and_bool", &[sx1_ge_dx1, sx2_le_dx2], Type::Bool);
+            let in_y = b.call_named("and_bool", &[sy1_ge_dy1, sy2_le_dy2], Type::Bool);
+            let fully_inside = b.call_named("and_bool", &[in_x, in_y], Type::Bool);
+
+            let ret_two_block = b.create_block();
+            let ret_one_block = b.create_block();
+            b.br_if(fully_inside, ret_two_block, &[], ret_one_block, &[]);
+
+            b.switch_to_block(ret_two_block);
+            b.ret(Some(two));
+
+            b.switch_to_block(ret_one_block);
+            b.ret(Some(one));
+        },
+    );
+}
+
+// ---------------------------------------------------------------------------
+// matrix_build(x,y,z,xrot,yrot,zrot,xscale,yscale,zscale: f64) -> Array(f64)
+//   Builds a 4×4 TRS matrix (column-major, 16 elements).
+// ---------------------------------------------------------------------------
+
+fn attach_body_matrix_build(module: &mut Module) {
+    attach_runtime_body(
+        module,
+        "matrix_build",
+        &[
+            Type::Float(64),
+            Type::Float(64),
+            Type::Float(64),
+            Type::Float(64),
+            Type::Float(64),
+            Type::Float(64),
+            Type::Float(64),
+            Type::Float(64),
+            Type::Float(64),
+        ],
+        Type::Array(Box::new(Type::Float(64))),
+        |b| {
+            let x = b.param(0);
+            let y = b.param(1);
+            let z = b.param(2);
+            let xrotation = b.param(3);
+            let yrotation = b.param(4);
+            let zrotation = b.param(5);
+            let xscale = b.param(6);
+            let yscale = b.param(7);
+            let zscale = b.param(8);
+
+            let pi_over_180 = b.const_float(PI / 180.0);
+
+            let xrad = b.mul(xrotation, pi_over_180);
+            let yrad = b.mul(yrotation, pi_over_180);
+            let zrad = b.mul(zrotation, pi_over_180);
+
+            let cx = b.call_named("cos_f64", &[xrad], Type::Float(64));
+            let sx = b.call_named("sin_f64", &[xrad], Type::Float(64));
+            let cy = b.call_named("cos_f64", &[yrad], Type::Float(64));
+            let sy = b.call_named("sin_f64", &[yrad], Type::Float(64));
+            let cz = b.call_named("cos_f64", &[zrad], Type::Float(64));
+            let sz = b.call_named("sin_f64", &[zrad], Type::Float(64));
+
+            // Row 0: cy*cz*xscale, cy*sz*xscale, -sy*xscale, 0
+            let cy_cz = b.mul(cy, cz);
+            let r00 = b.mul(cy_cz, xscale);
+            let cy_sz = b.mul(cy, sz);
+            let r01 = b.mul(cy_sz, xscale);
+            let neg_sy = b.neg(sy);
+            let r02 = b.mul(neg_sy, xscale);
+            let r03 = b.const_float(0.0);
+
+            // Row 1: (sx*sy*cz - cx*sz)*yscale, (sx*sy*sz + cx*cz)*yscale, sx*cy*yscale, 0
+            let sx_sy = b.mul(sx, sy);
+            let sx_sy_cz = b.mul(sx_sy, cz);
+            let cx_sz = b.mul(cx, sz);
+            let r10_inner = b.sub(sx_sy_cz, cx_sz);
+            let r10 = b.mul(r10_inner, yscale);
+            let sx_sy_sz = b.mul(sx_sy, sz);
+            let cx_cz = b.mul(cx, cz);
+            let r11_inner = b.add(sx_sy_sz, cx_cz);
+            let r11 = b.mul(r11_inner, yscale);
+            let sx_cy = b.mul(sx, cy);
+            let r12 = b.mul(sx_cy, yscale);
+            let r13 = b.const_float(0.0);
+
+            // Row 2: (cx*sy*cz + sx*sz)*zscale, (cx*sy*sz - sx*cz)*zscale, cx*cy*zscale, 0
+            let cx_sy = b.mul(cx, sy);
+            let cx_sy_cz = b.mul(cx_sy, cz);
+            let sx_sz = b.mul(sx, sz);
+            let r20_inner = b.add(cx_sy_cz, sx_sz);
+            let r20 = b.mul(r20_inner, zscale);
+            let cx_sy_sz = b.mul(cx_sy, sz);
+            let sx_cz = b.mul(sx, cz);
+            let r21_inner = b.sub(cx_sy_sz, sx_cz);
+            let r21 = b.mul(r21_inner, zscale);
+            let cx_cy = b.mul(cx, cy);
+            let r22 = b.mul(cx_cy, zscale);
+            let r23 = b.const_float(0.0);
+
+            // Row 3: x, y, z, 1
+            let r33 = b.const_float(1.0);
+
+            let mat = b.array_init(
+                &[
+                    r00, r01, r02, r03, r10, r11, r12, r13, r20, r21, r22, r23, x, y, z, r33,
+                ],
+                Type::Float(64),
+            );
+            b.ret(Some(mat));
+        },
+    );
+}
+
+// ---------------------------------------------------------------------------
+// array_copy(dest: Array(Unknown), destIndex: f64,
+//            src: Array(Unknown), srcIndex: f64, count: f64) -> void
+//   for i in 0..count: dest[destIndex + i] = src[srcIndex + i]
+// ---------------------------------------------------------------------------
+
+fn attach_body_array_copy(module: &mut Module) {
+    attach_runtime_body(
+        module,
+        "array_copy",
+        &[
+            Type::Array(Box::new(Type::Unknown)),
+            Type::Float(64),
+            Type::Array(Box::new(Type::Unknown)),
+            Type::Float(64),
+            Type::Float(64),
+        ],
+        Type::Void,
+        |b| {
+            let dest = b.param(0);
+            let dest_index = b.param(1);
+            let src = b.param(2);
+            let src_index = b.param(3);
+            let count = b.param(4);
+
+            let zero = b.const_float(0.0);
+            let one = b.const_float(1.0);
+
+            // header: if i >= count → exit; else → body
+            let (header_block, header_params) = b.create_block_with_params(&[Type::Float(64)]);
+            let body_block = b.create_block();
+            let exit_block = b.create_block();
+
+            b.br(header_block, &[zero]);
+
+            b.switch_to_block(header_block);
+            let i = header_params[0];
+            let done = b.cmp(CmpKind::Ge, i, count);
+            b.br_if(done, exit_block, &[], body_block, &[]);
+
+            // body: dest[destIndex + i] = src[srcIndex + i]; i += 1 → header
+            b.switch_to_block(body_block);
+            let di = b.add(dest_index, i);
+            let si = b.add(src_index, i);
+            let val = b.get_index(src, si, Type::Unknown);
+            b.set_index(dest, di, val);
+            let next_i = b.add(i, one);
+            b.br(header_block, &[next_i]);
+
+            b.switch_to_block(exit_block);
+            b.ret(None);
+        },
+    );
+}
+
+// ---------------------------------------------------------------------------
+// array_equals(a: Array(Unknown), b: Array(Unknown)) -> Bool
+//   if a.length != b.length: false
+//   for i in 0..a.length: if a[i] != b[i]: false
+//   true
+// ---------------------------------------------------------------------------
+
+fn attach_body_array_equals(module: &mut Module) {
+    attach_runtime_body(
+        module,
+        "array_equals",
+        &[
+            Type::Array(Box::new(Type::Unknown)),
+            Type::Array(Box::new(Type::Unknown)),
+        ],
+        Type::Bool,
+        |b| {
+            let a = b.param(0);
+            let bv = b.param(1);
+
+            let zero = b.const_float(0.0);
+            let one = b.const_float(1.0);
+
+            let len_a = b.call_named("array_length_arr", &[a], Type::Float(64));
+            let len_b = b.call_named("array_length_arr", &[bv], Type::Float(64));
+            let lengths_differ = b.cmp(CmpKind::Ne, len_a, len_b);
+
+            let ret_false_block = b.create_block();
+            let (header_block, header_params) = b.create_block_with_params(&[Type::Float(64)]);
+            let body_block = b.create_block();
+            let ret_true_block = b.create_block();
+
+            // lengths differ → false; else → loop header
+            b.br_if(lengths_differ, ret_false_block, &[], header_block, &[zero]);
+
+            b.switch_to_block(ret_false_block);
+            let fv = b.const_bool(false);
+            b.ret(Some(fv));
+
+            // loop header: if i >= len_a → true; else → body
+            b.switch_to_block(header_block);
+            let i = header_params[0];
+            let loop_done = b.cmp(CmpKind::Ge, i, len_a);
+            b.br_if(loop_done, ret_true_block, &[], body_block, &[]);
+
+            // body: if a[i] != b[i] → false; else i += 1 → header
+            b.switch_to_block(body_block);
+            let ai = b.get_index(a, i, Type::Unknown);
+            let bi = b.get_index(bv, i, Type::Unknown);
+            let ne = b.cmp(CmpKind::Ne, ai, bi);
+            let next_i = b.add(i, one);
+            b.br_if(ne, ret_false_block, &[], header_block, &[next_i]);
+
+            b.switch_to_block(ret_true_block);
+            let tv = b.const_bool(true);
+            b.ret(Some(tv));
+        },
+    );
 }

@@ -510,6 +510,7 @@ fn lower_builtin_opt(op_name: &str, args: &[Expr], ctx: &LowerCtx) -> Option<JsE
         "string_index_of_str" => Some(method_call(1, "indexOf", &[0], args, ctx)),
         "string_slice_str" => Some(method_call(0, "slice", &[1, 2], args, ctx)),
         "string_split_str" => Some(method_call(0, "split", &[1], args, ctx)),
+        "string_join_arr" => Some(method_call(0, "join", &[1], args, ctx)),
         "string_char_code_at_str" => Some(method_call(0, "charCodeAt", &[1], args, ctx)),
         "string_repeat_str" => Some(method_call(0, "repeat", &[1], args, ctx)),
         "string_replace_first_str" => Some(method_call(0, "replace", &[1, 2], args, ctx)),
