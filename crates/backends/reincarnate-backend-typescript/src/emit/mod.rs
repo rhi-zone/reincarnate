@@ -309,6 +309,7 @@ pub fn emit_module_to_string(
         let no_short_to_qualified = HashMap::new();
         let (class_groups, free_funcs) = group_by_class(module);
         let no_stateful = BTreeSet::new();
+        let stateful_lower_names = crate::lower::collect_stateful_runtime_names(module);
         let no_free_fns = HashSet::new();
         let no_sys_aliases = BTreeMap::new();
         let empty_func_sigs = BTreeMap::new();
@@ -329,6 +330,7 @@ pub fn emit_module_to_string(
                 lowering_config,
                 engine,
                 &no_stateful,
+                &stateful_lower_names,
                 &no_free_fns,
                 func_sigs,
                 no_game_global_state,
@@ -346,8 +348,14 @@ pub fn emit_module_to_string(
             .copied()
             .filter(|&fid| module.functions[fid].method_kind == MethodKind::Closure)
             .collect();
-        let closure_bodies =
-            compile_closures(&closure_fids, module, lowering_config, engine, debug);
+        let closure_bodies = compile_closures(
+            &closure_fids,
+            module,
+            lowering_config,
+            engine,
+            debug,
+            &stateful_lower_names,
+        );
         let object_ts_names = class::resolve_object_ts_names(&module.object_names, &class_names);
         let name_map: HashMap<String, String> = module
             .object_names
@@ -373,6 +381,7 @@ pub fn emit_module_to_string(
                     &object_ts_names,
                     &closure_bodies,
                     &no_stateful,
+                    &stateful_lower_names,
                     &no_free_fns,
                     &no_sys_aliases,
                     runtime_config,
@@ -1022,6 +1031,7 @@ fn emit_class_file(
     }
 
     let mut traits_buf = String::new();
+    let stateful_lower_names = crate::lower::collect_stateful_runtime_names(module);
     emit_class(
         group,
         module,
@@ -1034,6 +1044,7 @@ fn emit_class_file(
         lowering_config,
         engine,
         &stateful_names,
+        &stateful_lower_names,
         free_func_names,
         func_sigs,
         game_global_state_type_id,
@@ -1257,6 +1268,9 @@ fn emit_runtime_functions_file(
     let no_sys_aliases = BTreeMap::new();
     let no_unique_static = HashMap::new();
     let known_classes: HashSet<String> = class_names.values().cloned().collect();
+    // Runtime bodies are pure — empty stateful set means lower_call won't
+    // synthesize any `.foo(args)` receiver rewrites.
+    let no_stateful_lower = BTreeSet::new();
 
     for &fid in runtime_fids {
         let func_name = module.name_table.func_name(fid).to_string();
@@ -1274,6 +1288,7 @@ fn emit_runtime_functions_file(
             &object_ts_names,
             &closure_bodies,
             &no_stateful,
+            &no_stateful_lower,
             &no_free_fns,
             &no_sys_aliases,
             runtime_config,
@@ -1581,8 +1596,15 @@ fn emit_free_functions_file(
     // Expr::SystemCall by the linear emitter (same as emit_class_functions does).
     let effective_lowering = lowering_config_for_engine(lowering_config, engine, Some(module));
     let effective_lowering_ref: &LoweringConfig = &effective_lowering;
-    let closure_bodies =
-        compile_closures(&closure_fids, module, effective_lowering_ref, engine, debug);
+    let stateful_lower_names = crate::lower::collect_stateful_runtime_names(module);
+    let closure_bodies = compile_closures(
+        &closure_fids,
+        module,
+        effective_lowering_ref,
+        engine,
+        debug,
+        &stateful_lower_names,
+    );
     let no_sys_aliases = BTreeMap::new();
     for &fid in free_funcs {
         if module.functions[fid].method_kind != MethodKind::Closure {
@@ -1601,6 +1623,7 @@ fn emit_free_functions_file(
                 &object_ts_names,
                 &closure_bodies,
                 &free_stateful_names,
+                &stateful_lower_names,
                 free_func_names,
                 &no_sys_aliases,
                 runtime_config,

@@ -735,7 +735,7 @@ fn translate_call_op(
     ctx: &TranslateCtx,
     gml_sizes: &mut HashMap<ValueId, u8>,
     global_scope_on_stack: &mut bool,
-    _rt_val: ValueId,
+    rt_val: ValueId,
 ) -> Result<(), String> {
     match inst.opcode {
         Opcode::Call => {
@@ -808,6 +808,13 @@ fn translate_call_op(
                         fb.param(1)
                     };
                     args.push(self_val);
+                }
+                // Stateful runtime functions have `_rt: GameRuntime` as param 0
+                // in their IR signature — prepend the runtime handle here so
+                // the call's arg list matches the callee's params.  The backend
+                // lowers such calls to `arg0.fname(rest_args)` method-call form.
+                if ctx.stateful_runtime_names.contains(func_name.as_str()) {
+                    args.insert(0, rt_val);
                 }
                 // @@NewGMLArray@@ and @@NewGMLObject@@ are registered with correct
                 // return types in lib.rs before the stub loop, so no call-site

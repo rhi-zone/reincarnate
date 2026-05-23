@@ -96,6 +96,7 @@ fn make_ctx<'a>(
         // Tests use a dummy GameRuntime TypeId (0); the type is only used for
         // signature construction and will not be validated against a real module.
         rt_ty: reincarnate_core::ir::ty::Type::Instance(TypeId::new(0)),
+        stateful_runtime_names: &crate::stateful_funs::STATEFUL_RUNTIME_FUNS,
     }
 }
 
@@ -772,14 +773,17 @@ fn test_call_opcode_emits_ir_call() {
     let (func, _) = translate_code_entry(&bytecode, "test_call", &ctx).expect("translation failed");
     let ops = collect_ops(&func);
 
+    // Phase 3: `show_debug_message` is in STATEFUL_RUNTIME_FUNS, so the
+    // translator prepends `_rt` as arg 0; the call therefore has 2 args
+    // (the runtime handle followed by the original constant).
     let has_call = ops.iter().any(|op| {
         matches!(op, Op::Call { func, args }
             if call_module.functions.get(*func).map(|f| f.name.as_str()) == Some("show_debug_message")
-                && args.len() == 1)
+                && args.len() == 2)
     });
     assert!(
         has_call,
-        "Call opcode must produce Op::Call with correct name and 1 arg; ops: {ops:?}"
+        "Call opcode must produce Op::Call with correct name and 2 args (_rt + user arg); ops: {ops:?}"
     );
 }
 

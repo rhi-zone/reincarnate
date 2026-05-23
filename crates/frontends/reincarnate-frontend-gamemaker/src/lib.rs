@@ -11,6 +11,7 @@ mod logical_op;
 pub(crate) mod naming;
 mod object;
 mod runtime_bodies;
+mod stateful_funs;
 mod translate;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -111,6 +112,11 @@ impl Frontend for GameMakerFrontend {
 
         // === Register all builtins BEFORE translation so FuncIds exist for Op::Call ===
 
+        // Intern the GameRuntime type up front; needed before the builtins loop
+        // so the stateful-stub _rt-param injection below can reference it.
+        let rt_type_id = mb.intern_type("GameRuntime");
+        let rt_ty = Type::Instance(rt_type_id);
+
         // Populate extern sigs from the GML builtin signature table.
         // `Type::Unknown` in the generated table means the generator didn't
         // have enough information to determine the type — these are inference
@@ -127,6 +133,23 @@ impl Frontend for GameMakerFrontend {
             }
         }
 
+        // Inject `_rt: GameRuntime` as param 0 on every stateful runtime stub.
+        // Stateful funcs are those that the runtime marks `stateful: true` in
+        // runtime.json minus those that already have IR bodies in
+        // runtime_bodies.rs (those bodies use the original signature and would
+        // misalign on inlining if _rt were prepended).  Backends see the _rt
+        // param 0 and lower calls as `arg0.fname(rest_args)` — replacing the
+        // earlier `rewrite_stateful_calls` AST hack.
+        mb.module_mut().runtime_type_id = Some(rt_type_id);
+        for name in stateful_funs::STATEFUL_RUNTIME_FUNS.iter() {
+            if let Some(&fid) = mb.runtime_registry().get(*name) {
+                mb.module_mut().functions[fid]
+                    .sig
+                    .params
+                    .insert(0, rt_ty.clone());
+            }
+        }
+
         // Register GML-specific polymorphic `_any` arithmetic stubs.
         // The GML VM uses `DataType::Variable` for most arithmetic, so the
         // translator emits `add_any` etc. when operand types are not
@@ -135,11 +158,10 @@ impl Frontend for GameMakerFrontend {
         // `register_core_builtins()` because no other frontend needs them.
         register_arithmetic_any_builtins(mb.module_mut());
 
-        // Register GML syscall intrinsics as plain runtime functions.
-        // The TS backend rewrite pass matches on the full dotted call name
-        // (e.g. "GameMaker.Instance.getField") to produce native JS constructs.
-        let rt_type_id = mb.intern_type("GameRuntime");
-        let rt_ty = Type::Instance(rt_type_id);
+        // Register GML syscall intrinsics.  Each intrinsic is a typed Op::Call
+        // whose IntrinsicKind encodes the (system, method) pair.  The linear
+        // lowering pass maps them back to Expr::SystemCall so all downstream
+        // rewrite passes see the same patterns as before.
         register_gml_syscall_intrinsics(mb.module_mut(), rt_ty.clone());
 
         // Generate throw-stubs for extension functions (EXTN chunk).
@@ -401,6 +423,7 @@ impl Frontend for GameMakerFrontend {
                     gml_object_type_id: gml_object_id,
                     registry: &combined_registry,
                     rt_ty: rt_ty.clone(),
+                    stateful_runtime_names: &stateful_funs::STATEFUL_RUNTIME_FUNS,
                 };
 
                 match translate::translate_code_entry(bytecode, func_name, &ctx) {
@@ -910,6 +933,7 @@ fn translate_scripts(
             gml_object_type_id: gml_object_id,
             registry,
             rt_ty: rt_ty.clone(),
+            stateful_runtime_names: &stateful_funs::STATEFUL_RUNTIME_FUNS,
         };
 
         match translate::translate_code_entry(bytecode, &func_name, &ctx) {
@@ -1034,6 +1058,7 @@ fn translate_global_inits(
             gml_object_type_id: gml_object_id,
             registry,
             rt_ty: rt_ty.clone(),
+            stateful_runtime_names: &stateful_funs::STATEFUL_RUNTIME_FUNS,
         };
 
         if let Ok((func, extra_funcs)) = translate::translate_code_entry(bytecode, &func_name, &ctx)
@@ -1150,6 +1175,7 @@ fn translate_room_creation(
             gml_object_type_id: gml_object_id,
             registry,
             rt_ty: rt_ty.clone(),
+            stateful_runtime_names: &stateful_funs::STATEFUL_RUNTIME_FUNS,
         };
 
         if let Ok((func, extra_funcs)) = translate::translate_code_entry(bytecode, &func_name, &ctx)

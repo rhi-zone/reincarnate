@@ -509,6 +509,7 @@ pub(super) fn translate_with_body(
         gml_object_type_id: ctx.gml_object_type_id,
         registry: ctx.registry,
         rt_ty: ctx.rt_ty.clone(),
+        stateful_runtime_names: ctx.stateful_runtime_names,
     };
 
     fb.switch_to_block(fb.entry_block());

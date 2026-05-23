@@ -6,7 +6,27 @@
 //! separate post-lowering rewrite pass (e.g. `rewrites::flash`).
 
 use reincarnate_core::ir::ast::{AstFunction, Expr, Stmt};
+use reincarnate_core::ir::module::Module;
 use reincarnate_core::ir::{CastKind, CmpKind, Type};
+
+/// Collect the names of all runtime functions whose IR signature begins with
+/// `_rt: Type::Instance(module.runtime_type_id)`.
+///
+/// These are the "stateful" runtime calls: the frontend prepends the runtime
+/// handle as the first IR argument, and the backend lowers each call as
+/// `arg0.fname(rest_args)` via [`LowerCtx::stateful_names`].
+pub fn collect_stateful_runtime_names(module: &Module) -> std::collections::BTreeSet<String> {
+    let Some(rt_tid) = module.runtime_type_id else {
+        return Default::default();
+    };
+    let rt_ty = Type::Instance(rt_tid);
+    module
+        .runtime_registry
+        .iter()
+        .filter(|(_, &fid)| module.functions[fid].sig.params.first() == Some(&rt_ty))
+        .map(|(name, _)| name.clone())
+        .collect()
+}
 
 use crate::js_ast::{BinOp, UnaryOp};
 
@@ -20,6 +40,14 @@ use crate::js_ast::{JsExpr, JsFunction, JsStmt};
 pub struct LowerCtx {
     /// Self parameter name — the IR parameter that maps to `this`.
     pub self_param_name: Option<String>,
+    /// Names of stateful runtime functions whose IR signature begins with
+    /// `_rt: GameRuntime`.  Calls to these functions are lowered as
+    /// `arg0.fname(rest_args)` (i.e. the first IR arg becomes the receiver).
+    pub stateful_names: std::collections::BTreeSet<String>,
+    /// When true, `Expr::Var("_rt")` is lowered to `this._rt` rather than the
+    /// bare `_rt` identifier.  Set by class-method emit paths where the runtime
+    /// handle lives as an instance field instead of an explicit parameter.
+    pub rt_via_this: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -163,6 +191,15 @@ fn lower_expr(expr: &Expr, ctx: &LowerCtx) -> JsExpr {
                 if name == self_name {
                     return JsExpr::This;
                 }
+            }
+            // Class methods carry the runtime as an instance field rather than
+            // a JS parameter, so the IR `_rt` value must be lowered as
+            // `this._rt` to keep the reference well-formed.
+            if ctx.rt_via_this && name == "_rt" {
+                return JsExpr::Field {
+                    object: Box::new(JsExpr::This),
+                    field: "_rt".to_string(),
+                };
             }
             JsExpr::Var(name.clone())
         }
@@ -322,6 +359,23 @@ fn lower_call(fname: &str, args: &[Expr], ctx: &LowerCtx) -> JsExpr {
     // Core builtin operator expansion — try direct name dispatch first.
     if let Some(expr) = lower_builtin_opt(fname, args, ctx) {
         return expr;
+    }
+
+    // Stateful runtime call — emit as `arg0.fname(rest_args)`.
+    // The frontend prepends the runtime handle (`_rt` or `this._rt`) as the
+    // first IR argument for these calls; we surface that as the JS receiver.
+    if ctx.stateful_names.contains(fname) {
+        let mut lowered_args = lower_exprs(args, ctx);
+        if !lowered_args.is_empty() {
+            let receiver = lowered_args.remove(0);
+            return JsExpr::Call {
+                callee: Box::new(JsExpr::Field {
+                    object: Box::new(receiver),
+                    field: fname.to_string(),
+                }),
+                args: lowered_args,
+            };
+        }
     }
 
     // Dotted name (e.g. Math.max) → global function call.

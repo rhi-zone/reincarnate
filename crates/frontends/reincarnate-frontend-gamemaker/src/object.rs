@@ -151,6 +151,7 @@ pub fn translate_objects(
                         gml_object_type_id: gml_object_id,
                         registry,
                         rt_ty: rt_ty.clone(),
+                        stateful_runtime_names: &crate::stateful_funs::STATEFUL_RUNTIME_FUNS,
                     };
 
                     match translate::translate_code_entry(bytecode, &func_name, &ctx) {

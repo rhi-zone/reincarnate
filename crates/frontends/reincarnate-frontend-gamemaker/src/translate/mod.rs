@@ -119,6 +119,10 @@ pub struct TranslateCtx<'a> {
     /// The IR type for the `_rt: GameRuntime` explicit runtime handle parameter.
     /// Used as param 0 in every translated GML function signature.
     pub rt_ty: Type,
+    /// Names of stateful runtime functions whose IR signatures begin with
+    /// `_rt: GameRuntime`.  The call translator prepends `_rt_val` as the
+    /// first argument when a `Call` instruction names one of these.
+    pub stateful_runtime_names: &'a std::collections::HashSet<&'static str>,
 }
 
 /// Translate a single code entry's bytecode into an IR Function.
