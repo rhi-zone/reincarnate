@@ -998,6 +998,33 @@ Flash runtime: platform threading via `FlashShims` was completed correctly.
 
 ---
 
+## Save System — Generalize `HistoryStrategy` from List to Tree
+
+Surfaced 2026-05-23 while mining `runtime/twine/ts/platform/{save,history}.ts` as prior art for a chub-stage-factory state-persistence redesign. Reincarnate's `HistoryStrategy` (`snapshotHistory()` / `diffHistory()`) is a linear push/pop stack — `Moment[]` with `pushMoment`/`popMoment`/`peekMoment`. That shape is a tree pruned to one path, not a distinct primitive. The linear restriction is hardcoded; making it a tree would not remove any existing functionality and would unlock branch-aware histories (alternate timelines, swipe-style undo, save-point exploration) at no abstraction cost.
+
+**Proposed shape:**
+
+```ts
+type Moment<M> = { id, parentId?, payload: M | Diff<M> }
+type History<M> = { moments: Map<Id, Moment<M>>, cursor: Id }
+  commit(m)             // new child of cursor; advance
+  navigate(id)          // jump cursor anywhere (tree nav)
+  state(): M            // peek @ cursor (snapshot) or fold-from-root (diff)
+  children/parent/siblings/root
+```
+
+The current `snapshotHistory` / `diffHistory` distinction becomes orthogonal payload encoding on `Moment`. The current linear behavior becomes a combinator: `forbidBranching(history)` rejects `commit` at a non-leaf (this is exactly the current `pushMoment` semantics — no behavior change for engines that don't opt in). Other combinators fall out: `bounded(h, n)` (evict old leaves — replaces the implicit collapse in `diffHistory`), `persisted(h, backend)` (survive across sessions).
+
+**Why it matters for reincarnate specifically:** the lifted Twine engines (SugarCube, Harlowe) both have user-facing back/forward operations that are naturally a tree the moment a player goes back and makes a different choice. Today the engine silently discards the forward branch on the new commit; with tree history, it's preserved and navigable — closer to the "undo + redo + branch explore" model some modern IF engines (e.g. SugarCube's history dialog) gesture at but don't fully implement. This is also the right substrate if `history: "diff" | "snapshot"` in `PersistenceConfig` ever grows a `"tree"` third option.
+
+**Out of scope here:** the multi-shard, chub-three-layer-backend, React-slot-UI adaptations live in chub-stage-factory; reincarnate's runtime stays linear by default (`forbidBranching` is the default wrapper). This TODO is just "don't bake the linear assumption into the data structure."
+
+**Touch points:** `runtime/twine/ts/platform/history.ts`, `runtime/twine/ts/platform/save.ts` (commit/load wiring), `runtime/twine/ts/{sugarcube,harlowe}/state.ts` (engine adapters shouldn't need to change if `forbidBranching` is the default).
+
+**Config drift to fix while we're here:** `PersistenceConfig.slot_count` in `crates/reincarnate-core/src/project/manifest.rs:77-122` is ignored by the TS `SaveManager` (hardcoded `static readonly SLOT_COUNT = 8` in `platform/save.ts`). Either wire it through the scaffold substitution, or remove the manifest field.
+
+---
+
 ## Engine-Specific Logic in `reincarnate-core` (found 2026-03-09 audit)
 
 CLAUDE.md rule: "Frontend/backend specific logic never belongs in `reincarnate-core`."
@@ -3938,3 +3965,4 @@ After all rewrite phases are complete and the IR is clean.
 - **`reincarnate-backend-godot`** — GDScript or C# target via Godot. Natural GML migration path given similar architecture (nodes/objects, signals, game loop).
 - **`reincarnate-backend-android`** — Kotlin/Java target for native Android. Eliminates WebView dependency for JoiPlay-class deployments; pairs naturally with Love2D (Android is a first-class Love2D target).
 
+- [x] add Subagent Prompts discipline section — see github-io for canonical version
