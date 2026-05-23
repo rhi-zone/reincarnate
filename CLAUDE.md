@@ -135,6 +135,7 @@ Always pass `--include-ignored`. Edit all files first, then build once.
 - No DOM data attributes as state-passing mechanism
 - No `function_modules` entry without a corresponding `function_signatures` entry
 - No special-casing for builtin functions — builtins are functions with FuncIds like any other function. No `BuiltinOp` enum, no prefix-based dispatch (`starts_with("builtin.")`), no separate pipeline paths for builtins vs. game-defined functions. A builtin call emits as a function call; the runtime defines the body. Name collisions are resolved at registration time (rename the game function), not by reserving a namespace prefix.
+- Runtime library bodies are expressed in IR via `attach_runtime_body` in `runtime_bodies.rs` — not raw `FunctionBuilder` assembly (wrong abstraction level) and not source-language implementations (no IR primitive access, IR is a moving target). The M-frontends × N-backends problem is why: each frontend defines its runtime library in IR once; each backend emits it — avoiding M×N reimplementations. Functions that cannot be expressed in IR (e.g. platform APIs) are backend primitives: each backend emits them natively.
 
 ## IR Type System Architecture
 
