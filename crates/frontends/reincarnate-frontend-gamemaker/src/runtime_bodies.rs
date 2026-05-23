@@ -17,6 +17,8 @@ use reincarnate_core::ir::ty::{FunctionSig, Type};
 /// The bodies use only `*_f64` builtin calls and `Const(Float)` values, so they
 /// are legal IR for any pipeline stage that runs after registration.
 pub fn register_runtime_bodies(module: &mut Module) {
+    attach_body_point_in_rectangle(module);
+    attach_body_point_in_circle(module);
     attach_body_lengthdir_x(module);
     attach_body_lengthdir_y(module);
     attach_body_point_distance(module);
@@ -109,6 +111,108 @@ fn make_builder(module: &Module, name: &str, sig: FunctionSig) -> FunctionBuilde
     let mut b = FunctionBuilder::new(name, sig, Visibility::Public);
     b.set_registry(registry);
     b
+}
+
+// ---------------------------------------------------------------------------
+// point_in_rectangle(px, py, x1, y1, x2, y2: f64) -> Bool
+//   =  px >= x1 && px <= x2 && py >= y1 && py <= y2
+// ---------------------------------------------------------------------------
+
+fn attach_body_point_in_rectangle(module: &mut Module) {
+    let fid = match module.lookup_runtime("point_in_rectangle") {
+        Some(id) => id,
+        None => return,
+    };
+
+    let sig = FunctionSig {
+        params: vec![
+            Type::Float(64),
+            Type::Float(64),
+            Type::Float(64),
+            Type::Float(64),
+            Type::Float(64),
+            Type::Float(64),
+        ],
+        return_ty: Type::Bool,
+        defaults: vec![],
+        has_rest_param: false,
+        param_lower_bounds: vec![],
+    };
+
+    let mut b = make_builder(module, "point_in_rectangle", sig);
+    let px = b.param(0);
+    let py = b.param(1);
+    let x1 = b.param(2);
+    let y1 = b.param(3);
+    let x2 = b.param(4);
+    let y2 = b.param(5);
+
+    let px_ge_x1 = b.cmp(CmpKind::Ge, px, x1);
+    let px_le_x2 = b.cmp(CmpKind::Le, px, x2);
+    let py_ge_y1 = b.cmp(CmpKind::Ge, py, y1);
+    let py_le_y2 = b.cmp(CmpKind::Le, py, y2);
+    let in_x = b.call_named("and_bool", &[px_ge_x1, px_le_x2], Type::Bool);
+    let in_y = b.call_named("and_bool", &[py_ge_y1, py_le_y2], Type::Bool);
+    let result = b.call_named("and_bool", &[in_x, in_y], Type::Bool);
+    b.ret(Some(result));
+
+    let built = b.build();
+    let stub = &mut module.functions[fid];
+    stub.blocks = built.blocks;
+    stub.insts = built.insts;
+    stub.value_types = built.value_types;
+    stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
+}
+
+// ---------------------------------------------------------------------------
+// point_in_circle(px, py, cx, cy, radius: f64) -> Bool
+//   =  (px - cx)^2 + (py - cy)^2 <= radius^2
+// ---------------------------------------------------------------------------
+
+fn attach_body_point_in_circle(module: &mut Module) {
+    let fid = match module.lookup_runtime("point_in_circle") {
+        Some(id) => id,
+        None => return,
+    };
+
+    let sig = FunctionSig {
+        params: vec![
+            Type::Float(64),
+            Type::Float(64),
+            Type::Float(64),
+            Type::Float(64),
+            Type::Float(64),
+        ],
+        return_ty: Type::Bool,
+        defaults: vec![],
+        has_rest_param: false,
+        param_lower_bounds: vec![],
+    };
+
+    let mut b = make_builder(module, "point_in_circle", sig);
+    let px = b.param(0);
+    let py = b.param(1);
+    let cx = b.param(2);
+    let cy = b.param(3);
+    let radius = b.param(4);
+
+    let dx = b.sub(px, cx);
+    let dy = b.sub(py, cy);
+    let dx2 = b.mul(dx, dx);
+    let dy2 = b.mul(dy, dy);
+    let dist2 = b.add(dx2, dy2);
+    let r2 = b.mul(radius, radius);
+    let result = b.cmp(CmpKind::Le, dist2, r2);
+    b.ret(Some(result));
+
+    let built = b.build();
+    let stub = &mut module.functions[fid];
+    stub.blocks = built.blocks;
+    stub.insts = built.insts;
+    stub.value_types = built.value_types;
+    stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
