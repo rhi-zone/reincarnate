@@ -94,7 +94,6 @@ impl FunctionBuilder {
             capture_params: Vec::new(),
             null_sentinel_values: std::collections::HashSet::new(),
             type_rule: None,
-            intrinsic: None,
             inline_hint: InlineHint::Default,
         };
 
@@ -952,7 +951,6 @@ impl ModuleBuilder {
             capture_params: Vec::new(),
             null_sentinel_values: std::collections::HashSet::new(),
             type_rule: None,
-            intrinsic: None,
             inline_hint: InlineHint::Default,
         };
         let name_id = self.module.name_table.func_names.push(name);

@@ -52,12 +52,10 @@ pub(super) fn relative_import_path(from: &[String], to: &[String]) -> String {
 
 pub(super) fn collect_system_names_from_funcs<'a>(
     funcs: impl Iterator<Item = &'a Function>,
-    // Optional map from intrinsic `Op::Call` FuncIds to their system name.
-    // Used to find system modules for Flash/Twine intrinsic calls (which are
-    // `Op::Call` with IntrinsicKind-based lowering to Op::SystemCall).
-    // GML syscalls (Phase 2+) are plain Op::Call with dotted names and no
-    // IntrinsicKind — they are fully rewritten by the GML rewrite pass before
-    // any system-level namespace is emitted, so they need no system import.
+    // Optional map from `Op::Call` FuncIds to their system name, for frontends
+    // that use plain `Op::Call` to invoke engine syscalls. Currently unused
+    // (always `None`) — GML syscalls are plain dotted names rewritten before
+    // system imports are emitted. Reserved for Flash/Twine if needed.
     intrinsic_to_system: Option<&HashMap<FuncId, String>>,
 ) -> BTreeSet<String> {
     let mut used = BTreeSet::new();
@@ -83,43 +81,6 @@ pub(super) fn collect_system_names_from_funcs<'a>(
     used
 }
 
-/// Build the full intrinsic calls map: call name → (system, method).
-///
-/// Used by `collect_type_refs_from_function` to handle `Op::Call` with
-/// intrinsic names the same way as the equivalent `Op::SystemCall`.
-pub(super) fn build_intrinsic_calls_map(module: &Module) -> HashMap<FuncId, (String, String)> {
-    module
-        .runtime_registry
-        .iter()
-        .filter_map(|(_, &fid)| {
-            let func = &module.functions[fid];
-            func.intrinsic.as_ref().map(|kind| {
-                let (system, method) = kind.system_method();
-                (fid, (system.to_string(), method.to_string()))
-            })
-        })
-        .collect()
-}
-
-/// Build the `intrinsic_to_system` map used by `collect_system_names_from_funcs`.
-///
-/// Maps each registered intrinsic call name (e.g. `"GameMaker.Instance.getField"`)
-/// to its system name (e.g. `"GameMaker.Instance"`).  Only functions with an
-/// `IntrinsicKind` are included.
-pub(super) fn build_intrinsic_to_system(module: &Module) -> HashMap<FuncId, String> {
-    module
-        .runtime_registry
-        .iter()
-        .filter_map(|(_, &fid)| {
-            let func = &module.functions[fid];
-            func.intrinsic.as_ref().map(|kind| {
-                let (system, _method) = kind.system_method();
-                (fid, system.to_string())
-            })
-        })
-        .collect()
-}
-
 /// Emit runtime imports for flat modules (files directly in `output_dir`).
 pub(super) fn emit_runtime_imports(
     module: &Module,
@@ -134,12 +95,9 @@ pub(super) fn emit_runtime_imports(
         .keys()
         .map(|fid| (fid, module.func_name(fid).to_string()))
         .collect();
-    let intrinsic_to_system = build_intrinsic_to_system(module);
-    let systems = collect_system_names_from_funcs(all_funcs(), Some(&intrinsic_to_system));
+    let systems = collect_system_names_from_funcs(all_funcs(), None);
     emit_runtime_imports_with_prefix(systems, out, ".", runtime_config, stateful_system_aliases);
-    let intrinsic_calls = build_intrinsic_calls_map(module);
-    let calls =
-        collect_call_names_from_funcs(all_funcs(), engine, Some(&intrinsic_calls), &func_names);
+    let calls = collect_call_names_from_funcs(all_funcs(), engine, None, &func_names);
     let mut _flat_stateful = BTreeSet::new();
     emit_function_imports_with_prefix(
         &calls,
@@ -658,7 +616,6 @@ pub(super) fn collect_class_references(
     }
 
     // Scan all method bodies for type references.
-    let intrinsic_calls = build_intrinsic_calls_map(module);
     let func_names: HashMap<FuncId, String> = module
         .functions
         .keys()
@@ -679,7 +636,7 @@ pub(super) fn collect_class_references(
             unique_static_field_map,
             &module.object_names,
             engine,
-            Some(&intrinsic_calls),
+            None,
             Some(&func_names),
             &mut refs,
         );

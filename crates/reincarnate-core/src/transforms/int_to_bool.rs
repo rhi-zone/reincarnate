@@ -541,23 +541,9 @@ impl Transform for IntToBoolPromotion {
 
         // Phase 4: Infer Bool return types
         let callback_return_calls = &module.callback_return_calls;
-        // Derive canonical intrinsic call FuncIds that are callback-return calls.
-        // After Phase 3a, GML syscalls appear as Op::Call rather than Op::SystemCall.
-        let callback_return_intrinsic_fids: HashSet<FuncId> = module
-            .runtime_registry
-            .values()
-            .filter(|&&fid| {
-                module.functions[fid]
-                    .intrinsic
-                    .as_ref()
-                    .is_some_and(|kind| {
-                        let (sys, meth) = kind.system_method();
-                        let key = (sys.to_string(), meth.to_string());
-                        callback_return_calls.contains_key(&key)
-                    })
-            })
-            .copied()
-            .collect();
+        // After Phase 2, all GML syscalls are plain Op::Call with dotted names;
+        // no function has Function::intrinsic set, so the FuncId set is always empty.
+        let callback_return_intrinsic_fids: HashSet<FuncId> = HashSet::new();
         for func_id in module.functions.keys().collect::<Vec<_>>() {
             if dirty.is_some_and(|d| !d.contains(&func_id)) {
                 continue;

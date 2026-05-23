@@ -282,16 +282,15 @@ pub struct LoweringConfig {
     /// emit and cannot see through a cast wrapper.  SugarCube does not have
     /// such rewrites, so it is safe to enable there.
     pub cast_unknown_indirect_callee: bool,
-    /// Maps intrinsic function call names to their `(system, method)` pair.
+    /// Maps function call names to their `(system, method)` pair.
     ///
     /// When `Op::Call { func: name }` is emitted and this map contains `name`,
     /// the linear emitter lowers it to `Expr::SystemCall { system, method, args }`
     /// instead of a plain `Expr::Call`.  This allows all existing engine-specific
     /// backend rewrite passes to handle these calls unchanged.
     ///
-    /// Populated by [`crate::backends`] (specifically `emit/mod.rs`) from the
-    /// module's `runtime_registry` + `Function::intrinsic` fields.
-    /// Default: empty (no intrinsic calls).
+    /// Default: empty (no intrinsic calls). Reserved for Flash/Twine frontends
+    /// that emit `Op::Call` for engine syscalls.
     pub intrinsic_calls: std::collections::HashMap<String, (String, String)>,
 
     /// Set of FuncIds that are pure (no side effects) — used by the linear
