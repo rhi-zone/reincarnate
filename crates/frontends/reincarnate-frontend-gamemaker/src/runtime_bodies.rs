@@ -3729,7 +3729,7 @@ fn attach_body_is_undefined(module: &mut Module) {
 }
 
 // ---------------------------------------------------------------------------
-// is_array(x: Unknown) -> Bool  =  is_array_unknown(x)
+// is_array(x: Unknown) -> Bool  =  type_check(x, Array(Unknown))
 // JS semantics: Array.isArray(val)
 // ---------------------------------------------------------------------------
 
@@ -3750,7 +3750,7 @@ fn attach_body_is_array(module: &mut Module) {
     let mut b = make_builder(module, "is_array", sig);
     let x = b.param(0);
 
-    let result = b.call_named("is_array_unknown", &[x], Type::Bool);
+    let result = b.type_check(x, Type::Array(Box::new(Type::Unknown)));
     b.ret(Some(result));
 
     let built = b.build();

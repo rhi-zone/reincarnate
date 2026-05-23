@@ -550,12 +550,6 @@ fn lower_builtin_opt(op_name: &str, args: &[Expr], ctx: &LowerCtx) -> Option<JsE
             )),
         }),
 
-        // is_array_unknown: (Unknown) -> Bool  — emit as Array.isArray(x)
-        "is_array_unknown" => Some(JsExpr::Call {
-            callee: Box::new(build_dotted_path("Array.isArray")),
-            args: vec![lower_expr(&args[0], ctx)],
-        }),
-
         // is_struct_unknown: (Unknown) -> Bool
         // emit as: typeof x === "object" && x != null && !Array.isArray(x)
         "is_struct_unknown" => {

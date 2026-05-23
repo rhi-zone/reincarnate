@@ -1433,6 +1433,10 @@ fn print_type_check(expr: &JsExpr, ty: &Type, use_instanceof: bool) -> String {
         }
         Type::String => format!("typeof {operand} === \"string\""),
         Type::Function(_) => format!("typeof {operand} === \"function\""),
+        // Array type check: Array.isArray(x).
+        // TypeScript/JavaScript has no `typeof` value for arrays (they report
+        // "object"); the only correct check is Array.isArray.
+        Type::Array(_) => format!("Array.isArray({operand})"),
         Type::Instance(id) => {
             let ts_name = print_type_id(*id);
             if use_instanceof {
