@@ -420,6 +420,35 @@ fn rewrite_global_assignments_inner(
 // Stateful runtime call rewriting
 // ---------------------------------------------------------------------------
 
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+// PHASE 3 DEBT — THIS ENTIRE SECTION IS A WORKAROUND THAT BYPASSES THE IR.
+//
+// Fundamental Law 5 (Instantiability) requires that every stateful runtime
+// function has `_rt: GameRuntime` as explicit IR param 0, threaded through the
+// IR call chain as a normal typed value.  When that is true, `_rt` flows through
+// `Op::Call` args like any other argument, and no post-IR injection is needed.
+//
+// Phase 1 added `_rt` as IR param 0 to all *translated* GML functions (game
+// code).  Phase 3 must do the same for the ~1,000 *registered* stateful runtime
+// functions in `crates/frontends/reincarnate-frontend-gamemaker/src/lib.rs`:
+//   1. Change `register_runtime(name, sig)` for every stateful function to
+//      prepend `Type::Instance(rt_type_id)` as param 0 of the signature.
+//   2. Delete `rewrite_stateful_calls` (this function) and the `stateful_names`
+//      set it consumes.
+//   3. Delete `prepend_rt_arg_to_free_calls` (below) and its `stateful_names`
+//      usage.
+//
+// Until Phase 3 ships, this machinery compensates by walking the JS-AST *after*
+// IR lowering and injecting `_rt`/`this._rt` references by name — a pure
+// backend hack that the IR knows nothing about.
+//
+// DO NOT EXTEND THIS WORKAROUND.  DO NOT ADD NEW NAMES TO `stateful_names`.
+// DO NOT COPY THIS PATTERN FOR OTHER FUNCTIONS.
+//
+// Fix it: implement Phase 3.  See TODO.md "Phase 3: register stateful runtime
+// functions with explicit _rt param 0".
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
 /// Rewrite bare stateful runtime calls to qualified `_rt.foo(args)` form.
 ///
 /// Walks the statement tree and replaces every `JsExpr::Call { callee: JsExpr::Var(name), ... }`
@@ -667,6 +696,23 @@ fn rewrite_stateful_calls_expr(
 // ---------------------------------------------------------------------------
 // Prepend _rt argument to free function calls
 // ---------------------------------------------------------------------------
+
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+// PHASE 3 DEBT — THIS FUNCTION IS A WORKAROUND THAT BYPASSES THE IR.
+//
+// See the block comment above `rewrite_stateful_calls` for the full picture.
+// This function walks the JS-AST and prepends `_rt` / `this._rt` as arg 0 to
+// calls to translated GML free functions — necessary only because the registered
+// runtime functions do not yet carry `_rt` as IR param 0.
+//
+// When Phase 3 is complete (all stateful runtime functions registered with
+// `Type::Instance(rt_type_id)` as param 0), every call site already has `_rt`
+// in the IR args and this injection is redundant.  Delete this function then.
+//
+// DO NOT EXTEND THIS WORKAROUND.  DO NOT ADD NEW CALLERS.
+// Fix it: implement Phase 3.  See TODO.md "Phase 3: register stateful runtime
+// functions with explicit _rt param 0".
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 /// Prepend a runtime argument to calls to free functions.
 ///

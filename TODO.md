@@ -4,6 +4,43 @@ Completed items archived in [COMPLETED.md](COMPLETED.md).
 
 Per-engine roadmaps (gaps, runtime coverage, open work) live in [`docs/targets/`](docs/targets/). This file tracks in-flight and near-term work across all active engines.
 
+## Phase 3: register stateful runtime functions with explicit `_rt` param 0 (HIGH PRIORITY)
+
+**Law 5 violation (Instantiability):** ~1,000 stateful GML runtime functions are currently
+registered in `crates/frontends/reincarnate-frontend-gamemaker/src/lib.rs` with signatures
+that do NOT include `_rt` as param 0.  Because the IR call nodes for these functions carry
+no `_rt` argument, the TypeScript backend cannot emit correct calls from the IR alone — it
+must inject `_rt` at the JS-AST level after lowering, bypassing the IR entirely.
+
+**The workaround (present state):**
+- `rewrite_stateful_calls` in `crates/backends/reincarnate-backend-typescript/src/emit/rewrites.rs`
+  walks the JS-AST and rewrites `foo(args)` → `_rt.foo(args)` / `this._rt.foo(args)` for
+  every name in `stateful_names`.
+- `prepend_rt_arg_to_free_calls` in the same file prepends `_rt`/`this._rt` as arg 0 to
+  calls to translated GML free functions.
+- Both are called from `emit_function` and the class method emitter in
+  `crates/backends/reincarnate-backend-typescript/src/emit/class.rs`.
+
+This workaround violates Law 1 (Pipeline Stage Isolation) — the IR is not the sole channel
+between frontend and backend — and Law 5 (Instantiability) — `_rt` is not a typed IR value
+for these functions.
+
+**What Phase 3 must do:**
+1. In `crates/frontends/reincarnate-frontend-gamemaker/src/lib.rs`, change every
+   `register_runtime(name, sig)` call for stateful runtime functions to prepend
+   `Type::Instance(rt_type_id)` as param 0 of `sig`.
+2. Delete `rewrite_stateful_calls` and the `stateful_names` set from
+   `crates/backends/reincarnate-backend-typescript/src/emit/rewrites.rs`.
+3. Delete `prepend_rt_arg_to_free_calls` from the same file.
+4. Remove all call sites of these two functions in
+   `crates/backends/reincarnate-backend-typescript/src/emit/class.rs` and
+   `crates/backends/reincarnate-backend-typescript/src/emit/mod.rs`.
+
+**DO NOT extend the workaround.  DO NOT add new names to `stateful_names`.**
+Any new stateful runtime function must be registered correctly with `_rt` as param 0.
+
+---
+
 ## `Op::SystemCall` full elimination (HIGH PRIORITY)
 
 `Op::SystemCall` currently remains in the IR because Flash and Twine frontends still use it. The GML migration (Phases 1–4 of IntrinsicKind elimination) leaves it in place. It must be eliminated from all frontends before the IR is clean.

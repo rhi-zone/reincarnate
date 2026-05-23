@@ -340,6 +340,10 @@ pub(super) fn emit_function(
     if js_func.return_ty == Type::Void {
         crate::ast_passes::strip_void_returns(&mut js_func);
     }
+    // PHASE 3 DEBT: prepend_rt_arg_to_free_calls / rewrite_stateful_calls are
+    // workarounds — see the block comments in rewrites.rs for the full explanation.
+    // Delete both calls when Phase 3 ships (see TODO.md).
+    //
     // Rewrite calls to free functions: prepend `_rt` as first argument.
     // Includes recursive self-calls — do NOT remove self from the set.
     if !free_func_names.is_empty() {
@@ -1155,6 +1159,10 @@ fn emit_class_method(
     if js_func.return_ty == Type::Void {
         crate::ast_passes::strip_void_returns(&mut js_func);
     }
+    // PHASE 3 DEBT: prepend_rt_arg_to_free_calls / rewrite_stateful_calls are
+    // workarounds — see the block comments in rewrites.rs for the full explanation.
+    // Delete both calls when Phase 3 ships (see TODO.md).
+    //
     // Rewrite calls to free functions: prepend `this._rt` as first argument.
     if !free_func_names.is_empty() {
         rewrites::prepend_rt_arg_to_free_calls(&mut js_func.body, free_func_names, true);
