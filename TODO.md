@@ -12,12 +12,7 @@ signatures. `rewrite_stateful_calls` and the `stateful_names` set have been dele
 `emit/class.rs` and `emit/mod.rs` have been removed. Law 1 and Law 5 violations are closed
 for game-to-runtime calls.
 
-### Phase 3 follow-up: `prepend_rt_arg_to_free_calls` deletion
-`rewrite_stateful_calls` was deleted (Phase 3 complete). `prepend_rt_arg_to_free_calls`
-in `emit/rewrites.rs` remains — it handles game-to-game function calls (prepending `_rt`
-when a free function calls another free function that has `_rt` as param 0). This can be
-deleted once the IR call translator handles game-to-game `_rt` threading directly (same
-mechanism as Phase 3 did for game-to-runtime calls).
+### ~~Phase 3 follow-up: `prepend_rt_arg_to_free_calls` deletion~~ DONE
 
 ### Phase 3 follow-up: emit_function_imports_with_prefix `stateful_names_out` cleanup
 `stateful_names_out: &mut BTreeSet<String>` is still populated in
