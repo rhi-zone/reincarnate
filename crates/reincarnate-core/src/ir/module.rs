@@ -545,6 +545,10 @@ pub struct Module {
     /// entries, so these IDs carry no cross-pass meaning.
     #[serde(default)]
     pub next_type_var: u32,
+    /// Set by frontends that define a GameRuntime type.
+    /// Used by backends to identify which function calls are runtime method calls.
+    #[serde(skip)]
+    pub runtime_type_id: Option<TypeId>,
 }
 
 impl Module {
@@ -821,6 +825,7 @@ impl Module {
             string_indexed_structs: HashSet::new(),
             array_like_fns: HashSet::new(),
             next_type_var: 0,
+            runtime_type_id: None,
         };
         module.register_core_builtins();
         module
