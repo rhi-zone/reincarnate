@@ -344,6 +344,7 @@ pub fn emit_module_to_string(
             .collect();
         let closure_bodies =
             compile_closures(&closure_fids, module, lowering_config, engine, debug);
+        let stateful_names = crate::lower::collect_stateful_runtime_names(module);
         let object_ts_names = class::resolve_object_ts_names(&module.object_names, &class_names);
         let name_map: HashMap<String, String> = module
             .object_names
@@ -369,6 +370,7 @@ pub fn emit_module_to_string(
                     &object_ts_names,
                     &closure_bodies,
                     &no_sys_aliases,
+                    &stateful_names,
                     runtime_config,
                     &class_meta.unique_static_field_map,
                     &name_map,
@@ -1245,6 +1247,7 @@ fn emit_runtime_functions_file(
     let closure_bodies: HashMap<String, crate::js_ast::JsFunction> = HashMap::new();
     // Runtime body functions are pure — no stateful names, no game free funcs.
     let no_sys_aliases = BTreeMap::new();
+    let no_stateful_names = std::collections::BTreeSet::new();
     let no_unique_static = HashMap::new();
     let known_classes: HashSet<String> = class_names.values().cloned().collect();
     for &fid in runtime_fids {
@@ -1263,6 +1266,7 @@ fn emit_runtime_functions_file(
             &object_ts_names,
             &closure_bodies,
             &no_sys_aliases,
+            &no_stateful_names,
             runtime_config,
             &no_unique_static,
             &name_map,
@@ -1568,6 +1572,7 @@ fn emit_free_functions_file(
     // Expr::SystemCall by the linear emitter (same as emit_class_functions does).
     let effective_lowering = lowering_config_for_engine(lowering_config, engine, Some(module));
     let effective_lowering_ref: &LoweringConfig = &effective_lowering;
+    let stateful_names = crate::lower::collect_stateful_runtime_names(module);
     let closure_bodies =
         compile_closures(&closure_fids, module, effective_lowering_ref, engine, debug);
     let no_sys_aliases = BTreeMap::new();
@@ -1588,6 +1593,7 @@ fn emit_free_functions_file(
                 &object_ts_names,
                 &closure_bodies,
                 &no_sys_aliases,
+                &stateful_names,
                 runtime_config,
                 &class_meta.unique_static_field_map,
                 &name_map,

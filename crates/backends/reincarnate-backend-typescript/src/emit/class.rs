@@ -173,6 +173,7 @@ pub(super) fn emit_functions(
     // downstream emit functions so they don't need direct module access.
     let effective_lowering = lowering_config_for_engine(lowering_config, engine, Some(module));
     let effective_lowering_ref: &LoweringConfig = &effective_lowering;
+    let stateful_names = crate::lower::collect_stateful_runtime_names(module);
     let closure_bodies =
         compile_closures(&closure_fids, module, effective_lowering_ref, engine, debug);
     let object_ts_names = resolve_object_ts_names(&module.object_names, class_names);
@@ -200,6 +201,7 @@ pub(super) fn emit_functions(
                 &object_ts_names,
                 &closure_bodies,
                 stateful_system_aliases,
+                &stateful_names,
                 runtime_config,
                 unique_static_fields,
                 &name_map,
@@ -231,6 +233,7 @@ pub(super) fn emit_function(
     object_names: &[String],
     closure_bodies: &HashMap<String, JsFunction>,
     stateful_system_aliases: &BTreeMap<String, String>,
+    stateful_names: &std::collections::BTreeSet<String>,
     runtime_config: Option<&RuntimeConfig>,
     unique_static_fields: &HashMap<String, String>,
     name_map: &HashMap<String, String>,
@@ -259,7 +262,7 @@ pub(super) fn emit_function(
     );
     let ctx = crate::lower::LowerCtx {
         self_param_name: None,
-        stateful_names: Default::default(),
+        stateful_names: stateful_names.clone(),
         rt_via_this: false,
     };
     let mut js_func = crate::lower::lower_function(&ast, &ctx);
@@ -703,6 +706,8 @@ pub(super) fn emit_class(
     let effective_lowering_for_class =
         lowering_config_for_engine(lowering_config, engine, Some(module));
     let effective_lowering_class_ref: &LoweringConfig = &effective_lowering_for_class;
+    // Collect stateful runtime function names so that lower_call emits method-call syntax.
+    let stateful_names = crate::lower::collect_stateful_runtime_names(module);
     // Compile closure bodies for inlining as arrow functions.
     let closure_bodies = compile_closures(
         &closure_fids,
@@ -760,6 +765,7 @@ pub(super) fn emit_class(
             &closure_bodies,
             known_classes,
             &class_meta.unique_static_field_map,
+            &stateful_names,
             effective_lowering_class_ref,
             engine,
             &module.sprite_names,
@@ -942,7 +948,7 @@ pub(super) fn compile_closures(
         // it with JsExpr::This.
         let ctx = crate::lower::LowerCtx {
             self_param_name: None,
-            stateful_names: Default::default(),
+            stateful_names: crate::lower::collect_stateful_runtime_names(module),
             rt_via_this: false,
         };
         let mut js_func = crate::lower::lower_function(&ast, &ctx);
@@ -979,6 +985,7 @@ fn emit_class_method(
     closure_bodies: &HashMap<String, JsFunction>,
     known_classes: &HashSet<String>,
     unique_static_fields: &HashMap<String, String>,
+    stateful_names: &std::collections::BTreeSet<String>,
     lowering_config: &LoweringConfig,
     engine: EngineKind,
     sprite_names: &[String],
@@ -1046,7 +1053,7 @@ fn emit_class_method(
 
     let ctx = crate::lower::LowerCtx {
         self_param_name,
-        stateful_names: Default::default(),
+        stateful_names: stateful_names.clone(),
         // Class methods access the runtime via `this._rt`, not a JS parameter.
         rt_via_this: true,
     };
