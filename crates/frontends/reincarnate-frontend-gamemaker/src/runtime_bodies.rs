@@ -52,23 +52,50 @@ pub fn register_runtime_bodies(module: &mut Module) {
     attach_body_dot_product(module);
     attach_body_dot_product_3d(module);
     attach_body_color_get_red(module);
+    module.register_alias(
+        "colour_get_red",
+        module.lookup_runtime("color_get_red").unwrap(),
+    );
     attach_body_color_get_green(module);
+    module.register_alias(
+        "colour_get_green",
+        module.lookup_runtime("color_get_green").unwrap(),
+    );
     attach_body_color_get_blue(module);
+    module.register_alias(
+        "colour_get_blue",
+        module.lookup_runtime("color_get_blue").unwrap(),
+    );
     attach_body_make_color_rgb(module);
-    attach_body_colour_get_red(module);
-    attach_body_colour_get_green(module);
-    attach_body_colour_get_blue(module);
-    attach_body_make_colour_rgb(module);
+    module.register_alias(
+        "make_colour_rgb",
+        module.lookup_runtime("make_color_rgb").unwrap(),
+    );
     attach_body_merge_color(module);
-    attach_body_merge_colour(module);
+    module.register_alias(
+        "merge_colour",
+        module.lookup_runtime("merge_color").unwrap(),
+    );
     attach_body_color_get_value(module);
-    attach_body_colour_get_value(module);
+    module.register_alias(
+        "colour_get_value",
+        module.lookup_runtime("color_get_value").unwrap(),
+    );
     attach_body_color_get_saturation(module);
-    attach_body_colour_get_saturation(module);
+    module.register_alias(
+        "colour_get_saturation",
+        module.lookup_runtime("color_get_saturation").unwrap(),
+    );
     attach_body_color_get_hue(module);
-    attach_body_colour_get_hue(module);
+    module.register_alias(
+        "colour_get_hue",
+        module.lookup_runtime("color_get_hue").unwrap(),
+    );
     attach_body_make_color_hsv(module);
-    attach_body_make_colour_hsv(module);
+    module.register_alias(
+        "make_colour_hsv",
+        module.lookup_runtime("make_color_hsv").unwrap(),
+    );
     attach_body_string_length(module);
     attach_body_string_upper(module);
     attach_body_string_lower(module);
@@ -927,91 +954,6 @@ fn attach_body_make_color_rgb(module: &mut Module) {
 }
 
 // ---------------------------------------------------------------------------
-// colour_get_red(color: f64) -> f64  =  color & 0xFF
-// ---------------------------------------------------------------------------
-
-fn attach_body_colour_get_red(module: &mut Module) {
-    attach_runtime_body(
-        module,
-        "colour_get_red",
-        &[Type::Float(64)],
-        Type::Float(64),
-        |b| {
-            let color = b.param(0);
-            let mask = b.const_float(255.0);
-            let result = b.bit_and(color, mask);
-            b.ret(Some(result));
-        },
-    );
-}
-
-// ---------------------------------------------------------------------------
-// colour_get_green(color: f64) -> f64  =  (color >> 8) & 0xFF
-// ---------------------------------------------------------------------------
-
-fn attach_body_colour_get_green(module: &mut Module) {
-    attach_runtime_body(
-        module,
-        "colour_get_green",
-        &[Type::Float(64)],
-        Type::Float(64),
-        |b| {
-            let color = b.param(0);
-            let shift = b.const_float(8.0);
-            let shifted = b.shr(color, shift);
-            let mask = b.const_float(255.0);
-            let result = b.bit_and(shifted, mask);
-            b.ret(Some(result));
-        },
-    );
-}
-
-// ---------------------------------------------------------------------------
-// colour_get_blue(color: f64) -> f64  =  color >> 16
-// ---------------------------------------------------------------------------
-
-fn attach_body_colour_get_blue(module: &mut Module) {
-    attach_runtime_body(
-        module,
-        "colour_get_blue",
-        &[Type::Float(64)],
-        Type::Float(64),
-        |b| {
-            let color = b.param(0);
-            let shift = b.const_float(16.0);
-            let result = b.shr(color, shift);
-            b.ret(Some(result));
-        },
-    );
-}
-
-// ---------------------------------------------------------------------------
-// make_colour_rgb(r: f64, g: f64, b: f64) -> f64  =  (b << 16) | (g << 8) | r
-// ---------------------------------------------------------------------------
-
-fn attach_body_make_colour_rgb(module: &mut Module) {
-    attach_runtime_body(
-        module,
-        "make_colour_rgb",
-        &[Type::Float(64), Type::Float(64), Type::Float(64)],
-        Type::Float(64),
-        |b| {
-            let r = b.param(0);
-            let g = b.param(1);
-            let bv = b.param(2);
-
-            let shift16 = b.const_float(16.0);
-            let shift8 = b.const_float(8.0);
-            let b_shifted = b.shl(bv, shift16);
-            let g_shifted = b.shl(g, shift8);
-            let bg = b.bit_or(b_shifted, g_shifted);
-            let result = b.bit_or(bg, r);
-            b.ret(Some(result));
-        },
-    );
-}
-
-// ---------------------------------------------------------------------------
 // merge_color(col1: f64, col2: f64, amount: f64) -> f64
 //
 // Blend two BGR colors by linearly interpolating each channel:
@@ -1067,51 +1009,6 @@ fn attach_body_merge_color(module: &mut Module) {
 }
 
 // ---------------------------------------------------------------------------
-// merge_colour — alias for merge_color
-// ---------------------------------------------------------------------------
-
-fn attach_body_merge_colour(module: &mut Module) {
-    attach_runtime_body(
-        module,
-        "merge_colour",
-        &[Type::Float(64), Type::Float(64), Type::Float(64)],
-        Type::Float(64),
-        |b| {
-            let col1 = b.param(0);
-            let col2 = b.param(1);
-            let amt = b.param(2);
-
-            let one = b.const_float(1.0);
-            let one_minus_amt = b.sub(one, amt);
-
-            let r1 = b.call_named("color_get_red", &[col1], Type::Float(64));
-            let r2 = b.call_named("color_get_red", &[col2], Type::Float(64));
-            let r1_part = b.mul(r1, one_minus_amt);
-            let r2_part = b.mul(r2, amt);
-            let r_blend = b.add(r1_part, r2_part);
-            let r_out = b.call_named("round_f64", &[r_blend], Type::Float(64));
-
-            let g1 = b.call_named("color_get_green", &[col1], Type::Float(64));
-            let g2 = b.call_named("color_get_green", &[col2], Type::Float(64));
-            let g1_part = b.mul(g1, one_minus_amt);
-            let g2_part = b.mul(g2, amt);
-            let g_blend = b.add(g1_part, g2_part);
-            let g_out = b.call_named("round_f64", &[g_blend], Type::Float(64));
-
-            let b1 = b.call_named("color_get_blue", &[col1], Type::Float(64));
-            let b2 = b.call_named("color_get_blue", &[col2], Type::Float(64));
-            let b1_part = b.mul(b1, one_minus_amt);
-            let b2_part = b.mul(b2, amt);
-            let b_blend = b.add(b1_part, b2_part);
-            let bv_out = b.call_named("round_f64", &[b_blend], Type::Float(64));
-
-            let result = b.call_named("make_color_rgb", &[r_out, g_out, bv_out], Type::Float(64));
-            b.ret(Some(result));
-        },
-    );
-}
-
-// ---------------------------------------------------------------------------
 // color_get_value(color: f64) -> f64
 //
 // Returns the HSV "value" (brightness) of a GML BGR color in the range 0–255:
@@ -1125,38 +1022,6 @@ fn attach_body_color_get_value(module: &mut Module) {
     attach_runtime_body(
         module,
         "color_get_value",
-        &[Type::Float(64)],
-        Type::Float(64),
-        |b| {
-            let color = b.param(0);
-
-            let c255 = b.const_float(255.0);
-
-            let r_raw = b.call_named("color_get_red", &[color], Type::Float(64));
-            let g_raw = b.call_named("color_get_green", &[color], Type::Float(64));
-            let bv_raw = b.call_named("color_get_blue", &[color], Type::Float(64));
-            let r = b.div(r_raw, c255);
-            let g = b.div(g_raw, c255);
-            let bv = b.div(bv_raw, c255);
-
-            let max_rg = b.call_named("max_f64", &[r, g], Type::Float(64));
-            let max_rgb = b.call_named("max_f64", &[max_rg, bv], Type::Float(64));
-
-            let scaled = b.mul(max_rgb, c255);
-            let result = b.call_named("round_f64", &[scaled], Type::Float(64));
-            b.ret(Some(result));
-        },
-    );
-}
-
-// ---------------------------------------------------------------------------
-// colour_get_value — alias for color_get_value
-// ---------------------------------------------------------------------------
-
-fn attach_body_colour_get_value(module: &mut Module) {
-    attach_runtime_body(
-        module,
-        "colour_get_value",
         &[Type::Float(64)],
         Type::Float(64),
         |b| {
@@ -1218,52 +1083,6 @@ fn attach_body_color_get_saturation(module: &mut Module) {
             let min_rgb = b.call_named("min_f64", &[min_rg, bv], Type::Float(64));
 
             // if max <= 0 { return 0 }  (max >= 0 always, so this equals max === 0)
-            let max_le_zero = b.cmp(CmpKind::Le, max_rgb, zero);
-            let ret_zero_block = b.create_block();
-            let cont_block = b.create_block();
-            b.br_if(max_le_zero, ret_zero_block, &[], cont_block, &[]);
-
-            b.switch_to_block(ret_zero_block);
-            b.ret(Some(zero));
-
-            b.switch_to_block(cont_block);
-            let d = b.sub(max_rgb, min_rgb);
-            let sat = b.div(d, max_rgb);
-            let scaled = b.mul(sat, c255);
-            let result = b.call_named("round_f64", &[scaled], Type::Float(64));
-            b.ret(Some(result));
-        },
-    );
-}
-
-// ---------------------------------------------------------------------------
-// colour_get_saturation — alias for color_get_saturation
-// ---------------------------------------------------------------------------
-
-fn attach_body_colour_get_saturation(module: &mut Module) {
-    attach_runtime_body(
-        module,
-        "colour_get_saturation",
-        &[Type::Float(64)],
-        Type::Float(64),
-        |b| {
-            let color = b.param(0);
-
-            let c255 = b.const_float(255.0);
-            let zero = b.const_float(0.0);
-
-            let r_raw = b.call_named("color_get_red", &[color], Type::Float(64));
-            let g_raw = b.call_named("color_get_green", &[color], Type::Float(64));
-            let bv_raw = b.call_named("color_get_blue", &[color], Type::Float(64));
-            let r = b.div(r_raw, c255);
-            let g = b.div(g_raw, c255);
-            let bv = b.div(bv_raw, c255);
-
-            let max_rg = b.call_named("max_f64", &[r, g], Type::Float(64));
-            let max_rgb = b.call_named("max_f64", &[max_rg, bv], Type::Float(64));
-            let min_rg = b.call_named("min_f64", &[r, g], Type::Float(64));
-            let min_rgb = b.call_named("min_f64", &[min_rg, bv], Type::Float(64));
-
             let max_le_zero = b.cmp(CmpKind::Le, max_rgb, zero);
             let ret_zero_block = b.create_block();
             let cont_block = b.create_block();
@@ -1405,103 +1224,6 @@ fn attach_body_color_get_hue(module: &mut Module) {
 }
 
 // ---------------------------------------------------------------------------
-// colour_get_hue — alias for color_get_hue
-// ---------------------------------------------------------------------------
-
-fn attach_body_colour_get_hue(module: &mut Module) {
-    attach_runtime_body(
-        module,
-        "colour_get_hue",
-        &[Type::Float(64)],
-        Type::Float(64),
-        |b| {
-            let color = b.param(0);
-
-            let c255 = b.const_float(255.0);
-            let zero = b.const_float(0.0);
-
-            let r_raw = b.call_named("color_get_red", &[color], Type::Float(64));
-            let g_raw = b.call_named("color_get_green", &[color], Type::Float(64));
-            let bv_raw = b.call_named("color_get_blue", &[color], Type::Float(64));
-            let r = b.div(r_raw, c255);
-            let g = b.div(g_raw, c255);
-            let bv = b.div(bv_raw, c255);
-
-            let max_rg = b.call_named("max_f64", &[r, g], Type::Float(64));
-            let max_rgb = b.call_named("max_f64", &[max_rg, bv], Type::Float(64));
-            let min_rg = b.call_named("min_f64", &[r, g], Type::Float(64));
-            let min_rgb = b.call_named("min_f64", &[min_rg, bv], Type::Float(64));
-            let d = b.sub(max_rgb, min_rgb);
-
-            let d_le_zero = b.cmp(CmpKind::Le, d, zero);
-            let ret_zero_block = b.create_block();
-            let branch_r_check = b.create_block();
-            b.br_if(d_le_zero, ret_zero_block, &[], branch_r_check, &[]);
-
-            b.switch_to_block(ret_zero_block);
-            b.ret(Some(zero));
-
-            b.switch_to_block(branch_r_check);
-            let r_ge_g = b.cmp(CmpKind::Ge, r, g);
-            let r_ge_b = b.cmp(CmpKind::Ge, r, bv);
-            let r_is_max = b.call_named("and_bool", &[r_ge_g, r_ge_b], Type::Bool);
-
-            let (merge_block, h_params) = b.create_block_with_params(&[Type::Float(64)]);
-            let block_r = b.create_block();
-            let block_not_r = b.create_block();
-            b.br_if(r_is_max, block_r, &[], block_not_r, &[]);
-
-            b.switch_to_block(block_r);
-            let c6 = b.const_float(6.0);
-            let g_minus_b = b.sub(g, bv);
-            let h_r_raw = b.div(g_minus_b, d);
-            let h_r = b.rem(h_r_raw, c6);
-            b.br(merge_block, &[h_r]);
-
-            b.switch_to_block(block_not_r);
-            let g_ge_b = b.cmp(CmpKind::Ge, g, bv);
-            let block_g = b.create_block();
-            let block_bv = b.create_block();
-            b.br_if(g_ge_b, block_g, &[], block_bv, &[]);
-
-            b.switch_to_block(block_g);
-            let two = b.const_float(2.0);
-            let bv_minus_r = b.sub(bv, r);
-            let h_g_div = b.div(bv_minus_r, d);
-            let h_g = b.add(h_g_div, two);
-            b.br(merge_block, &[h_g]);
-
-            b.switch_to_block(block_bv);
-            let four = b.const_float(4.0);
-            let r_minus_g = b.sub(r, g);
-            let h_bv_div = b.div(r_minus_g, d);
-            let h_bv = b.add(h_bv_div, four);
-            b.br(merge_block, &[h_bv]);
-
-            b.switch_to_block(merge_block);
-            let h_raw = h_params[0];
-
-            let c255_over_6 = b.const_float(255.0 / 6.0);
-            let h_scaled = b.mul(h_raw, c255_over_6);
-            let h_rounded = b.call_named("round_f64", &[h_scaled], Type::Float(64));
-
-            let h_lt_zero = b.cmp(CmpKind::Lt, h_rounded, zero);
-            let (final_block, final_params) = b.create_block_with_params(&[Type::Float(64)]);
-            let add_255_block = b.create_block();
-            b.br_if(h_lt_zero, add_255_block, &[], final_block, &[h_rounded]);
-
-            b.switch_to_block(add_255_block);
-            let h_plus_255 = b.add(h_rounded, c255);
-            b.br(final_block, &[h_plus_255]);
-
-            b.switch_to_block(final_block);
-            let result = final_params[0];
-            b.ret(Some(result));
-        },
-    );
-}
-
-// ---------------------------------------------------------------------------
 // make_color_hsv(h: f64, s: f64, v: f64) -> f64
 //
 // Converts HSV (0–255 each) to a GML BGR color.
@@ -1623,122 +1345,6 @@ fn attach_body_make_color_hsv(module: &mut Module) {
             b.br(merge_block, &[cv, zero, x]);
 
             // Merge: apply m offset and pack into BGR.
-            b.switch_to_block(merge_block);
-            let r_out = rgb_params[0];
-            let g_out = rgb_params[1];
-            let bv_out = rgb_params[2];
-
-            let r_plus_m = b.add(r_out, m);
-            let r_scaled = b.mul(r_plus_m, c255);
-            let r_final = b.call_named("round_f64", &[r_scaled], Type::Float(64));
-            let g_plus_m = b.add(g_out, m);
-            let g_scaled = b.mul(g_plus_m, c255);
-            let g_final = b.call_named("round_f64", &[g_scaled], Type::Float(64));
-            let bv_plus_m = b.add(bv_out, m);
-            let bv_scaled = b.mul(bv_plus_m, c255);
-            let b_final = b.call_named("round_f64", &[bv_scaled], Type::Float(64));
-
-            let result = b.call_named(
-                "make_color_rgb",
-                &[r_final, g_final, b_final],
-                Type::Float(64),
-            );
-            b.ret(Some(result));
-        },
-    );
-}
-
-// ---------------------------------------------------------------------------
-// make_colour_hsv — alias for make_color_hsv
-// ---------------------------------------------------------------------------
-
-fn attach_body_make_colour_hsv(module: &mut Module) {
-    attach_runtime_body(
-        module,
-        "make_colour_hsv",
-        &[Type::Float(64), Type::Float(64), Type::Float(64)],
-        Type::Float(64),
-        |b| {
-            let h = b.param(0);
-            let s = b.param(1);
-            let v = b.param(2);
-
-            let c255 = b.const_float(255.0);
-            let c6 = b.const_float(6.0);
-
-            let h_div = b.div(h, c255);
-            let hf = b.mul(h_div, c6);
-            let sf = b.div(s, c255);
-            let vf = b.div(v, c255);
-
-            let cv = b.mul(vf, sf);
-            let c2_hsv = b.const_float(2.0);
-            let hf_mod2 = b.rem(hf, c2_hsv);
-            let c1_hsv = b.const_float(1.0);
-            let hf_mod2_m1 = b.sub(hf_mod2, c1_hsv);
-            let abs_val = b.call_named("abs_f64", &[hf_mod2_m1], Type::Float(64));
-            let c1_hsv2 = b.const_float(1.0);
-            let one_minus_abs = b.sub(c1_hsv2, abs_val);
-            let x = b.mul(cv, one_minus_abs);
-            let m = b.sub(vf, cv);
-
-            let (merge_block, rgb_params) =
-                b.create_block_with_params(&[Type::Float(64), Type::Float(64), Type::Float(64)]);
-
-            let c1 = b.const_float(1.0);
-            let c2 = b.const_float(2.0);
-            let c3 = b.const_float(3.0);
-            let c4 = b.const_float(4.0);
-            let c5 = b.const_float(5.0);
-            let zero = b.const_float(0.0);
-
-            let hf_lt1 = b.cmp(CmpKind::Lt, hf, c1);
-            let blk0 = b.create_block();
-            let blk_ge1 = b.create_block();
-            b.br_if(hf_lt1, blk0, &[], blk_ge1, &[]);
-
-            b.switch_to_block(blk0);
-            b.br(merge_block, &[cv, x, zero]);
-
-            b.switch_to_block(blk_ge1);
-            let hf_lt2 = b.cmp(CmpKind::Lt, hf, c2);
-            let blk1 = b.create_block();
-            let blk_ge2 = b.create_block();
-            b.br_if(hf_lt2, blk1, &[], blk_ge2, &[]);
-
-            b.switch_to_block(blk1);
-            b.br(merge_block, &[x, cv, zero]);
-
-            b.switch_to_block(blk_ge2);
-            let hf_lt3 = b.cmp(CmpKind::Lt, hf, c3);
-            let blk2 = b.create_block();
-            let blk_ge3 = b.create_block();
-            b.br_if(hf_lt3, blk2, &[], blk_ge3, &[]);
-
-            b.switch_to_block(blk2);
-            b.br(merge_block, &[zero, cv, x]);
-
-            b.switch_to_block(blk_ge3);
-            let hf_lt4 = b.cmp(CmpKind::Lt, hf, c4);
-            let blk3 = b.create_block();
-            let blk_ge4 = b.create_block();
-            b.br_if(hf_lt4, blk3, &[], blk_ge4, &[]);
-
-            b.switch_to_block(blk3);
-            b.br(merge_block, &[zero, x, cv]);
-
-            b.switch_to_block(blk_ge4);
-            let hf_lt5 = b.cmp(CmpKind::Lt, hf, c5);
-            let blk4 = b.create_block();
-            let blk5 = b.create_block();
-            b.br_if(hf_lt5, blk4, &[], blk5, &[]);
-
-            b.switch_to_block(blk4);
-            b.br(merge_block, &[x, zero, cv]);
-
-            b.switch_to_block(blk5);
-            b.br(merge_block, &[cv, zero, x]);
-
             b.switch_to_block(merge_block);
             let r_out = rgb_params[0];
             let g_out = rgb_params[1];
