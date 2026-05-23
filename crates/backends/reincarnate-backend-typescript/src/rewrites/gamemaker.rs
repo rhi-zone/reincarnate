@@ -125,16 +125,12 @@ fn instances_0(obj_name: String) -> JsExpr {
 /// introduce, if any.  Used by import generation to ensure these names are
 /// destructured from `this._rt` before the rewrite pass runs.
 ///
-/// For example, `@@Other@@()` rewrites to `other` (a destructured field), and
-/// `@@Global@@()` rewrites to `global`.  Without this hook the scanner would
-/// only see `"@@Other@@"` / `"@@Global@@"` which don't map to any module entry.
-pub fn rewrite_introduced_direct_calls(func_name: &str) -> &'static [&'static str] {
-    match func_name {
-        "@@Global@@" => &["global"],
-        // @@Other@@ rewrites to Var("other") — a param reference, not an import.
-        "@@Other@@" => &[],
-        _ => &[],
-    }
+/// `@@Global@@` and `@@Other@@` now rewrite directly to `_rt.global` /
+/// `_rt.other` (or `this._rt.global` / `this._rt.other` in class context) —
+/// qualified member expressions, not bare identifiers.  No destructured names
+/// are introduced.
+pub fn rewrite_introduced_direct_calls(_func_name: &str) -> &'static [&'static str] {
+    &[]
 }
 
 /// Returns the bare function names that a SystemCall rewrite will introduce,
@@ -214,8 +210,35 @@ fn rewrite_stmts(
 
 /// Returns true for expression-statement no-ops introduced by rewriting GML
 /// internal built-in calls (`@@Global@@`, `@@Other@@`).
+///
+/// Both rewrite to `_rt.global` / `_rt.other` (or `this._rt.global` /
+/// `this._rt.other`), so we match on Field expressions with field `"global"` or
+/// `"other"` whose object is `_rt` or `this._rt`.
 fn is_gml_noop_stmt(stmt: &JsStmt) -> bool {
-    matches!(stmt, JsStmt::Expr(JsExpr::Var(v)) if v == "global" || v == "other")
+    let JsStmt::Expr(expr) = stmt else {
+        return false;
+    };
+    let JsExpr::Field { object, field } = expr else {
+        return false;
+    };
+    if field != "global" && field != "other" {
+        return false;
+    }
+    // _rt.global / _rt.other
+    if matches!(object.as_ref(), JsExpr::Var(v) if v == "_rt") {
+        return true;
+    }
+    // this._rt.global / this._rt.other
+    if let JsExpr::Field {
+        object: inner_obj,
+        field: inner_field,
+    } = object.as_ref()
+    {
+        if inner_field == "_rt" && matches!(inner_obj.as_ref(), JsExpr::This) {
+            return true;
+        }
+    }
+    false
 }
 
 fn rewrite_stmt(
@@ -317,11 +340,11 @@ fn rewrite_stmt(
                         name_map,
                         global_state_type_id,
                     );
-                    // Wrap `global` in a `GameGlobalState` cast so that
+                    // Wrap `_rt.global` in a `GameGlobalState` cast so that
                     // `_rt.global.fieldName = val` becomes
                     // `(_rt.global as GameGlobalState).fieldName = val`,
                     // resolving TS2339 for game-specific global variables.
-                    let global_expr = cast_global_for_field(global_state_type_id);
+                    let global_expr = cast_global_for_field(global_state_type_id, event_name);
                     *stmt = JsStmt::Assign {
                         target: JsExpr::Field {
                             object: Box::new(global_expr),
@@ -700,6 +723,22 @@ fn try_null_coalesce_self_array_collection(target: &mut JsExpr) {
     });
 }
 
+/// Build `_rt.field` (free-function context) or `this._rt.field` (class-method context).
+fn rt_field(field: &str, in_class: bool) -> JsExpr {
+    let rt = if in_class {
+        JsExpr::Field {
+            object: Box::new(JsExpr::This),
+            field: "_rt".into(),
+        }
+    } else {
+        JsExpr::Var("_rt".into())
+    };
+    JsExpr::Field {
+        object: Box::new(rt),
+        field: field.into(),
+    }
+}
+
 fn rewrite_expr(
     expr: &mut JsExpr,
     sprite_names: &[String],
@@ -755,14 +794,14 @@ fn rewrite_expr(
                     };
                     return;
                 }
-                // @@Global@@() → global
+                // @@Global@@() → _rt.global  (or this._rt.global in class context)
                 "@@Global@@" if args.is_empty() => {
-                    *expr = JsExpr::Var("global".into());
+                    *expr = rt_field("global", event_name.is_some());
                     return;
                 }
-                // @@Other@@() → other
+                // @@Other@@() → _rt.other  (or this._rt.other in class context)
                 "@@Other@@" if args.is_empty() => {
-                    *expr = JsExpr::Var("other".into());
+                    *expr = rt_field("other", event_name.is_some());
                     return;
                 }
                 // event_inherited() → super.eventName(args...)
@@ -889,11 +928,11 @@ fn rewrite_expr(
     if let JsExpr::Var(name) = expr {
         match name.as_str() {
             "@@Global@@" => {
-                *expr = JsExpr::Var("global".into());
+                *expr = rt_field("global", event_name.is_some());
                 return;
             }
             "@@Other@@" => {
-                *expr = JsExpr::Var("other".into());
+                *expr = rt_field("other", event_name.is_some());
                 return;
             }
             _ => {}
@@ -925,6 +964,7 @@ fn rewrite_expr(
             closure_bodies,
             name_map,
             global_state_type_id,
+            event_name,
         ),
         _ => None,
     };
@@ -1360,27 +1400,26 @@ fn rewrite_expr_children(
 
 /// Build the expression used as the object in `global.fieldName` accesses.
 ///
-/// When `global_state_type_id` is `Some`, wraps `global` in a `Coerce` cast to
-/// `GameGlobalState` so that constant-key accesses emit
-/// `(_rt.global as GameGlobalState).fieldName` rather than `_rt.global.fieldName`,
-/// resolving TS2339 errors for game-specific global variables.
-///
-/// The cast node holds `Var("global")` as its inner expression; the stateful-call
-/// rewrite pass later expands `Var("global")` to `this._rt.global` / `_rt.global`
-/// inside the cast, producing the correct qualified form.
-fn cast_global_for_field(global_state_type_id: Option<TypeId>) -> JsExpr {
+/// Returns `_rt.global` (free-function context) or `this._rt.global` (class-method
+/// context).  When `global_state_type_id` is `Some`, wraps the expression in a
+/// `Coerce` cast to `GameGlobalState` so that constant-key accesses emit
+/// `(_rt.global as GameGlobalState).fieldName`, resolving TS2339 errors for
+/// game-specific global variables.
+fn cast_global_for_field(global_state_type_id: Option<TypeId>, event_name: Option<&str>) -> JsExpr {
+    let global_expr = rt_field("global", event_name.is_some());
     if let Some(id) = global_state_type_id {
         JsExpr::Cast {
-            expr: Box::new(JsExpr::Var("global".into())),
+            expr: Box::new(global_expr),
             ty: Type::Instance(id),
             kind: CastKind::Coerce,
         }
     } else {
-        JsExpr::Var("global".into())
+        global_expr
     }
 }
 
 /// Try to rewrite a GameMaker SystemCall into a native JS expression.
+#[allow(clippy::too_many_arguments)]
 fn try_rewrite_system_call(
     system: &str,
     method: &str,
@@ -1389,6 +1428,7 @@ fn try_rewrite_system_call(
     closure_bodies: &HashMap<String, JsFunction>,
     name_map: &HashMap<String, String>,
     global_state_type_id: Option<TypeId>,
+    event_name: Option<&str>,
 ) -> Option<JsExpr> {
     match (system, method) {
         // SugarCube.Engine.closure(name[, cap0, cap1, ...]) → arrow function or IIFE
@@ -1515,11 +1555,12 @@ fn try_rewrite_system_call(
         ("GameMaker.Global", "get") if args.len() == 1 => {
             let name = take_arg(args, "GameMaker.Global.get");
             if let JsExpr::Literal(Constant::String(field_name)) = name {
-                // Wrap `global` in a `GameGlobalState` cast so that after the
-                // stateful-call rewrite this becomes
-                // `(this._rt.global as GameGlobalState).fieldName`, resolving
-                // TS2339 errors for game-specific global variables.
-                let global_expr = cast_global_for_field(global_state_type_id);
+                // Wrap `_rt.global` in a `GameGlobalState` cast so that this
+                // becomes `(_rt.global as GameGlobalState).fieldName` (or
+                // `(this._rt.global as GameGlobalState).fieldName` in class
+                // context), resolving TS2339 errors for game-specific global
+                // variables.
+                let global_expr = cast_global_for_field(global_state_type_id, event_name);
                 Some(JsExpr::Field {
                     object: Box::new(global_expr),
                     field: field_name,
