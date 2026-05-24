@@ -780,6 +780,66 @@ fn translate_call_op(
                     return Ok(());
                 }
 
+                // int64(x) — coerce to Int(32) at the call site; no runtime stub needed.
+                if func_name == "int64" && argc == 1 {
+                    let val = pop(stack, inst)?;
+                    let result = fb.coerce(val, Type::Int(32));
+                    gml_sizes.insert(result, 4);
+                    stack.push(result);
+                    return Ok(());
+                }
+
+                // string(x) — coerce to String at the call site; no runtime stub needed.
+                if func_name == "string" && argc == 1 {
+                    let val = pop(stack, inst)?;
+                    let result = fb.coerce(val, Type::String);
+                    gml_sizes.insert(result, 4);
+                    stack.push(result);
+                    return Ok(());
+                }
+
+                // max(a, b, ...) — fold into binary max_f64 calls.
+                if func_name == "max" && argc >= 1 {
+                    let mut popped: Vec<ValueId> = (0..argc)
+                        .map(|_| pop(stack, inst))
+                        .collect::<Result<_, _>>()?;
+                    popped.reverse(); // restore source order
+                    let result = if popped.len() == 1 {
+                        popped[0]
+                    } else {
+                        let mut acc =
+                            fb.call_named("max_f64", &[popped[0], popped[1]], Type::Float(64));
+                        for &next in &popped[2..] {
+                            acc = fb.call_named("max_f64", &[acc, next], Type::Float(64));
+                        }
+                        acc
+                    };
+                    gml_sizes.insert(result, 4);
+                    stack.push(result);
+                    return Ok(());
+                }
+
+                // min(a, b, ...) — fold into binary min_f64 calls.
+                if func_name == "min" && argc >= 1 {
+                    let mut popped: Vec<ValueId> = (0..argc)
+                        .map(|_| pop(stack, inst))
+                        .collect::<Result<_, _>>()?;
+                    popped.reverse(); // restore source order
+                    let result = if popped.len() == 1 {
+                        popped[0]
+                    } else {
+                        let mut acc =
+                            fb.call_named("min_f64", &[popped[0], popped[1]], Type::Float(64));
+                        for &next in &popped[2..] {
+                            acc = fb.call_named("min_f64", &[acc, next], Type::Float(64));
+                        }
+                        acc
+                    };
+                    gml_sizes.insert(result, 4);
+                    stack.push(result);
+                    return Ok(());
+                }
+
                 let mut args = Vec::with_capacity(argc as usize + 1);
                 for _ in 0..argc {
                     args.push(pop(stack, inst)?);
