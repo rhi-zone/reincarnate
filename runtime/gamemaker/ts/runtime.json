@@ -7875,8 +7875,12 @@
   "function_modules": [
     {
       "names": [
+        "max",
+        "min",
         "mean",
-        "median"
+        "median",
+        "int64",
+        "string"
       ],
       "path": "gamemaker/math"
     },

@@ -141,8 +141,6 @@ pub fn register_runtime_bodies(module: &mut Module) {
     attach_body_matrix_build(module);
     attach_body_array_copy(module);
     attach_body_array_equals(module);
-    attach_body_int64(module);
-    attach_body_string(module);
 }
 
 // ---------------------------------------------------------------------------
@@ -2427,20 +2425,4 @@ fn attach_body_array_equals(module: &mut Module) {
             b.ret(Some(tv));
         },
     );
-}
-
-fn attach_body_int64(module: &mut Module) {
-    attach_runtime_body(module, "int64", &[Type::Float(64)], Type::Int(32), |b| {
-        let n = b.param(0);
-        let result = b.call_named("coerce_f64_to_i32", &[n], Type::Int(32));
-        b.ret(Some(result));
-    });
-}
-
-fn attach_body_string(module: &mut Module) {
-    attach_runtime_body(module, "string", &[Type::Unknown], Type::String, |b| {
-        let n = b.param(0);
-        let result = b.call_named("to_string_unknown", &[n], Type::String);
-        b.ret(Some(result));
-    });
 }
