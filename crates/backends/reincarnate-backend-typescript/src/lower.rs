@@ -444,6 +444,23 @@ fn math_call_2(method: &str, args: &[Expr], ctx: &LowerCtx) -> JsExpr {
     }
 }
 
+/// Recursively collect args for chained calls of `func_name`, flattening them
+/// into a single flat argument list.  For example, `max_f64(max_f64(a, b), c)`
+/// becomes `[a, b, c]` so the backend can emit `Math.max(a, b, c)`.
+fn collect_chained_args(func_name: &str, args: &[Expr], ctx: &LowerCtx) -> Vec<JsExpr> {
+    let mut result = Vec::new();
+    for arg in args {
+        if let Expr::Call { func, args: inner } = arg {
+            if func == func_name {
+                result.extend(collect_chained_args(func_name, inner, ctx));
+                continue;
+            }
+        }
+        result.push(lower_expr(arg, ctx));
+    }
+    result
+}
+
 /// Helper: `receiver.method(call_args...)` where receiver and call_args are
 /// selected from the lowered args by index.
 fn method_call(
@@ -550,8 +567,14 @@ fn lower_builtin_opt(op_name: &str, args: &[Expr], ctx: &LowerCtx) -> Option<JsE
         "atan2_f64" => Some(math_call_2("atan2", args, ctx)),
         "pow_f64" => Some(math_call_2("pow", args, ctx)),
         "hypot_f64" => Some(math_call_2("hypot", args, ctx)),
-        "min_f64" => Some(math_call_2("min", args, ctx)),
-        "max_f64" => Some(math_call_2("max", args, ctx)),
+        "min_f64" => Some(JsExpr::Call {
+            callee: Box::new(build_dotted_path("Math.min")),
+            args: collect_chained_args("min_f64", args, ctx),
+        }),
+        "max_f64" => Some(JsExpr::Call {
+            callee: Box::new(build_dotted_path("Math.max")),
+            args: collect_chained_args("max_f64", args, ctx),
+        }),
 
         // --- String operations ---
         "string_length_str" => Some(JsExpr::Field {
