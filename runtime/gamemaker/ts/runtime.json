@@ -7875,7 +7875,6 @@
   "function_modules": [
     {
       "names": [
-        "mean",
         "median"
       ],
       "path": "gamemaker/math"

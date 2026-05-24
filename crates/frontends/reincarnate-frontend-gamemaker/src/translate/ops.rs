@@ -840,6 +840,28 @@ fn translate_call_op(
                     return Ok(());
                 }
 
+                // mean(a, b, ...) — sum via add_f64 fold, divide by count.
+                if func_name == "mean" && argc >= 1 {
+                    let mut popped: Vec<ValueId> = (0..argc)
+                        .map(|_| pop(stack, inst))
+                        .collect::<Result<_, _>>()?;
+                    popped.reverse(); // restore source order
+                    let result = if popped.len() == 1 {
+                        popped[0]
+                    } else {
+                        let mut sum =
+                            fb.call_named("add_f64", &[popped[0], popped[1]], Type::Float(64));
+                        for &next in &popped[2..] {
+                            sum = fb.call_named("add_f64", &[sum, next], Type::Float(64));
+                        }
+                        let count = fb.const_float(argc as f64);
+                        fb.call_named("div_f64", &[sum, count], Type::Float(64))
+                    };
+                    gml_sizes.insert(result, 4);
+                    stack.push(result);
+                    return Ok(());
+                }
+
                 let mut args = Vec::with_capacity(argc as usize + 1);
                 for _ in 0..argc {
                     args.push(pop(stack, inst)?);
