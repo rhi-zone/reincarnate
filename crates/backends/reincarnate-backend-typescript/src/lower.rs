@@ -552,6 +552,14 @@ fn lower_builtin_opt(op_name: &str, args: &[Expr], ctx: &LowerCtx) -> Option<JsE
         "hypot_f64" => Some(math_call_2("hypot", args, ctx)),
         "min_f64" => Some(math_call_2("min", args, ctx)),
         "max_f64" => Some(math_call_2("max", args, ctx)),
+        "max" => Some(JsExpr::Call {
+            callee: Box::new(build_dotted_path("Math.max")),
+            args: args.iter().map(|a| lower_expr(a, ctx)).collect(),
+        }),
+        "min" => Some(JsExpr::Call {
+            callee: Box::new(build_dotted_path("Math.min")),
+            args: args.iter().map(|a| lower_expr(a, ctx)).collect(),
+        }),
 
         // --- String operations ---
         "string_length_str" => Some(JsExpr::Field {
@@ -591,6 +599,13 @@ fn lower_builtin_opt(op_name: &str, args: &[Expr], ctx: &LowerCtx) -> Option<JsE
             args: vec![lower_expr(&args[0], ctx)],
         }),
         "to_i32_f64" => Some(JsExpr::Binary {
+            op: BinOp::BitOr,
+            lhs: Box::new(lower_expr(&args[0], ctx)),
+            rhs: Box::new(JsExpr::Literal(
+                reincarnate_core::ir::value::Constant::Float(0.0),
+            )),
+        }),
+        "coerce_f64_to_i32" => Some(JsExpr::Binary {
             op: BinOp::BitOr,
             lhs: Box::new(lower_expr(&args[0], ctx)),
             rhs: Box::new(JsExpr::Literal(

@@ -795,7 +795,7 @@ impl Module {
     /// expresses structurally is a Law 2 violation.
     /// Polymorphic `_any` stubs are GML-specific and registered by the GML frontend,
     /// not by `register_core_builtins`, so they are not counted here.
-    pub const NUM_CORE_BUILTINS: u32 = 77;
+    pub const NUM_CORE_BUILTINS: u32 = 78;
 
     pub fn new(name: String) -> Self {
         let mut module = Self {
@@ -1123,6 +1123,16 @@ impl Module {
             FunctionSig {
                 params: vec![Type::Unknown],
                 return_ty: Type::Bool,
+                ..Default::default()
+            },
+        );
+        self.core_builtin_fids.insert(fid);
+        // coerce_f64_to_i32: (Float(64)) -> Int(32)  — emit as x | 0
+        let fid = self.register_runtime(
+            "coerce_f64_to_i32",
+            FunctionSig {
+                params: vec![Type::Float(64)],
+                return_ty: Type::Int(32),
                 ..Default::default()
             },
         );
