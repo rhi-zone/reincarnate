@@ -531,7 +531,7 @@ Full design: `docs/rewrite.md` (on `rewrite-v1` branch). Executed incrementally 
 - [ ] **Phase 8 — Core AST + reconstruction pipeline.** Structurizer → Core AST; forward substitution; `ForEach` lifting. Gate: emitted code measurably cleaner.
   > `rewrite_loop_to_while` wired up (was implemented but not registered). `promote_while_to_for` already active.
 - [ ] **Phase 9 — Runtime as IR.** GML stdlib expressed as IR *functions with bodies*; `RuntimeRegistry` maps stdlib names to `FuncId`s. Frontends emit the runtime the same way they emit game code — same `Function` struct, same pipeline. Backends emit runtime functions like any other function; no per-backend runtime package. Deletes `runtime/gamemaker/runtime.ts` as handwritten source (it becomes generated output). Gate: same output, M+N architecture (not M×N).
-  > **Arithmetic slice done** (2026-03-28): `Op::Add/Sub/Mul/Div/Rem/Neg/Not/BoolAnd/BoolOr/BitAnd/BitOr/BitXor/BitNot/Shl/Shr` removed; typed builtins (`builtin.add_f64`, etc.) registered in core. `BuiltinOverloadSelect` pass (post-HM) replaces `_any` calls with typed variants via `Function::specializations` table (2026-03-29). **Math stdlib bodies done** (2026-03-29): `lengthdir_x/y`, `point_distance`, `degtorad`, `radtodeg`, `dsin/dcos/dtan`, `darcsin/darccos/darctan/darctan2`, `arctan2`, `point_direction`, `sqr`, `power`, `logn`, `log2`, `log10`, `exp`, `clamp`, `lerp` — 22 functions in `runtime_bodies.rs`. Core math leaf builtins registered (`sin_f64`…`hypot_f64`), TS backend dispatch added. Remaining: string stdlib bodies, IR inliner (`inline_hint: Always`), TS backend emitting IR bodies instead of handwritten runtime.ts, `RuntimeRegistry` as `FuncId`-keyed map, Phase 3 unblock.
+  > **Arithmetic slice done** (2026-03-28): `Op::Add/Sub/Mul/Div/Rem/Neg/Not/BoolAnd/BoolOr/BitAnd/BitOr/BitXor/BitNot/Shl/Shr` removed; typed builtins (`builtin.add_f64`, etc.) registered in core. `BuiltinOverloadSelect` pass (post-HM) replaces `_any` calls with typed variants via `Function::specializations` table (2026-03-29). **Math stdlib bodies done** (2026-03-29): `lengthdir_x/y`, `point_distance`, `degtorad`, `radtodeg`, `dsin/dcos/dtan`, `darcsin/darccos/darctan/darctan2`, `arctan2`, `point_direction`, `sqr`, `power`, `logn`, `log2`, `log10`, `exp`, `clamp`, `lerp` — 22 functions in `runtime_bodies.rs`. Core math leaf builtins registered (`sin_f64`…`hypot_f64`), TS backend dispatch added. Remaining: string stdlib bodies, `RuntimeRegistry` as `FuncId`-keyed map, Phase 3 unblock. Done: IR inliner (`inline_hint: Always`) — bodies are inlined at call sites for single-block/single-return functions; TS backend IR body emission — `collect_runtime_body_fids` emits `InlineHint::Always` functions to `_runtime.ts` as fallback for multi-block bodies.
   > **Three categories of builtin, by emit strategy:**
   > 1. **Operator builtins** (`add_f64`, `sub_f64`, `bit_and_i32`, …): backend emits as operator syntax at emit time — safe because args are already values, no body expansion needed. `add_f64(a, b)` → `a + b`.
   > 2. **Stdlib functions with IR bodies** (`lengthdir_x`, `hypot` if no native, …): IR body expressed using other builtins. IR inliner (not backend) handles `inline_hint: Always`. Multi-statement bodies require IR-level inlining to avoid double-evaluation (emit-time inlining is AST-level and unsafe).
@@ -550,10 +550,12 @@ Full design: `docs/rewrite.md` (on `rewrite-v1` branch). Executed incrementally 
   > Skip anything that requires `SystemCall` (draw, file I/O, network) — those stay as stubs until Phase 3.
   > **Blocked on**: `RuntimeRegistry` (FuncId-keyed stdlib map), then Phase 3 (`SystemCall` ban).
   > **`_rt` migration design (2026-04-05):** The current backend-injected `_rt: GameRuntime` is a hack — the backend reactively detects stateful calls and splices `_rt` as param 0 and arg 0. The correct design: the GML frontend defines a `GameRuntime` struct type and passes `rt: GameRuntime` as explicit param 0 of every translated function. Call sites pass it explicitly. A dead parameter elimination pass removes `rt` from functions that never use it (pure math, etc.). The runtime object is not special in the IR — it is just a typed value. This eliminates `Op::SystemCall`, `IntrinsicKind`, backend `_rt` injection (`rewrites::prepend_rt_arg_to_free_calls`), and the `instance._rt = this` backreference. Blocked on Phase 9 (RuntimeRegistry + stdlib as IR functions), because random/state-dependent stdlib functions need IR bodies that reference `rt` before the frontend can pass it correctly.
+  > **`int64`/`string` lowered at call site (2026-05-25):** GML frontend intercepts `int64(x)` → `Cast(x, Int(32), Coerce)` and `string(x)` → `Cast(x, String, Coerce)`. TS backend already handles both Cast variants correctly (`(x)|0` and `String(x)`). Removed from `function_modules`. No IR bodies needed.
 
 ### Out of scope until designed
 
 - **Twine `State.get`/`State.set`:** banned by Phase 3 (`SystemCall` removal) but the replacement for temp vars (`_args`, `$vars`) passed between passages needs explicit design first. Tracked separately below.
+- **Platform API design:** `shared/platform/` is the official platform API boundary. Any code in `runtime.ts` calling browser APIs directly (`canvas.getContext`, `requestAnimationFrame`, WebGL2, DOM events, etc.) is a bug — it bypasses the M+N boundary. Platform API design requires careful deliberate work before `runtime.ts` can be deleted; it is NOT a prerequisite for IntrinsicKind elimination.
 
 ## Pipeline Architecture Redesign (HIGH PRIORITY — BACKLOG)
 
@@ -3919,8 +3921,9 @@ From `bun scripts/gml-manual-sigs.ts --diff` vs GameMaker Manual.
 
 **Variadic functions treated as fixed-arity:**
 - [ ] `choose(v1, v2, ...)` → `<T>(...vals: T[]): T`
-- [ ] `max(v1, v2, ...)`, `min(v1, v2, ...)` → `(...vals: number[]): number`
-- [ ] `mean(...)`, `median(...)` → `(...vals: number[]): number`
+- [x] `max(v1, v2, ...)`, `min(v1, v2, ...)` — folded to binary `max_f64`/`min_f64` chain at GML call site; TS backend flattens chains to flat `Math.max`/`Math.min`. No runtime stub.
+- [x] `mean(...)` — folded to `add_f64` chain + `div_f64` at GML call site. `mean(a,b,c)` → `(a+b+c)/3`. No runtime stub.
+- [ ] `median(...)` — deferred; requires sorting, not expressible as a fold.
 - [ ] `script_execute(script, arg1, arg2, ...)` → `(script: number, ...args: unknown[]): unknown`
 
 **22 `any` entries in `runtime.json`** (honest representation violation):
