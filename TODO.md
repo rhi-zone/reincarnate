@@ -38,23 +38,7 @@ silently wrong for other source languages and hiding real inference gaps behind 
 
 ### Confirmed violations (production code, not tests or comments)
 
-**1. `transforms/call_site_flow.rs:110` — hardcoded GML function name**
-
-```rust
-Op::Call { func: fname, args } if fname == "array_length" => {
-    if args.first().map(|a| tracked.contains(a)).unwrap_or(false) {
-        return true;
-    }
-}
-```
-
-`"array_length"` is a GML stdlib name. It has no business appearing in a core pass.
-Any language that happens to have a function with this name gets silently different behavior.
-
-**Fix:** expose an `array_length_fns: HashSet<String>` (or similar) field on `Module`,
-populated by the GML frontend. Core reads the set; names stay in the frontend.
-
-**2. `transforms/constraint_collect.rs:243-245` — `Op::Add` excluded for GML reasons**
+**1. `transforms/constraint_collect.rs:243-245` — `Op::Add` excluded for GML reasons**
 
 ```rust
 // Op::Add is excluded — overloaded for string concatenation in GML,
@@ -72,7 +56,7 @@ the correct solution is to model `Add` as a builtin call with an overloaded sign
 known gap. The real fix is Phase 9 (arithmetic ops as typed builtin calls). Until then,
 the comment should reference Phase 9, not GML.
 
-**3. `transforms/constraint_solve.rs` — memory coherence block is a GML-specific
+**2. `transforms/constraint_solve.rs` — memory coherence block is a GML-specific
 backward-inference monkeypatch (added 2026-03-22, commit 75de59e)**
 
 The block scans `Store`/`Load` instructions, finds allocs whose stored values are Unknown
@@ -100,6 +84,30 @@ papered over.
 string concatenation in GML" should say "overloaded for string concatenation in GML and
 AS3 — correct general behavior is Phase 9 (arithmetic ops as typed builtin calls)."
 
+**3. `transforms/constraint_collect.rs:~907–964` — guard silently drops `Equal(arg_var, param_ty)` constraints on concrete type mismatch**
+
+When emitting call constraints, the guard checks whether `arg_ty` and `param_ty` are both
+concrete and differ; if so, it drops the `Equal(arg_var, param_ty)` constraint entirely
+rather than emitting it. This suppresses type errors from the solver.
+
+Root cause: the GML frontend maps `DataType::Variable` + `+` to `add_f64` even when the
+accumulator is `String`. This produces a `String` vs `Float64` mismatch in the IR —
+`arg_ty = String`, `param_ty = Float64` — and the guard was added to prevent the solver
+from choking on the mismatch rather than fixing the upstream callee selection.
+
+This is a Law 2 violation: the guard exists solely because one frontend emits IR with
+mismatched call signatures. The correct fix is to make the GML frontend select the right
+callee for the actual accumulator type (polymorphic add, or infer type before callee
+selection), then remove the guard.
+
+**Fix:** GML frontend `DataType::Variable` callee selection must be fixed first:
+- When the accumulator type is `String`, select `concat_str` (or a polymorphic add with
+  a `String`-typed overload) rather than `add_f64`.
+- After the frontend fix, the guard in `constraint_collect.rs` becomes dead code and
+  must be removed.
+
+**Blocked on:** GML frontend `DataType::Variable` callee selection fix.
+
 ### Why "fix the root cause" is the right call
 
 Every one of these workarounds papers over a gap that would otherwise be visible as
@@ -116,9 +124,8 @@ where inference needs improvement. Hiding it in core passes:
   (commit 4a10069). The block had zero effect on error counts when removed; the
   "GML-specific" characterization turned out to be wrong (it affected all frontends equally,
   but removal showed it was not load-bearing for any of them either).
-- [x] **Fix `call_site_flow.rs:110`** — done 2026-03-27 (commit 4a10069). Moved
-  `"array_length"` to `Module::array_like_fns`, populated by GML frontend.
 - [x] **Fix `constraint_collect.rs:243` comment** — no GML-specific comment remains in constraint_collect.rs; the referenced comment was removed in a prior refactor.
+- [ ] **Fix GML frontend `DataType::Variable` callee selection** — currently maps `Variable + <anything>` to `add_f64` regardless of accumulator type; must select the correct callee (e.g. `concat_str` when accumulator is `String`). Once fixed, remove the concrete-type-mismatch guard at `constraint_collect.rs:~907–964`.
 - [ ] **Root-cause fix for `ResolveInstanceField` with Unknown receiver** — the real
   source of Dead Estate's ~1,500+ remaining Unknown instance field reads. Design: when
   receiver is Unknown but field name is a constant, emit a `HasField(receiver, field,
