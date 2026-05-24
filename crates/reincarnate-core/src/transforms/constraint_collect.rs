@@ -903,37 +903,11 @@ pub fn collect_function(
                             }
                         }
                         // Args → callee param types.
-                        //
-                        // Per-arg type-conflict guard: if this arg has a concrete
-                        // type that conflicts with the param type, skip only that
-                        // arg's constraint (not the whole call).
-                        //
-                        // This prevents "wrong function selected" scenarios from
-                        // poisoning the inference graph.  The canonical case: GML's
-                        // `DataType::Variable` maps to `add_f64`, so a String
-                        // accumulator gets `add_f64(str_var, ...)` in the IR.  If we
-                        // emitted `Equal(str_var, Float64)`, the solver would
-                        // force-rebind `str_var` to Unknown, propagating poison
-                        // through every phi and store constraint that touches it.
-                        //
-                        // The conflict check fires only when:
-                        //   - the arg's type is concrete and not Unknown/Var (i.e.
-                        //     a resolved concrete type like String or Bool), AND
-                        //   - the corresponding param type is also concrete and
-                        //     non-Unknown, AND
-                        //   - they differ.
-                        // Unknown/Var arg types are not concrete mismatches — they
-                        // are open inference targets that SHOULD be constrained.
-                        //
-                        // When param_ty is a Var, emit Equal(arg_var, param_ty) so
-                        // that intra-procedural arg type info flows into the callee
-                        // param Var (mirrors the inter-procedural fix in
-                        // constraint_solve_hm.rs).
+                        // Unknown params are wildcards — skip to avoid poisoning.
                         for (i, &arg) in args.iter().enumerate() {
                             if i < sig.params.len() {
                                 let param_ty = &sig.params[i];
                                 if let Type::Var(_) = param_ty {
-                                    // Param is an open Var — flow arg type into it.
                                     if let Some(arg_var) = var_for(arg, &value_vars) {
                                         constraints
                                             .push(TypeConstraint::Equal(arg_var, param_ty.clone()));
@@ -941,25 +915,11 @@ pub fn collect_function(
                                 } else if is_concrete(param_ty)
                                     && !matches!(param_ty, Type::Unknown)
                                 {
-                                    // Param is a concrete type — check for conflict
-                                    // before emitting.
-                                    let arg_ty = &func.value_types[arg];
-                                    let conflict = is_concrete(arg_ty)
-                                        && !matches!(arg_ty, Type::Unknown | Type::Var(_))
-                                        && arg_ty != param_ty;
-                                    if !conflict {
-                                        if let Some(arg_var) = var_for(arg, &value_vars) {
-                                            constraints.push(TypeConstraint::Equal(
-                                                arg_var,
-                                                param_ty.clone(),
-                                            ));
-                                        }
+                                    if let Some(arg_var) = var_for(arg, &value_vars) {
+                                        constraints
+                                            .push(TypeConstraint::Equal(arg_var, param_ty.clone()));
                                     }
                                 }
-                                // Unknown params are wildcards — they accept any type
-                                // and must not constrain the argument, since
-                                // Equal(arg_var, Unknown) would poison the arg to
-                                // Unknown and prevent downstream inference.
                             }
                         }
                     }
