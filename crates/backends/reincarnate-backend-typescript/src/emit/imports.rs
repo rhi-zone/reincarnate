@@ -98,15 +98,7 @@ pub(super) fn emit_runtime_imports(
     let systems = collect_system_names_from_funcs(all_funcs(), None);
     emit_runtime_imports_with_prefix(systems, out, ".", runtime_config, stateful_system_aliases);
     let calls = collect_call_names_from_funcs(all_funcs(), engine, None, &func_names);
-    let mut _flat_stateful = BTreeSet::new();
-    emit_function_imports_with_prefix(
-        &calls,
-        out,
-        ".",
-        runtime_config,
-        &mut _flat_stateful,
-        module,
-    );
+    emit_function_imports_with_prefix(&calls, out, ".", runtime_config, module);
 }
 
 /// Emit runtime imports for files inside a module directory.
@@ -376,15 +368,13 @@ pub(super) fn collect_call_names_from_funcs<'a>(
 /// Scans `call_names` against `function_modules` in the runtime config,
 /// groups matches by module path, and emits one import per module.
 ///
-/// Functions from modules marked `stateful: true` are NOT imported — instead
-/// their names are collected in `stateful_out` for destructuring from the
-/// runtime instance at the call site.
+/// Functions from modules marked `stateful: true` are skipped — they are
+/// called as `_rt.method()` via the IR mechanism established in Phase 3.
 pub(super) fn emit_function_imports_with_prefix(
     call_names: &BTreeSet<String>,
     out: &mut String,
     prefix: &str,
     runtime_config: Option<&RuntimeConfig>,
-    stateful_out: &mut BTreeSet<String>,
     module: &Module,
 ) {
     let Some(cfg) = runtime_config else { return };
@@ -418,15 +408,14 @@ pub(super) fn emit_function_imports_with_prefix(
     for (name, entry) in &alias_expansions {
         func_to_module.entry(name.as_str()).or_insert(*entry);
     }
-    // Group needed imports by module path (pure only).
+    // Group needed imports by module path (pure only; stateful entries are skipped).
     let mut by_mod: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
     for name in call_names {
         if let Some(&(path, stateful)) = func_to_module.get(name.as_str()) {
             if stateful {
-                stateful_out.insert(name.clone());
-            } else {
-                by_mod.entry(path).or_default().insert(name.as_str());
+                continue;
             }
+            by_mod.entry(path).or_default().insert(name.as_str());
         }
     }
     for (module, names) in &by_mod {

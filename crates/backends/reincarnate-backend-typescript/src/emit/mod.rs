@@ -931,16 +931,13 @@ fn emit_class_file(
         .filter(|n| !generated_runtime_names.contains(n.as_str()))
         .cloned()
         .collect();
-    let mut stateful_names = BTreeSet::new();
     emit_function_imports_with_prefix(
         &handwritten_calls,
         &mut out,
         func_prefix,
         runtime_config,
-        &mut stateful_names,
         module,
     );
-    stateful_names.retain(|name| !free_func_names.contains(name.as_str()));
     emit_free_function_imports(&calls, free_func_names, depth, &mut out);
     if let Some(preamble) = runtime_config.and_then(|c| c.class_preamble.as_ref()) {
         let prefix = "../".repeat(depth + 1);
@@ -1221,15 +1218,7 @@ fn emit_runtime_functions_file(
         .collect();
 
     // Import any handwritten runtime functions called from within this file.
-    let mut _rt_stateful_names = BTreeSet::new();
-    emit_function_imports_with_prefix(
-        &external_calls,
-        &mut out,
-        "..",
-        runtime_config,
-        &mut _rt_stateful_names,
-        module,
-    );
+    emit_function_imports_with_prefix(&external_calls, &mut out, "..", runtime_config, module);
 
     let object_ts_names = class::resolve_object_ts_names(&module.object_names, class_names);
     let name_map: HashMap<String, String> = module
@@ -1372,22 +1361,10 @@ fn emit_free_functions_file(
         .filter(|n| !generated_runtime_names.contains(n.as_str()))
         .cloned()
         .collect();
-    let mut free_stateful_names = BTreeSet::new();
-    emit_function_imports_with_prefix(
-        &handwritten_calls,
-        &mut out,
-        "..",
-        runtime_config,
-        &mut free_stateful_names,
-        module,
-    );
-    // Remove any runtime stateful entry that the game overrides — inside each
-    // function body the `const { name } = _rt` destructuring would shadow the
-    // game's version and break call sites that pass `(_rt, self, ...)`.
-    free_stateful_names.retain(|name| !free_func_names.contains(name.as_str()));
-    // If free functions use stateful runtime functions, import the runtime type
-    // for the `_rt` parameter annotation.
-    if !free_stateful_names.is_empty() {
+    emit_function_imports_with_prefix(&handwritten_calls, &mut out, "..", runtime_config, module);
+    // All game functions have _rt as param 0; import the runtime type whenever
+    // a runtime type is present in the module.
+    if module.runtime_type_id.is_some() {
         if let Some(preamble_cfg) = runtime_config.and_then(|c| c.class_preamble.as_ref()) {
             let _ = writeln!(
                 out,

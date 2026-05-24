@@ -14,11 +14,7 @@ for game-to-runtime calls.
 
 ### ~~Phase 3 follow-up: `prepend_rt_arg_to_free_calls` deletion~~ DONE
 
-### Phase 3 follow-up: emit_function_imports_with_prefix `stateful_names_out` cleanup
-`stateful_names_out: &mut BTreeSet<String>` is still populated in
-`crates/backends/reincarnate-backend-typescript/src/emit/imports.rs` for the Twine preamble
-path and other call sites. Now that `rewrite_stateful_calls` is gone, this output is vestigial
-for the GameMaker backend. Clean up when Twine's own stateful handling is sorted.
+### ~~Phase 3 follow-up: emit_function_imports_with_prefix `stateful_names_out` cleanup~~ DONE
 
 ---
 
