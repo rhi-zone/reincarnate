@@ -125,7 +125,8 @@ where inference needs improvement. Hiding it in core passes:
   "GML-specific" characterization turned out to be wrong (it affected all frontends equally,
   but removal showed it was not load-bearing for any of them either).
 - [x] **Fix `constraint_collect.rs:243` comment** — no GML-specific comment remains in constraint_collect.rs; the referenced comment was removed in a prior refactor.
-- [ ] **Fix GML frontend `DataType::Variable` callee selection** — currently maps `Variable + <anything>` to `add_f64` regardless of accumulator type; must select the correct callee (e.g. `concat_str` when accumulator is `String`). Once fixed, remove the concrete-type-mismatch guard at `constraint_collect.rs:~907–964`.
+- [x] **Remove concrete-type-mismatch guard from `constraint_collect.rs`** — guard at ~907–964 that silently dropped `Equal(arg_var, param_ty)` constraints removed (2026-05-24). Dead Estate error count unchanged: 0→0.
+- [ ] **Fix GML frontend `DataType::Variable` callee selection** — currently maps `Variable + <anything>` to `add_f64` regardless of accumulator type; must select the correct callee (e.g. `concat_str` when accumulator is `String`).
 - [ ] **Root-cause fix for `ResolveInstanceField` with Unknown receiver** — the real
   source of Dead Estate's ~1,500+ remaining Unknown instance field reads. Design: when
   receiver is Unknown but field name is a constant, emit a `HasField(receiver, field,
