@@ -919,8 +919,8 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
                 return_ty: Type::Array(Box::new(Type::Unknown)),
                 defaults: vec![
                     None,
-                    Some(Constant::Float(0.0)), // TODO: actual default for `offset` must be filled in manually
-                    Some(Constant::Float(0.0)), // TODO: actual default for `length` must be filled in manually
+                    Some(Constant::Float(0.0)), // offset: default 0
+                    Some(Constant::Float(0.0)), // length: default 0 (full range from offset)
                 ],
                 has_rest_param: false,
                 param_lower_bounds: vec![],
@@ -938,8 +938,8 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
                 return_ty: Type::Void,
                 defaults: vec![
                     None,
-                    Some(Constant::Float(0.0)), // TODO: actual default for `offset` must be filled in manually
-                    Some(Constant::Float(0.0)), // TODO: actual default for `length` must be filled in manually
+                    Some(Constant::Float(0.0)), // offset: default 0
+                    Some(Constant::Float(0.0)), // length: default 0 (full range from offset)
                 ],
                 has_rest_param: false,
                 param_lower_bounds: vec![],

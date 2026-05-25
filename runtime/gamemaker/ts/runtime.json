@@ -739,9 +739,11 @@
     },
     "array_shuffle": {
       "params": [
-        "any[]"
+        "unknown[]",
+        "number",
+        "number"
       ],
-      "returns": "any[]"
+      "returns": "unknown[]"
     },
     "array_shuffle_ext": {
       "params": [

@@ -3979,12 +3979,12 @@ From `bun scripts/gml-manual-sigs.ts --diff` vs GameMaker Manual.
   concrete return types can be assigned.
 
 **Partial-implementation stubs (behavioral gap — no TODO entry = implicit correctness claim):**
-- [ ] `array_shuffle(arr, start, count)` — `start`/`count` params ignored; always shuffles the entire array. GML spec: only elements `arr[start..start+count)` should be shuffled.
+- [ ] `array_shuffle(arr, start, count)` — `start`/`count` params now present in signature (reconciled with builtins_generated.rs), but the IR body still ignores them and always shuffles the entire array. GML spec: only elements `arr[start..start+count)` should be shuffled. Behavioral gap remains; entry stays open until the IR body is implemented.
 
 **Notable return type mismatches:**
-- [ ] `ds_map_add`, `ds_map_replace` — return `void`, manual: `boolean`
-- [ ] `file_delete`, `file_rename` — return `void`, manual: `boolean`
-- [ ] `display_reset`, `surface_reset_target` — return `void`, manual: `number`/`boolean`
+- [x] `ds_map_add`, `ds_map_replace` — already return `boolean` in runtime.json
+- [x] `file_delete`, `file_rename` — already return `boolean` in runtime.json
+- [ ] `display_reset`, `surface_reset_target` — return `void`, manual: `number`/`boolean` (needs GML manual verification before changing — skip for now)
 - [ ] `buffer_peek`, `buffer_read` — return type depends on `buffer_type` runtime param;
   known limitation requiring dependent types to express precisely — document as such
 - [ ] Layer name vs ID: several layer functions accept `string` (layer name) per manual but
