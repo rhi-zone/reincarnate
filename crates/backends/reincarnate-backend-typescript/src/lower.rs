@@ -627,6 +627,55 @@ fn lower_builtin_opt(op_name: &str, args: &[Expr], ctx: &LowerCtx) -> Option<JsE
         }),
         // array_get_index_arr(arr, value) -> arr.indexOf(value)
         "array_get_index_arr" => Some(method_call(0, "indexOf", &[1], args, ctx)),
+        // array_sort_arr(arr, ascending) -> arr.sort((a, b) => ascending ? a - b : b - a)
+        // .sort() returns the sorted array (same ref); GML array_sort returns void so the
+        // result is discarded, but the call expression is well-typed either way.
+        "array_sort_arr" => {
+            let arr = lower_expr(&args[0], ctx);
+            let ascending = lower_expr(&args[1], ctx);
+            let a_minus_b = JsExpr::Binary {
+                op: BinOp::Sub,
+                lhs: Box::new(JsExpr::Var("a".to_string())),
+                rhs: Box::new(JsExpr::Var("b".to_string())),
+            };
+            let b_minus_a = JsExpr::Binary {
+                op: BinOp::Sub,
+                lhs: Box::new(JsExpr::Var("b".to_string())),
+                rhs: Box::new(JsExpr::Var("a".to_string())),
+            };
+            let comparator = JsExpr::ArrowFunction {
+                params: vec![
+                    ("a".to_string(), Type::Unknown),
+                    ("b".to_string(), Type::Unknown),
+                ],
+                return_ty: Type::Float(64),
+                body: vec![JsStmt::Return(Some(JsExpr::Ternary {
+                    cond: Box::new(ascending),
+                    then_val: Box::new(a_minus_b),
+                    else_val: Box::new(b_minus_a),
+                }))],
+                has_rest_param: false,
+                cast_as: None,
+                infer_param_types: true,
+            };
+            Some(JsExpr::Call {
+                callee: Box::new(JsExpr::Field {
+                    object: Box::new(arr),
+                    field: "sort".to_string(),
+                }),
+                args: vec![comparator],
+            })
+        }
+        // array_unique_arr(arr) -> [...new Set(arr)]
+        "array_unique_arr" => {
+            let arr = lower_expr(&args[0], ctx);
+            Some(JsExpr::ArrayInit(vec![JsExpr::Spread(Box::new(
+                JsExpr::New {
+                    callee: Box::new(JsExpr::Var("Set".to_string())),
+                    args: vec![arr],
+                },
+            ))]))
+        }
 
         // --- Other ---
         "chr_f64" => Some(JsExpr::Call {

@@ -67,8 +67,10 @@ pub(crate) static STATEFUL_RUNTIME_FUNS: std::sync::LazyLock<
         "application_surface_draw_enable",
         "application_surface_enable",
         "approach",
+        // array_concat: variadic rest-param function; IR cannot express the rest-param
+        // iteration cleanly, so it keeps _rt and is dispatched via the runtime object.
+        // TODO: add a pure IR body once there is an IR mechanism for rest-param forwarding.
         "array_concat",
-        "array_copy",
         "array_create",
         "array_equals",
         "array_length_2d",
@@ -76,8 +78,6 @@ pub(crate) static STATEFUL_RUNTIME_FUNS: std::sync::LazyLock<
         "array_shift",
         "array_shuffle",
         "array_shuffle_ext",
-        "array_sort",
-        "array_unique",
         "asset_get_index",
         "asset_get_tags",
         "asset_get_type",

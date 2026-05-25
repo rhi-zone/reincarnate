@@ -157,6 +157,8 @@ pub fn register_runtime_bodies(module: &mut Module) {
     attach_body_variable_struct_names_count(module);
     attach_body_variable_struct_get_names(module);
     attach_body_variable_struct_set(module);
+    attach_body_array_sort(module);
+    attach_body_array_unique(module);
 }
 
 // ---------------------------------------------------------------------------
@@ -2797,6 +2799,57 @@ fn attach_body_variable_struct_names_count(module: &mut Module) {
         |b| {
             let s = b.param(0);
             let result = b.call_named("variable_struct_names_count_rt", &[s], Type::Float(64));
+            b.ret(Some(result));
+        },
+    );
+}
+
+// ---------------------------------------------------------------------------
+// array_sort(arr: Array<Unknown>, ascending: Bool) -> Void
+// GML: sorts arr in place
+// JS emit: arr.sort((a, b) => ascending ? a - b : b - a)
+// ---------------------------------------------------------------------------
+
+fn attach_body_array_sort(module: &mut Module) {
+    attach_runtime_body(
+        module,
+        "array_sort",
+        &[Type::Array(Box::new(Type::Unknown)), Type::Bool],
+        Type::Void,
+        |b| {
+            let arr = b.param(0);
+            let ascending = b.param(1);
+            b.call_named("array_sort_arr", &[arr, ascending], Type::Void);
+            b.ret(None);
+        },
+    );
+}
+
+// ---------------------------------------------------------------------------
+// array_unique(arr: Array<Unknown>, offset: Float64, length: Float64) -> Array<Unknown>
+// GML: returns a new array with duplicate values removed
+// JS emit: [...new Set(arr)]  (offset/length unused — runtime.ts doesn't implement them)
+// ---------------------------------------------------------------------------
+
+fn attach_body_array_unique(module: &mut Module) {
+    attach_runtime_body(
+        module,
+        "array_unique",
+        &[
+            Type::Array(Box::new(Type::Unknown)),
+            Type::Float(64),
+            Type::Float(64),
+        ],
+        Type::Array(Box::new(Type::Unknown)),
+        |b| {
+            let arr = b.param(0);
+            // params 1 (offset) and 2 (length) are ignored —
+            // runtime.ts array_unique does not implement them.
+            let result = b.call_named(
+                "array_unique_arr",
+                &[arr],
+                Type::Array(Box::new(Type::Unknown)),
+            );
             b.ret(Some(result));
         },
     );
