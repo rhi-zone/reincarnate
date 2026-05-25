@@ -303,8 +303,8 @@
     },
     "action_if_variable": {
       "params": [
-        "*",
-        "*",
+        "unknown",
+        "unknown",
         "number"
       ],
       "returns": "boolean"
@@ -634,9 +634,9 @@
     },
     "array_concat": {
       "params": [
-        "*"
+        "unknown[]"
       ],
-      "returns": "*"
+      "returns": "unknown[]"
     },
     "array_contains": {
       "params": [
@@ -659,7 +659,7 @@
       "params": [
         "int"
       ],
-      "returns": "*"
+      "returns": "unknown[]"
     },
     "array_delete": {
       "params": [
@@ -671,17 +671,17 @@
     },
     "array_equals": {
       "params": [
-        "*",
-        "*"
+        "unknown[]",
+        "unknown[]"
       ],
       "returns": "boolean"
     },
     "array_get": {
       "params": [
-        "*",
+        "unknown[]",
         "number"
       ],
-      "returns": "*"
+      "returns": "unknown"
     },
     "array_get_index": {
       "params": [
@@ -705,13 +705,13 @@
     },
     "array_length": {
       "params": [
-        "*"
+        "unknown[]"
       ],
       "returns": "number"
     },
     "array_length_1d": {
       "params": [
-        "*"
+        "unknown[]"
       ],
       "returns": "int"
     },
@@ -2621,7 +2621,7 @@
         "int",
         "int"
       ],
-      "returns": "*"
+      "returns": "unknown"
     },
     "ds_list_insert": {
       "params": [
@@ -2732,9 +2732,9 @@
     "ds_map_find_value": {
       "params": [
         "int",
-        "*"
+        "unknown"
       ],
-      "returns": "*"
+      "returns": "unknown"
     },
     "ds_map_is_map": {
       "params": [
@@ -2759,8 +2759,8 @@
     "ds_map_replace": {
       "params": [
         "int",
-        "dynamic",
-        "dynamic"
+        "unknown",
+        "unknown"
       ],
       "returns": "boolean"
     },
@@ -2803,7 +2803,7 @@
       "params": [
         "int"
       ],
-      "returns": "dynamic"
+      "returns": "unknown[]"
     },
     "ds_map_write": {
       "params": [
@@ -3491,7 +3491,7 @@
     },
     "instance_deactivate_layer": {
       "params": [
-        "dynamic"
+        "number"
       ],
       "returns": "void"
     },
@@ -5143,7 +5143,7 @@
     "shader_set_uniform_f_array": {
       "params": [
         "int",
-        "dynamic"
+        "number[]"
       ],
       "returns": "void"
     },
@@ -6113,7 +6113,7 @@
     "steam_ugc_get_item_update_info": {
       "params": [
         "int",
-        "dynamic"
+        "unknown"
       ],
       "returns": "boolean"
     },
@@ -6753,17 +6753,17 @@
     },
     "variable_instance_exists": {
       "params": [
-        "dynamic",
+        "number",
         "string"
       ],
       "returns": "boolean"
     },
     "variable_instance_get": {
       "params": [
-        "dynamic",
+        "number",
         "string"
       ],
-      "returns": "dynamic"
+      "returns": "unknown"
     },
     "variable_instance_set": {
       "params": [
@@ -7646,9 +7646,9 @@
     },
     "array_pop": {
       "params": [
-        "*"
+        "unknown[]"
       ],
-      "returns": "*"
+      "returns": "unknown"
     },
     "array_shift": {
       "params": [
