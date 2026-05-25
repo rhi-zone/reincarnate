@@ -54,6 +54,18 @@ pub enum Type {
     Unknown,
 }
 
+impl Type {
+    /// Returns true for heap-allocated reference types where `GetField`/`GetIndex`
+    /// returns a live reference — mutations through the result propagate back to the
+    /// source. All backends must preserve this contract.
+    pub fn is_reference_type(&self) -> bool {
+        matches!(
+            self,
+            Type::Array(_) | Type::Map(_, _) | Type::Instance(_) | Type::Coroutine { .. }
+        )
+    }
+}
+
 /// Function signature.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct FunctionSig {

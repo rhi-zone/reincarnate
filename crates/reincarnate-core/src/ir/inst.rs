@@ -88,23 +88,29 @@ pub enum Op {
         ptr: ValueId,
         value: ValueId,
     },
-    /// Get a field from a struct/object.
+    /// Read a field from a struct or object instance.
+    /// For reference types (`Array`, `Map`, `Instance`), returns a live reference —
+    /// mutations through the result via `SetIndex`/`SetField` propagate back to the source.
+    /// Each backend must preserve this contract.
     GetField {
         object: ValueId,
         field: String,
     },
-    /// Set a field on a struct/object.
+    /// Write a field on a struct or object instance.
+    /// For reference types, see `GetField` note on reference semantics.
     SetField {
         object: ValueId,
         field: String,
         value: ValueId,
     },
-    /// Get an element from an array/map by index/key.
+    /// Read an element from an array or map by index.
+    /// For reference types, returns a live reference — see `GetField` for the contract.
     GetIndex {
         collection: ValueId,
         index: ValueId,
     },
-    /// Set an element in an array/map by index/key.
+    /// Write an element to an array or map by index.
+    /// Mutates in place for reference types — no copy.
     SetIndex {
         collection: ValueId,
         index: ValueId,
