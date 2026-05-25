@@ -1838,6 +1838,16 @@ fn register_gml_backend_primitives(module: &mut Module) {
             ..Default::default()
         },
     );
+    // _typeof: (Unknown) -> String
+    // GML typeof() — its IR body delegates to the core builtin typeof_gml.
+    module.register_runtime(
+        "_typeof",
+        FunctionSig {
+            params: vec![Type::Unknown],
+            return_ty: Type::String,
+            ..Default::default()
+        },
+    );
 }
 
 pub(crate) fn register_gml_syscall_intrinsics(module: &mut Module, rt_ty: Type) {

@@ -861,9 +861,10 @@ impl Module {
     /// expresses structurally is a Law 2 violation.
     /// Comparison ops = 6 (cmp_eq, cmp_ne, cmp_lt, cmp_le, cmp_ge, cmp_gt) → 84.
     /// select = 1 (select) → 85.
+    /// typeof_gml = 1 (typeof_gml) → 86.
     /// Polymorphic `_any` stubs are GML-specific and registered by the GML frontend,
     /// not by `register_core_builtins`, so they are not counted here.
-    pub const NUM_CORE_BUILTINS: u32 = 86;
+    pub const NUM_CORE_BUILTINS: u32 = 87;
 
     pub fn new(name: String) -> Self {
         let mut module = Self {
@@ -1200,6 +1201,17 @@ impl Module {
             FunctionSig {
                 params: vec![Type::Unknown],
                 return_ty: Type::Bool,
+                ..Default::default()
+            },
+        );
+        self.core_builtin_fids.insert(fid);
+        // typeof_gml: (Unknown) -> String  — emit as GML type-name ternary chain
+        // Backend primitive: the TS backend lowers this to inline JS in lower.rs.
+        let fid = self.register_runtime(
+            "typeof_gml",
+            FunctionSig {
+                params: vec![Type::Unknown],
+                return_ty: Type::String,
                 ..Default::default()
             },
         );
