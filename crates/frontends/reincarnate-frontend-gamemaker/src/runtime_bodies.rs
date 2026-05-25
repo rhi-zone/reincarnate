@@ -1894,11 +1894,9 @@ fn attach_body_string_byte_at(module: &mut Module) {
 
             let one = b.const_float(1.0);
             let pos_minus_1 = b.sub(pos, one); // convert 1-based GML index to 0-based JS
-            let result = b.call_named(
-                "string_char_code_at_str",
-                &[s, pos_minus_1],
-                Type::Float(64),
-            );
+                                               // string_byte_at_rt emits `str.charCodeAt(pos0) || 0`; the || 0 maps
+                                               // charCodeAt's NaN (out-of-range) to the GML-specified 0 return value.
+            let result = b.call_named("string_byte_at_rt", &[s, pos_minus_1], Type::Float(64));
             b.ret(Some(result));
         },
     );

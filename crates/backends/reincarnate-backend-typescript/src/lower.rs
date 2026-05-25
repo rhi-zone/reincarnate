@@ -589,6 +589,17 @@ fn lower_builtin_opt(op_name: &str, args: &[Expr], ctx: &LowerCtx) -> Option<JsE
         "string_split_str" => Some(method_call(0, "split", &[1], args, ctx)),
         "string_join_arr" => Some(method_call(0, "join", &[1], args, ctx)),
         "string_char_code_at_str" => Some(method_call(0, "charCodeAt", &[1], args, ctx)),
+        // string_byte_at_rt(str, index0) -> str.charCodeAt(index0) || 0
+        // GML string_byte_at returns 0 for out-of-range; charCodeAt returns NaN which is falsy.
+        "string_byte_at_rt" => {
+            let char_code = method_call(0, "charCodeAt", &[1], args, ctx);
+            Some(JsExpr::LogicalOr {
+                lhs: Box::new(char_code),
+                rhs: Box::new(JsExpr::Literal(
+                    reincarnate_core::ir::value::Constant::Float(0.0),
+                )),
+            })
+        }
         "string_repeat_str" => Some(method_call(0, "repeat", &[1], args, ctx)),
         "string_replace_first_str" => Some(method_call(0, "replace", &[1, 2], args, ctx)),
         "string_trim_str" => Some(method_call(0, "trim", &[], args, ctx)),
