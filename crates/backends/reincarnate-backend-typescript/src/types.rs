@@ -486,6 +486,7 @@ fn resolve_expr_types(expr: &mut JsExpr, module_types: &PrimaryMap<TypeId, TypeD
         // Leaf expressions — no types to resolve.
         JsExpr::Literal(_)
         | JsExpr::Var(_)
+        | JsExpr::Regex(_)
         | JsExpr::This
         | JsExpr::Activation
         | JsExpr::SuperGet(_) => {}

@@ -288,6 +288,7 @@ pub(super) fn rewrite_late_bound_expr(
         // Leaf nodes — nothing to recurse into.
         JsExpr::Literal(_)
         | JsExpr::Var(_)
+        | JsExpr::Regex(_)
         | JsExpr::This
         | JsExpr::Activation
         | JsExpr::SuperGet(_)

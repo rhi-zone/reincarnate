@@ -232,7 +232,7 @@ fn rewrite_expr_children(expr: &mut JsExpr, closures: &HashMap<String, JsFunctio
                 rewrite_expr(arg, closures);
             }
         }
-        JsExpr::Literal(_) | JsExpr::Var(_) | JsExpr::This => {}
+        JsExpr::Literal(_) | JsExpr::Var(_) | JsExpr::Regex(_) | JsExpr::This => {}
     }
 }
 

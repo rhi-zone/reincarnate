@@ -204,6 +204,7 @@ pub(super) fn bind_method_refs_expr(
         }
         JsExpr::Literal(_)
         | JsExpr::Var(_)
+        | JsExpr::Regex(_)
         | JsExpr::This
         | JsExpr::Activation
         | JsExpr::SuperGet(_) => {}

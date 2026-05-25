@@ -22,6 +22,7 @@ pub fn register_runtime_bodies(module: &mut Module) {
     attach_body_lengthdir_x(module);
     attach_body_lengthdir_y(module);
     attach_body_point_distance(module);
+    attach_body_point_distance_3d(module);
     attach_body_degtorad(module);
     attach_body_radtodeg(module);
     attach_body_dsin(module);
@@ -121,6 +122,9 @@ pub fn register_runtime_bodies(module: &mut Module) {
     attach_body_arccos(module);
     attach_body_ord(module);
     attach_body_string_byte_at(module);
+    attach_body_string_digits(module);
+    attach_body_string_letters(module);
+    attach_body_string_format(module);
     attach_body_chr(module);
     attach_body_ln(module);
     attach_body_math_get_epsilon(module);
@@ -366,6 +370,46 @@ fn attach_body_point_distance(module: &mut Module) {
             let dx = b.sub(x2, x1);
             let dy = b.sub(y2, y1);
             let result = b.call_named("hypot_f64", &[dx, dy], Type::Float(64));
+            b.ret(Some(result));
+        },
+    );
+}
+
+// ---------------------------------------------------------------------------
+// point_distance_3d(x1, y1, z1, x2, y2, z2: f64) -> f64
+//   =  sqrt((x2-x1)^2 + (y2-y1)^2 + (z2-z1)^2)
+// ---------------------------------------------------------------------------
+
+fn attach_body_point_distance_3d(module: &mut Module) {
+    attach_runtime_body(
+        module,
+        "point_distance_3d",
+        &[
+            Type::Float(64),
+            Type::Float(64),
+            Type::Float(64),
+            Type::Float(64),
+            Type::Float(64),
+            Type::Float(64),
+        ],
+        Type::Float(64),
+        |b| {
+            let x1 = b.param(0);
+            let y1 = b.param(1);
+            let z1 = b.param(2);
+            let x2 = b.param(3);
+            let y2 = b.param(4);
+            let z2 = b.param(5);
+
+            let dx = b.sub(x2, x1);
+            let dy = b.sub(y2, y1);
+            let dz = b.sub(z2, z1);
+            let dx2 = b.mul(dx, dx);
+            let dy2 = b.mul(dy, dy);
+            let dz2 = b.mul(dz, dz);
+            let xy = b.add(dx2, dy2);
+            let sum = b.add(xy, dz2);
+            let result = b.call_named("sqrt_f64", &[sum], Type::Float(64));
             b.ret(Some(result));
         },
     );
@@ -1897,6 +1941,69 @@ fn attach_body_string_byte_at(module: &mut Module) {
                                                // string_byte_at_rt emits `str.charCodeAt(pos0) || 0`; the || 0 maps
                                                // charCodeAt's NaN (out-of-range) to the GML-specified 0 return value.
             let result = b.call_named("string_byte_at_rt", &[s, pos_minus_1], Type::Float(64));
+            b.ret(Some(result));
+        },
+    );
+}
+
+// ---------------------------------------------------------------------------
+// string_digits(s: String) -> String
+//   GML: strips all non-digit characters from s.
+//   JS: s.replace(/\D/g, "") via string_digits_rt backend primitive.
+// ---------------------------------------------------------------------------
+
+fn attach_body_string_digits(module: &mut Module) {
+    attach_runtime_body(
+        module,
+        "string_digits",
+        &[Type::String],
+        Type::String,
+        |b| {
+            let s = b.param(0);
+            let result = b.call_named("string_digits_rt", &[s], Type::String);
+            b.ret(Some(result));
+        },
+    );
+}
+
+// ---------------------------------------------------------------------------
+// string_letters(s: String) -> String
+//   GML: strips all non-letter characters from s.
+//   JS: s.replace(/[^a-zA-Z]/g, "") via string_letters_rt backend primitive.
+// ---------------------------------------------------------------------------
+
+fn attach_body_string_letters(module: &mut Module) {
+    attach_runtime_body(
+        module,
+        "string_letters",
+        &[Type::String],
+        Type::String,
+        |b| {
+            let s = b.param(0);
+            let result = b.call_named("string_letters_rt", &[s], Type::String);
+            b.ret(Some(result));
+        },
+    );
+}
+
+// ---------------------------------------------------------------------------
+// string_format(n: Float64, tot: Float64, dec: Float64) -> String
+//   GML: format n with dec decimal places, padded to tot total width.
+//   JS: (s => s.length < tot ? s.padStart(tot) : s)(n.toFixed(dec))
+//       via string_format_rt backend primitive.
+// ---------------------------------------------------------------------------
+
+fn attach_body_string_format(module: &mut Module) {
+    attach_runtime_body(
+        module,
+        "string_format",
+        &[Type::Float(64), Type::Float(64), Type::Float(64)],
+        Type::String,
+        |b| {
+            let n = b.param(0);
+            let tot = b.param(1);
+            let dec = b.param(2);
+            let result = b.call_named("string_format_rt", &[n, tot, dec], Type::String);
             b.ret(Some(result));
         },
     );

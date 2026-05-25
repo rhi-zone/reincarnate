@@ -485,6 +485,13 @@ impl Frontend for GameMakerFrontend {
         // may still use the result.
         module.implicit_return_value = true;
 
+        // Register backend-primitive stubs that IR bodies delegate to.
+        // These are not GML-level builtins — they have no IR body and are
+        // lowered directly by the TypeScript backend's `lower_builtin_opt`.
+        // They must be registered before `register_runtime_bodies` so that
+        // IR body builders can call them via `call_named`.
+        register_gml_backend_primitives(&mut module);
+
         // Attach IR bodies to closed-form math runtime stubs.  The stubs were
         // registered above by the builtins_generated loop; these bodies replace
         // their empty entry blocks so the IR inliner can expand them later.
@@ -1734,6 +1741,105 @@ fn add_extension_stubs(
 ///
 /// Signatures use empty param lists to avoid adding new sig-based constraints
 /// (the type rules handle all necessary inference).
+/// Register backend-primitive stubs.
+///
+/// These are functions that have no IR body — each backend lowers them directly
+/// to native constructs (e.g. regex method calls, index expressions).  They
+/// must exist in the runtime registry so that IR body builders can reference
+/// them via `call_named`.
+fn register_gml_backend_primitives(module: &mut Module) {
+    // string_byte_at_rt: (String, Float64) -> Float64
+    // Emitted as: str.charCodeAt(index) || 0
+    module.register_runtime(
+        "string_byte_at_rt",
+        FunctionSig {
+            params: vec![Type::String, Type::Float(64)],
+            return_ty: Type::Float(64),
+            ..Default::default()
+        },
+    );
+    // string_digits_rt: (String) -> String
+    // Emitted as: str.replace(/\D/g, "")
+    module.register_runtime(
+        "string_digits_rt",
+        FunctionSig {
+            params: vec![Type::String],
+            return_ty: Type::String,
+            ..Default::default()
+        },
+    );
+    // string_letters_rt: (String) -> String
+    // Emitted as: str.replace(/[^a-zA-Z]/g, "")
+    module.register_runtime(
+        "string_letters_rt",
+        FunctionSig {
+            params: vec![Type::String],
+            return_ty: Type::String,
+            ..Default::default()
+        },
+    );
+    // string_format_rt: (Float64, Float64, Float64) -> String
+    // Emitted as: (s => s.length < tot ? s.padStart(tot) : s)(n.toFixed(dec))
+    module.register_runtime(
+        "string_format_rt",
+        FunctionSig {
+            params: vec![Type::Float(64), Type::Float(64), Type::Float(64)],
+            return_ty: Type::String,
+            ..Default::default()
+        },
+    );
+    // variable_struct_exists_rt: (Unknown, String) -> Bool
+    // Emitted as: struct != null && Object.prototype.hasOwnProperty.call(struct, name)
+    module.register_runtime(
+        "variable_struct_exists_rt",
+        FunctionSig {
+            params: vec![Type::Unknown, Type::String],
+            return_ty: Type::Bool,
+            ..Default::default()
+        },
+    );
+    // variable_struct_get_rt: (Unknown, String) -> Unknown
+    // Emitted as: struct != null ? struct[name] : undefined
+    module.register_runtime(
+        "variable_struct_get_rt",
+        FunctionSig {
+            params: vec![Type::Unknown, Type::String],
+            return_ty: Type::Unknown,
+            ..Default::default()
+        },
+    );
+    // variable_struct_names_count_rt: (Unknown) -> Float64
+    // Emitted as: struct != null ? Object.keys(struct).length : 0
+    module.register_runtime(
+        "variable_struct_names_count_rt",
+        FunctionSig {
+            params: vec![Type::Unknown],
+            return_ty: Type::Float(64),
+            ..Default::default()
+        },
+    );
+    // variable_struct_get_names_rt: (Unknown) -> Array<String>
+    // Emitted as: struct != null ? Object.keys(struct) : []
+    module.register_runtime(
+        "variable_struct_get_names_rt",
+        FunctionSig {
+            params: vec![Type::Unknown],
+            return_ty: Type::Array(Box::new(Type::String)),
+            ..Default::default()
+        },
+    );
+    // variable_struct_set_rt: (Unknown, String, Unknown) -> Void
+    // Emitted as: struct[name] = val
+    module.register_runtime(
+        "variable_struct_set_rt",
+        FunctionSig {
+            params: vec![Type::Unknown, Type::String, Type::Unknown],
+            return_ty: Type::Void,
+            ..Default::default()
+        },
+    );
+}
+
 pub(crate) fn register_gml_syscall_intrinsics(module: &mut Module, rt_ty: Type) {
     // Getter sig: _rt as param 0 (explicit runtime handle), unknown return type.
     let getter = FunctionSig {

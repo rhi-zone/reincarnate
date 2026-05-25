@@ -224,7 +224,11 @@ pub(super) fn rewrite_expr(expr: JsExpr, ctx: &FlashRewriteCtx) -> JsExpr {
 
     // --- Recurse into children ---
     match expr {
-        JsExpr::Literal(_) | JsExpr::Var(_) | JsExpr::This | JsExpr::Activation => expr,
+        JsExpr::Literal(_)
+        | JsExpr::Var(_)
+        | JsExpr::Regex(_)
+        | JsExpr::This
+        | JsExpr::Activation => expr,
 
         JsExpr::Binary { op, lhs, rhs } => JsExpr::Binary {
             op,

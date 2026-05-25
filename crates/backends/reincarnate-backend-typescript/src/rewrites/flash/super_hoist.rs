@@ -67,7 +67,11 @@ pub(super) fn collect_expr_vars(expr: &JsExpr, out: &mut HashSet<String>) {
         JsExpr::Var(name) => {
             out.insert(name.clone());
         }
-        JsExpr::Literal(_) | JsExpr::This | JsExpr::Activation | JsExpr::SuperGet(_) => {}
+        JsExpr::Literal(_)
+        | JsExpr::Regex(_)
+        | JsExpr::This
+        | JsExpr::Activation
+        | JsExpr::SuperGet(_) => {}
         JsExpr::Binary { lhs, rhs, .. }
         | JsExpr::Cmp { lhs, rhs, .. }
         | JsExpr::LooseEq { lhs, rhs }
@@ -303,6 +307,7 @@ fn subst_var_to_this_expr(expr: &mut JsExpr, var_name: &str) {
         JsExpr::Var(name) if name == var_name => *expr = JsExpr::This,
         JsExpr::Var(_)
         | JsExpr::Literal(_)
+        | JsExpr::Regex(_)
         | JsExpr::This
         | JsExpr::Activation
         | JsExpr::SuperGet(_) => {}
@@ -530,6 +535,7 @@ pub(super) fn rewrite_this_to_prototype(expr: &mut JsExpr, class_name: &str) {
         // Leaves: no recursion needed.
         JsExpr::Literal(_)
         | JsExpr::Var(_)
+        | JsExpr::Regex(_)
         | JsExpr::This
         | JsExpr::Activation
         | JsExpr::SuperGet(_) => {}

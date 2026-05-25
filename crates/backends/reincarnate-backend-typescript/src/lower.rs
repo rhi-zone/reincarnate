@@ -960,6 +960,78 @@ fn lower_builtin_opt(op_name: &str, args: &[Expr], ctx: &LowerCtx) -> Option<JsE
             })
         }
 
+        // string_digits_rt(str) -> str.replace(/\D/g, "")
+        "string_digits_rt" => Some(JsExpr::Call {
+            callee: Box::new(JsExpr::Field {
+                object: Box::new(lower_expr(&args[0], ctx)),
+                field: "replace".to_string(),
+            }),
+            args: vec![
+                JsExpr::Regex(r"/\D/g".to_string()),
+                JsExpr::Literal(reincarnate_core::ir::value::Constant::String(String::new())),
+            ],
+        }),
+
+        // string_letters_rt(str) -> str.replace(/[^a-zA-Z]/g, "")
+        "string_letters_rt" => Some(JsExpr::Call {
+            callee: Box::new(JsExpr::Field {
+                object: Box::new(lower_expr(&args[0], ctx)),
+                field: "replace".to_string(),
+            }),
+            args: vec![
+                JsExpr::Regex(r"/[^a-zA-Z]/g".to_string()),
+                JsExpr::Literal(reincarnate_core::ir::value::Constant::String(String::new())),
+            ],
+        }),
+
+        // string_format_rt(n, tot, dec) -> (s => s.length < tot ? s.padStart(tot) : s)(n.toFixed(dec))
+        // Mirrors runtime.ts: const s = n.toFixed(dec); return s.length < tot ? s.padStart(tot) : s;
+        "string_format_rt" => {
+            let n = lower_expr(&args[0], ctx);
+            let tot = lower_expr(&args[1], ctx);
+            let dec = lower_expr(&args[2], ctx);
+            let s_fixed = JsExpr::Call {
+                callee: Box::new(JsExpr::Field {
+                    object: Box::new(n),
+                    field: "toFixed".to_string(),
+                }),
+                args: vec![dec],
+            };
+            let s_len = JsExpr::Field {
+                object: Box::new(JsExpr::Var("s".to_string())),
+                field: "length".to_string(),
+            };
+            let s_lt_tot = JsExpr::Cmp {
+                kind: CmpKind::Lt,
+                lhs: Box::new(s_len),
+                rhs: Box::new(tot.clone()),
+            };
+            let s_padstart = JsExpr::Call {
+                callee: Box::new(JsExpr::Field {
+                    object: Box::new(JsExpr::Var("s".to_string())),
+                    field: "padStart".to_string(),
+                }),
+                args: vec![tot],
+            };
+            let ternary = JsExpr::Ternary {
+                cond: Box::new(s_lt_tot),
+                then_val: Box::new(s_padstart),
+                else_val: Box::new(JsExpr::Var("s".to_string())),
+            };
+            let arrow = JsExpr::ArrowFunction {
+                params: vec![("s".to_string(), Type::String)],
+                return_ty: Type::String,
+                body: vec![JsStmt::Return(Some(ternary))],
+                has_rest_param: false,
+                cast_as: None,
+                infer_param_types: false,
+            };
+            Some(JsExpr::Call {
+                callee: Box::new(arrow),
+                args: vec![s_fixed],
+            })
+        }
+
         // --- Not a core builtin ---
         _ => None,
     }

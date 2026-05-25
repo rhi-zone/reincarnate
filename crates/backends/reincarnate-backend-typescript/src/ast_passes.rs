@@ -2090,7 +2090,11 @@ fn is_var_plus_one(expr: &JsExpr, var_name: &str) -> bool {
 fn count_js_var_reads_in_expr(expr: &JsExpr, name: &str) -> usize {
     match expr {
         JsExpr::Var(n) => usize::from(n == name),
-        JsExpr::Literal(_) | JsExpr::This | JsExpr::Activation | JsExpr::SuperGet(_) => 0,
+        JsExpr::Literal(_)
+        | JsExpr::Regex(_)
+        | JsExpr::This
+        | JsExpr::Activation
+        | JsExpr::SuperGet(_) => 0,
         JsExpr::Binary { lhs, rhs, .. }
         | JsExpr::Cmp { lhs, rhs, .. }
         | JsExpr::LogicalOr { lhs, rhs }
@@ -2303,6 +2307,7 @@ fn substitute_js_var_in_expr(
     match expr {
         JsExpr::Literal(_)
         | JsExpr::Var(_)
+        | JsExpr::Regex(_)
         | JsExpr::This
         | JsExpr::Activation
         | JsExpr::SuperGet(_) => false,
@@ -2668,7 +2673,11 @@ fn stmt_references_for_promote(stmt: &JsStmt, name: &str) -> bool {
 fn expr_references_for_promote(expr: &JsExpr, name: &str) -> bool {
     match expr {
         JsExpr::Var(n) => n == name,
-        JsExpr::Literal(_) | JsExpr::This | JsExpr::Activation | JsExpr::SuperGet(_) => false,
+        JsExpr::Literal(_)
+        | JsExpr::Regex(_)
+        | JsExpr::This
+        | JsExpr::Activation
+        | JsExpr::SuperGet(_) => false,
         JsExpr::Binary { lhs, rhs, .. }
         | JsExpr::Cmp { lhs, rhs, .. }
         | JsExpr::LogicalOr { lhs, rhs }

@@ -161,6 +161,8 @@ pub enum JsExpr {
     LooseNe { lhs: Box<JsExpr>, rhs: Box<JsExpr> },
     /// Non-null assertion: `expr!`.
     NonNull(Box<JsExpr>),
+    /// A regex literal, emitted as-is: `/pattern/flags`.
+    Regex(String),
     /// Null-coalescing assignment: `(target ??= value)`.
     ///
     /// Emitted as a parenthesized expression so it can appear as the collection

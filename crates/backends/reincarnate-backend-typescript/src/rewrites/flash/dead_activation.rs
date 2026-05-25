@@ -5,7 +5,11 @@ use crate::js_ast::{JsExpr, JsStmt};
 fn expr_references_var(expr: &JsExpr, name: &str) -> bool {
     match expr {
         JsExpr::Var(n) => n == name,
-        JsExpr::Literal(_) | JsExpr::This | JsExpr::Activation | JsExpr::SuperGet(_) => false,
+        JsExpr::Literal(_)
+        | JsExpr::Regex(_)
+        | JsExpr::This
+        | JsExpr::Activation
+        | JsExpr::SuperGet(_) => false,
         JsExpr::Binary { lhs, rhs, .. }
         | JsExpr::Cmp { lhs, rhs, .. }
         | JsExpr::LooseEq { lhs, rhs }
@@ -333,6 +337,7 @@ fn eliminate_dead_activations_in_expr(expr: &mut JsExpr) {
         }
         JsExpr::Literal(_)
         | JsExpr::Var(_)
+        | JsExpr::Regex(_)
         | JsExpr::This
         | JsExpr::Activation
         | JsExpr::SuperGet(_)

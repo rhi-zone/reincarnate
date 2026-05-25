@@ -1023,6 +1023,8 @@ fn print_expr(expr: &JsExpr) -> String {
 
         JsExpr::Var(name) => sanitize_ident(name),
 
+        JsExpr::Regex(pattern) => pattern.clone(),
+
         JsExpr::This => "this".into(),
 
         JsExpr::Binary { op, lhs, rhs } => {

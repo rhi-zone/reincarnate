@@ -1468,7 +1468,7 @@ fn rewrite_expr_children(
             }
         }
         // Leaf nodes — nothing to recurse into.
-        JsExpr::Literal(_) | JsExpr::Var(_) | JsExpr::This => {}
+        JsExpr::Literal(_) | JsExpr::Var(_) | JsExpr::Regex(_) | JsExpr::This => {}
     }
 }
 
@@ -2064,6 +2064,7 @@ fn coerce_bool_expr(expr: &mut JsExpr, sigs: &BTreeMap<String, ExternalMethodSig
         }
         JsExpr::Literal(_)
         | JsExpr::Var(_)
+        | JsExpr::Regex(_)
         | JsExpr::This
         | JsExpr::Activation
         | JsExpr::SuperGet(_) => {}
