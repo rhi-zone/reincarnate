@@ -728,8 +728,12 @@ pub(super) fn translate_pop(
         if is_stacktop_ref(var_ref, *instance) {
             let raw_target = pop(stack, inst)?; // instance (top of stack)
             let value = pop(stack, inst)?; // value to store (below)
-                                           // param 0 is _rt; param 1 is self.
-            let self_param = fb.param(1);
+                                           // param 0 is _rt; param 1 is self (only when has_self).
+            let self_param = if ctx.has_self {
+                fb.param(1)
+            } else {
+                fb.param(0)
+            };
             let target = if ctx.has_self {
                 if fb
                     .try_resolve_const(raw_target)
