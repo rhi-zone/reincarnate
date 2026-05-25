@@ -372,7 +372,6 @@ pub(super) fn collect_call_names_from_funcs<'a>(
                 Op::Cast(..) => {}
                 // Ops that don't introduce runtime free-function imports:
                 Op::Const(_)
-                | Op::Select { .. }
                 | Op::Alloc(_)
                 | Op::Load(_)
                 | Op::Store { .. }
@@ -1033,7 +1032,6 @@ pub(super) fn collect_type_refs_from_function(
             // (Type info from these flows through value_types, handled below.)
             Op::Const(_)
             | Op::Cmp(..)
-            | Op::Select { .. }
             | Op::Load(_)
             | Op::Store { .. }
             | Op::SetField { .. }

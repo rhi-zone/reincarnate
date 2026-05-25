@@ -71,12 +71,6 @@ pub enum Op {
 
     // -- Comparison --
     Cmp(CmpKind, ValueId, ValueId),
-    /// Conditional select: `cond ? on_true : on_false`
-    Select {
-        cond: ValueId,
-        on_true: ValueId,
-        on_false: ValueId,
-    },
 
     // -- Memory / fields --
     /// Allocate a local variable.
@@ -183,7 +177,6 @@ impl Op {
         match self {
             Op::Const(_) => "Const",
             Op::Cmp(..) => "Cmp",
-            Op::Select { .. } => "Select",
             Op::Alloc(_) => "Alloc",
             Op::Load(_) => "Load",
             Op::Store { .. } => "Store",

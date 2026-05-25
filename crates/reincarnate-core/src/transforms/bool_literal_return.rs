@@ -16,7 +16,7 @@ pub struct BoolLiteralReturn;
 ///
 /// Returns `Some(leaves)` if all leaves are bool-compatible constants
 /// (Int(0), Int(1), Bool(_)), or `None` if any non-bool leaf is found.
-fn trace_to_leaves(func: &Function, start: ValueId) -> Option<Vec<ValueId>> {
+fn trace_to_leaves(func: &Function, start: ValueId, select_fid: FuncId) -> Option<Vec<ValueId>> {
     let mut leaves = Vec::new();
     let mut worklist = vec![start];
     let mut visited = HashSet::new();
@@ -38,11 +38,9 @@ fn trace_to_leaves(func: &Function, start: ValueId) -> Option<Vec<ValueId>> {
                 Op::Copy(src) | Op::Cast(src, _, _) => {
                     worklist.push(*src);
                 }
-                Op::Select {
-                    on_true, on_false, ..
-                } => {
-                    worklist.push(*on_true);
-                    worklist.push(*on_false);
+                Op::Call { func, args } if *func == select_fid && args.len() == 3 => {
+                    worklist.push(args[1]);
+                    worklist.push(args[2]);
                 }
                 _ => return None,
             }
@@ -129,7 +127,7 @@ fn branch_args_for_target(op: &Op, target: crate::ir::BlockId) -> Vec<&[ValueId]
 ///
 /// Rewrites the leaf constant instructions in place, changing `Int(0)` to
 /// `Bool(false)` and `Int(1)` to `Bool(true)`, then sets `return_ty = Bool`.
-fn infer_bool_return(func: &mut Function) -> bool {
+fn infer_bool_return(func: &mut Function, select_fid: FuncId) -> bool {
     if func.sig.return_ty != Type::Dynamic {
         return false;
     }
@@ -160,7 +158,7 @@ fn infer_bool_return(func: &mut Function) -> bool {
     // Trace all return values to their leaf constants.
     let mut all_leaves = HashSet::new();
     for &ret_val in &return_vals {
-        match trace_to_leaves(func, ret_val) {
+        match trace_to_leaves(func, ret_val, select_fid) {
             Some(leaves) => all_leaves.extend(leaves),
             None => return false,
         }
@@ -224,6 +222,9 @@ impl Transform for BoolLiteralReturn {
         mut module: Module,
         dirty: Option<&HashSet<FuncId>>,
     ) -> Result<TransformResult, CoreError> {
+        let select_fid = module
+            .lookup_runtime("select")
+            .expect("BoolLiteralReturn: 'select' builtin not registered");
         let mut changed_funcs_set: HashSet<FuncId> = HashSet::new();
         let mut changed_func_names: HashSet<String> = HashSet::new();
 
@@ -232,7 +233,7 @@ impl Transform for BoolLiteralReturn {
             if dirty.is_some_and(|d| !d.contains(&func_id)) {
                 continue;
             }
-            if infer_bool_return(&mut module.functions[func_id]) {
+            if infer_bool_return(&mut module.functions[func_id], select_fid) {
                 changed_func_names.insert(module.functions[func_id].name.clone());
                 changed_funcs_set.insert(func_id);
             }

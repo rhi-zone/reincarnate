@@ -257,7 +257,6 @@ fn is_deferrable(op: &Op, pure_fids: &std::collections::HashSet<crate::ir::func:
             | Op::GetField { .. }
             | Op::GetIndex { .. }
             | Op::Load(..)
-            | Op::Select { .. }
             | Op::ArrayInit(..)
             | Op::TupleInit(..)
             | Op::StructInit { .. }

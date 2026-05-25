@@ -27,11 +27,6 @@ pub fn value_operands(op: &Op) -> Vec<ValueId> {
     match op {
         Op::Const(_) => vec![],
         Op::Spread(a) => vec![*a],
-        Op::Select {
-            cond,
-            on_true,
-            on_false,
-        } => vec![*cond, *on_true, *on_false],
         Op::Cmp(_, a, b) => vec![*a, *b],
         Op::Yield(v) => v.iter().copied().collect(),
         Op::Alloc(_) => vec![],
@@ -78,15 +73,6 @@ pub fn substitute_values_in_op(op: &mut Op, subst: &HashMap<ValueId, ValueId>) {
     match op {
         Op::Const(_) => {}
         Op::Spread(a) => sub(a),
-        Op::Select {
-            cond,
-            on_true,
-            on_false,
-        } => {
-            sub(cond);
-            sub(on_true);
-            sub(on_false);
-        }
         Op::Cmp(_, a, b) => {
             sub(a);
             sub(b);

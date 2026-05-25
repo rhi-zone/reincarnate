@@ -782,11 +782,15 @@ impl Module {
     ///
     /// Breakdown: 5 arith ops × 4 types = 20, concat_str = 1, neg × 4 = 4,
     /// not/and/or bool = 3, 5 bitwise ops × 1 type (i32) = 5, bitnot × 1 = 1 → 34.
-    /// Math single-arg f64 = 17, math binary f64 = 5, string ops = 12, array ops = 2,
-    /// coercion ops = 4 (to_number_unknown, to_string_unknown, to_i32_f64, to_u32_f64) → 74.
+    /// Math single-arg f64 = 17, math binary f64 = 5, string ops = 13
+    /// (string_length_str, string_upper_str, string_lower_str, string_char_at_str,
+    /// string_index_of_str, string_slice_str, string_split_str, string_char_code_at_str,
+    /// chr_f64, string_repeat_str, string_replace_first_str, string_trim_str,
+    /// to_number_str), array ops = 2, coercion ops = 4 (to_number_unknown,
+    /// to_string_unknown, to_i32_f64, to_u32_f64), select = 1 → 76.
     /// Polymorphic `_any` stubs are GML-specific and registered by the GML frontend,
     /// not by `register_core_builtins`, so they are not counted here.
-    pub const NUM_CORE_BUILTINS: u32 = 74;
+    pub const NUM_CORE_BUILTINS: u32 = 76;
 
     pub fn new(name: String) -> Self {
         let mut module = Self {
@@ -1089,6 +1093,16 @@ impl Module {
             FunctionSig {
                 params: vec![Type::Float(64)],
                 return_ty: Type::Float(64),
+                ..Default::default()
+            },
+        );
+        self.core_builtin_fids.insert(fid);
+        // select: (Bool, Unknown, Unknown) -> Unknown  — emit as cond ? on_true : on_false
+        let fid = self.register_runtime(
+            "select",
+            FunctionSig {
+                params: vec![Type::Bool, Type::Unknown, Type::Unknown],
+                return_ty: Type::Unknown,
                 ..Default::default()
             },
         );

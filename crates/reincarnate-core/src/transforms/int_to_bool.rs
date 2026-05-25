@@ -24,7 +24,7 @@ pub struct IntToBoolPromotion;
 ///
 /// Returns `Some(leaves)` if all leaves are bool-compatible constants
 /// (Int(0), Int(1), Bool(_)), or `None` if any non-bool leaf is found.
-fn trace_to_leaves(func: &Function, start: ValueId) -> Option<Vec<ValueId>> {
+fn trace_to_leaves(func: &Function, start: ValueId, select_fid: FuncId) -> Option<Vec<ValueId>> {
     let mut leaves = Vec::new();
     let mut worklist = vec![start];
     let mut visited = HashSet::new();
@@ -48,11 +48,9 @@ fn trace_to_leaves(func: &Function, start: ValueId) -> Option<Vec<ValueId>> {
                 Op::Cast(src, _, _) => {
                     worklist.push(*src);
                 }
-                Op::Select {
-                    on_true, on_false, ..
-                } => {
-                    worklist.push(*on_true);
-                    worklist.push(*on_false);
+                Op::Call { func, args } if *func == select_fid && args.len() == 3 => {
+                    worklist.push(args[1]);
+                    worklist.push(args[2]);
                 }
                 _ => return None,
             }
@@ -158,7 +156,7 @@ fn rewrite_leaves(func: &mut Function, leaves: &[ValueId]) {
 }
 
 /// Set value_types to Bool for all intermediate values in a traced chain.
-fn set_chain_types(func: &mut Function, start: ValueId) {
+fn set_chain_types(func: &mut Function, start: ValueId, select_fid: FuncId) {
     let mut worklist = vec![start];
     let mut visited = HashSet::new();
 
@@ -179,11 +177,9 @@ fn set_chain_types(func: &mut Function, start: ValueId) {
                 Op::Cast(src, _, _) => {
                     worklist.push(*src);
                 }
-                Op::Select {
-                    on_true, on_false, ..
-                } => {
-                    worklist.push(*on_true);
-                    worklist.push(*on_false);
+                Op::Call { func, args } if *func == select_fid && args.len() == 3 => {
+                    worklist.push(args[1]);
+                    worklist.push(args[2]);
                 }
                 _ => {}
             }
@@ -304,6 +300,7 @@ fn promote_demands(
     struct_fields: &HashMap<String, HashMap<String, Type>>,
     type_id_to_name: &HashMap<TypeId, String>,
     func_names: &HashMap<FuncId, String>,
+    select_fid: FuncId,
 ) -> bool {
     let demands = collect_bool_demands(
         func,
@@ -321,9 +318,9 @@ fn promote_demands(
             continue;
         }
 
-        if let Some(leaves) = trace_to_leaves(func, demand_val) {
+        if let Some(leaves) = trace_to_leaves(func, demand_val, select_fid) {
             rewrite_leaves(func, &leaves);
-            set_chain_types(func, demand_val);
+            set_chain_types(func, demand_val, select_fid);
             changed = true;
         }
     }
@@ -380,6 +377,7 @@ fn infer_bool_return(
     func: &mut Function,
     callback_return_calls: &BTreeMap<(String, String), ()>,
     callback_return_intrinsics: &HashSet<FuncId>,
+    select_fid: FuncId,
 ) -> bool {
     if func.sig.return_ty != Type::Unknown {
         return false;
@@ -409,7 +407,7 @@ fn infer_bool_return(
 
     let mut all_leaves = HashSet::new();
     for &ret_val in &return_vals {
-        match trace_to_leaves(func, ret_val) {
+        match trace_to_leaves(func, ret_val, select_fid) {
             Some(leaves) => all_leaves.extend(leaves),
             None => return false,
         }
@@ -419,7 +417,7 @@ fn infer_bool_return(
     let leaves_vec: Vec<ValueId> = all_leaves.into_iter().collect();
     rewrite_leaves(func, &leaves_vec);
     for &ret_val in &return_vals {
-        set_chain_types(func, ret_val);
+        set_chain_types(func, ret_val, select_fid);
     }
 
     func.sig.return_ty = Type::Bool;
@@ -461,6 +459,9 @@ impl Transform for IntToBoolPromotion {
         mut module: Module,
         dirty: Option<&HashSet<FuncId>>,
     ) -> Result<TransformResult, CoreError> {
+        let select_fid = module
+            .lookup_runtime("select")
+            .expect("IntToBoolPromotion: 'select' builtin not registered");
         let mut changed_funcs: HashSet<FuncId> = HashSet::new();
 
         // Build external param type map once
@@ -534,6 +535,7 @@ impl Transform for IntToBoolPromotion {
                 &struct_fields,
                 &type_id_to_name,
                 &func_names,
+                select_fid,
             ) {
                 changed_funcs.insert(func_id);
             }
@@ -566,6 +568,7 @@ impl Transform for IntToBoolPromotion {
                 &mut module.functions[func_id],
                 callback_return_calls,
                 &callback_return_intrinsic_fids,
+                select_fid,
             ) {
                 changed_funcs.insert(func_id);
             }
@@ -613,6 +616,7 @@ impl Transform for IntToBoolPromotion {
                     &struct_fields,
                     &type_id_to_name,
                     &func_names,
+                    select_fid,
                 ) {
                     changed_funcs.insert(func_id);
                 }
