@@ -3951,16 +3951,32 @@ From `bun scripts/gml-manual-sigs.ts --diff` vs GameMaker Manual.
 
 **22 `any` entries in `runtime.json`** (honest representation violation):
 - [ ] `draw_text` and all 6 `draw_text_*` variants — third param `any` → `string`
-- [ ] `array_contains`, `array_get_index` — params `any` → `unknown[]` + `unknown`
+- [x] `array_contains`, `array_get_index` — params `any` → `unknown[]` + `unknown` (2026-05-25)
 - [x] `array_height_2d` — first param `any` → `unknown[]` (IR body done, 2026-05-25)
 - [ ] `array_resize` — first param `any` → `unknown[]`
 - [ ] `ptr` — `(any): any` → `(number): number`
-- [ ] `buffer_write` — third param `any`; return `void` not `number`
+- [x] `buffer_write` — third param `any` → `unknown` (2026-05-25)
 - [ ] `get_string` — second param `any` → `string` (default value)
-- [ ] `ini_close` — return `any` → `string` or `void` (verify against spec)
-- [ ] `string_trim` — second param `any` → `string[]`
-- [ ] `variable_instance_set`, `texture_prefetch`, `layer_get_visible`,
-  `buffer_async_group_option`, `mp_linear_step_object`, `mp_potential_step_object`
+- [x] `ini_close` — return `any` → `string` (2026-05-25)
+- [x] `string_trim` — second param `any` → `string[]` (2026-05-25)
+- [x] `variable_instance_set`, `texture_prefetch`, `layer_get_visible`,
+  `buffer_async_group_option`, `mp_linear_step_object`, `mp_potential_step_object` (2026-05-25)
+- [x] DS container value params: `ds_grid_add`, `ds_grid_clear`, `ds_list_insert`,
+  `ds_list_replace`, `ds_list_set`, `ds_map_set`, `ds_map_set_post`, `ds_priority_add`,
+  `ds_priority_delete_value`, `ds_queue_enqueue`, `ds_stack_push` → `unknown` (2026-05-25)
+- [x] Object-ID params: `action_create_object`, `action_create_object_motion`,
+  `action_create_object_random`, `action_change_object`, `action_if_collision`,
+  `action_if_object` → `number` (2026-05-25)
+- [x] Polymorphic params: `__throw__`, `_instanceof`, `action_if`, `action_execute_script`,
+  `arrayLocalSet`, `execute_string`, `setAllField`, `setInstanceField`,
+  `setInstanceFieldIndex`, `setOtherField`, `steam_activate_overlay`,
+  `steam_user_request_encrypted_app_ticket`, `struct_set`, `variable_struct_remove`,
+  `weak_ref_alive`, `weak_ref_create`, `withInstances`, `xboxone_fire_event`,
+  `xboxone_set_rich_presence` (2026-05-25)
+- [ ] **Phase 7 (deferred):** `__NewGMLObject__`, `__NullObject__`, `__This__`, `global`,
+  `other`, `getInstances`, `getInstancesOf` — return `any` pending instance/scope type
+  resolution. These 7 functions (8 `any` occurrences) require Phase 7 instance types before
+  concrete return types can be assigned.
 
 **Partial-implementation stubs (behavioral gap — no TODO entry = implicit correctness claim):**
 - [ ] `array_shuffle(arr, start, count)` — `start`/`count` params ignored; always shuffles the entire array. GML spec: only elements `arr[start..start+count)` should be shuffled.

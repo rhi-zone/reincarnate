@@ -205,7 +205,7 @@
     },
     "__throw__": {
       "params": [
-        "any"
+        "unknown"
       ],
       "returns": "void"
     },
@@ -222,7 +222,7 @@
     },
     "_instanceof": {
       "params": [
-        "any"
+        "unknown"
       ],
       "returns": "string"
     },
@@ -250,7 +250,7 @@
     },
     "action_create_object": {
       "params": [
-        "any",
+        "number",
         "number",
         "number"
       ],
@@ -258,7 +258,7 @@
     },
     "action_create_object_motion": {
       "params": [
-        "any",
+        "number",
         "number",
         "number",
         "number",
@@ -268,10 +268,10 @@
     },
     "action_create_object_random": {
       "params": [
-        "any",
-        "any",
-        "any",
-        "any",
+        "number",
+        "number",
+        "number",
+        "number",
         "number",
         "number"
       ],
@@ -285,7 +285,7 @@
       "params": [
         "number"
       ],
-      "returns": "any"
+      "returns": "unknown"
     },
     "action_if_health": {
       "params": [
@@ -311,7 +311,7 @@
     },
     "action_if": {
       "params": [
-        "any"
+        "boolean"
       ],
       "returns": "boolean"
     },
@@ -487,7 +487,7 @@
     },
     "action_change_object": {
       "params": [
-        "any",
+        "number",
         "boolean"
       ],
       "returns": "void"
@@ -505,7 +505,7 @@
       "params": [
         "number",
         "number",
-        "any"
+        "number"
       ],
       "returns": "boolean"
     },
@@ -527,7 +527,7 @@
     },
     "action_if_object": {
       "params": [
-        "any",
+        "number",
         "number",
         "number"
       ],
@@ -626,11 +626,11 @@
     },
     "arrayLocalSet": {
       "params": [
-        "any",
+        "unknown[]",
         "number",
-        "any"
+        "unknown"
       ],
-      "returns": "any"
+      "returns": "unknown"
     },
     "array_concat": {
       "params": [
@@ -640,8 +640,8 @@
     },
     "array_contains": {
       "params": [
-        "any",
-        "any"
+        "unknown[]",
+        "unknown"
       ],
       "returns": "boolean"
     },
@@ -685,8 +685,8 @@
     },
     "array_get_index": {
       "params": [
-        "any",
-        "any"
+        "unknown[]",
+        "unknown"
       ],
       "returns": "number"
     },
@@ -731,9 +731,9 @@
     },
     "array_set": {
       "params": [
-        "any[]",
+        "unknown[]",
         "number",
-        "any"
+        "unknown"
       ],
       "returns": "void"
     },
@@ -1069,7 +1069,7 @@
     "buffer_async_group_option": {
       "params": [
         "string",
-        "any"
+        "unknown"
       ],
       "returns": "void"
     },
@@ -1212,7 +1212,7 @@
       "params": [
         "number",
         "number",
-        "any"
+        "unknown"
       ],
       "returns": "void"
     },
@@ -2369,14 +2369,14 @@
         "number",
         "number",
         "number",
-        "any"
+        "unknown"
       ],
       "returns": "void"
     },
     "ds_grid_clear": {
       "params": [
         "number",
-        "any"
+        "unknown"
       ],
       "returns": "void"
     },
@@ -2625,7 +2625,7 @@
       "params": [
         "int",
         "int",
-        "any"
+        "unknown"
       ],
       "returns": "void"
     },
@@ -2640,7 +2640,7 @@
       "params": [
         "number",
         "number",
-        "any"
+        "unknown"
       ],
       "returns": "void"
     },
@@ -2648,7 +2648,7 @@
       "params": [
         "number",
         "number",
-        "any"
+        "unknown"
       ],
       "returns": "void"
     },
@@ -2778,16 +2778,16 @@
     "ds_map_set": {
       "params": [
         "number",
-        "any",
-        "any"
+        "unknown",
+        "unknown"
       ],
       "returns": "void"
     },
     "ds_map_set_post": {
       "params": [
         "number",
-        "any",
-        "any"
+        "unknown",
+        "unknown"
       ],
       "returns": "void"
     },
@@ -2812,7 +2812,7 @@
     "ds_priority_add": {
       "params": [
         "number",
-        "any",
+        "unknown",
         "number"
       ],
       "returns": "void"
@@ -2836,7 +2836,7 @@
     "ds_priority_delete_value": {
       "params": [
         "number",
-        "any"
+        "unknown"
       ],
       "returns": "void"
     },
@@ -2889,7 +2889,7 @@
     "ds_queue_enqueue": {
       "params": [
         "number",
-        "any"
+        "unknown"
       ],
       "returns": "void"
     },
@@ -2930,7 +2930,7 @@
     "ds_stack_push": {
       "params": [
         "number",
-        "any"
+        "unknown"
       ],
       "returns": "void"
     },
@@ -2986,7 +2986,7 @@
       "params": [
         "string"
       ],
-      "returns": "any"
+      "returns": "unknown"
     },
     "exp": {
       "params": [
@@ -3366,7 +3366,7 @@
       "returns": "void"
     },
     "ini_close": {
-      "returns": "any"
+      "returns": "string"
     },
     "ini_key_delete": {
       "params": [
@@ -3857,7 +3857,7 @@
     },
     "layer_get_visible": {
       "params": [
-        "any"
+        "number"
       ],
       "returns": "boolean"
     },
@@ -4272,7 +4272,7 @@
         "number",
         "number",
         "number",
-        "any"
+        "number"
       ],
       "returns": "boolean"
     },
@@ -4299,7 +4299,7 @@
         "number",
         "number",
         "number",
-        "any"
+        "number"
       ],
       "returns": "boolean"
     },
@@ -5068,32 +5068,32 @@
     "setAllField": {
       "params": [
         "string",
-        "any"
+        "unknown"
       ],
       "returns": "void"
     },
     "setInstanceField": {
       "params": [
-        "any",
+        "number",
         "string",
-        "any"
+        "unknown"
       ],
       "returns": "void"
     },
     "setInstanceFieldIndex": {
       "params": [
-        "any",
+        "number",
         "string",
         "number",
-        "any"
+        "unknown"
       ],
       "returns": "void"
     },
     "setOtherField": {
       "params": [
-        "any",
+        "unknown",
         "string",
-        "any"
+        "unknown"
       ],
       "returns": "void"
     },
@@ -5414,7 +5414,7 @@
     },
     "steam_activate_overlay": {
       "params": [
-        "any"
+        "string"
       ],
       "returns": "void"
     },
@@ -6258,7 +6258,7 @@
     },
     "steam_user_request_encrypted_app_ticket": {
       "params": [
-        "any"
+        "unknown"
       ],
       "returns": "void"
     },
@@ -6416,7 +6416,7 @@
     "string_trim": {
       "params": [
         "string",
-        "any"
+        "string[]"
       ],
       "returns": "string"
     },
@@ -6602,7 +6602,7 @@
     },
     "texture_prefetch": {
       "params": [
-        "any"
+        "number"
       ],
       "returns": "void"
     },
@@ -6765,9 +6765,9 @@
     },
     "variable_instance_set": {
       "params": [
-        "any",
+        "number",
         "string",
-        "any"
+        "unknown"
       ],
       "returns": "void"
     },
@@ -6799,16 +6799,16 @@
     },
     "variable_struct_remove": {
       "params": [
-        "any",
+        "unknown",
         "string"
       ],
       "returns": "void"
     },
     "struct_set": {
       "params": [
-        "any",
+        "unknown",
         "string",
-        "any"
+        "unknown"
       ],
       "returns": "void"
     },
@@ -7032,15 +7032,15 @@
     },
     "weak_ref_alive": {
       "params": [
-        "any"
+        "unknown"
       ],
       "returns": "boolean"
     },
     "weak_ref_create": {
       "params": [
-        "any"
+        "unknown"
       ],
-      "returns": "any"
+      "returns": "unknown"
     },
     "getInstances": {
       "params": [],
@@ -7052,18 +7052,18 @@
     },
     "withInstances": {
       "params": [
-        "any",
-        "any"
+        "unknown",
+        "unknown"
       ],
-      "returns": "any"
+      "returns": "unknown"
     },
     "xboxone_fire_event": {
       "params": [
         "string",
         "string",
         "string",
-        "any",
-        "any"
+        "unknown",
+        "unknown"
       ],
       "returns": "void"
     },
@@ -7833,7 +7833,7 @@
       "params": [
         "string",
         "number",
-        "any"
+        "unknown"
       ],
       "returns": "void"
     },
