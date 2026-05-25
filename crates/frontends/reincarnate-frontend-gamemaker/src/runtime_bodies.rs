@@ -2054,8 +2054,10 @@ fn attach_body_math_get_epsilon(module: &mut Module) {
 
 fn attach_body_is_nan(module: &mut Module) {
     attach_runtime_body(module, "is_nan", &[Type::Float(64)], Type::Bool, |b| {
+        // NaN is the only value not equal to itself: x !== x
         let x = b.param(0);
-        let result = b.call_named("is_nan_f64", &[x], Type::Bool);
+        let eq = b.cmp(CmpKind::Eq, x, x);
+        let result = b.not(eq);
         b.ret(Some(result));
     });
 }
@@ -2069,7 +2071,11 @@ fn attach_body_is_nan(module: &mut Module) {
 fn attach_body_is_infinity(module: &mut Module) {
     attach_runtime_body(module, "is_infinity", &[Type::Float(64)], Type::Bool, |b| {
         let x = b.param(0);
-        let result = b.call_named("is_infinite_f64", &[x], Type::Bool);
+        let pos_inf = b.const_float(f64::INFINITY);
+        let neg_inf = b.const_float(f64::NEG_INFINITY);
+        let is_pos = b.cmp(CmpKind::Eq, x, pos_inf);
+        let is_neg = b.cmp(CmpKind::Eq, x, neg_inf);
+        let result = b.bool_or(is_pos, is_neg);
         b.ret(Some(result));
     });
 }

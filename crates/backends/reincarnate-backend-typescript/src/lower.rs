@@ -716,31 +716,6 @@ fn lower_builtin_opt(op_name: &str, args: &[Expr], ctx: &LowerCtx) -> Option<JsE
             )),
         }),
 
-        // is_nan_f64: (Float64) -> Bool
-        // emit as: Number.isNaN(x)
-        "is_nan_f64" => Some(JsExpr::Call {
-            callee: Box::new(build_dotted_path("Number.isNaN")),
-            args: vec![lower_expr(&args[0], ctx)],
-        }),
-
-        // is_infinite_f64: (Float64) -> Bool
-        // emit as: !Number.isFinite(x) && !Number.isNaN(x)
-        "is_infinite_f64" => {
-            let arg = lower_expr(&args[0], ctx);
-            let not_finite = JsExpr::Not(Box::new(JsExpr::Call {
-                callee: Box::new(build_dotted_path("Number.isFinite")),
-                args: vec![arg.clone()],
-            }));
-            let not_nan = JsExpr::Not(Box::new(JsExpr::Call {
-                callee: Box::new(build_dotted_path("Number.isNaN")),
-                args: vec![arg],
-            }));
-            Some(JsExpr::LogicalAnd {
-                lhs: Box::new(not_finite),
-                rhs: Box::new(not_nan),
-            })
-        }
-
         // is_struct_unknown: (Unknown) -> Bool
         // emit as: typeof x === "object" && x != null && !Array.isArray(x)
         "is_struct_unknown" => {
