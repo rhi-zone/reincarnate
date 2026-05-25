@@ -559,11 +559,15 @@ Full design: `docs/rewrite.md` (on `rewrite-v1` branch). Executed incrementally 
 - [ ] Define mutation rules: when does `SetIndex`/`SetField` on a value obtained via `GetField` propagate back to the parent struct?
 - [ ] Adversarial audit rounds specifically against the IR design once formalized
 
-**XorGen / RNG IR bodies** — blocked on IR memory model. XorGen has an 8-word mutable ring buffer (`x: Array(Int(32))`, `i: Int(32)`). `SetIndex` on a sub-field array must propagate back through the `GameRuntime._math.prng` chain. Cannot safely write these IR bodies until mutation semantics are defined.
-- [ ] Define `MathState` and `XorGen` as IR structs once memory model is settled
-- [ ] `xorgen_next` and `xorgen_init` as IR bodies (InlineHint::Default — not inlined)
-- [ ] IR bodies for `random`, `random_range`, `irandom`, `irandom_range`, `random_set_seed`
-- [ ] `randomize` blocked additionally on platform API (needs `currentWallTimeMs`)
+**XorGen / RNG IR bodies** — partially done. `XorGen` and `MathState` registered as `TypeDecl::Object`; `GameRuntime._math: MathState` field added; `xorgen_next`, `random`, `random_range` have IR bodies (commit 13ff7bf2).
+- [x] Define `MathState` and `XorGen` as IR structs
+- [x] `xorgen_next` as IR body (XorShift128 ring-buffer step, InlineHint::Default)
+- [x] IR bodies for `random`, `random_range`
+- [ ] `irandom` — modulo-bias rejection loop requires multi-block IR (loops not yet expressible in the IR bodies pattern); deferred until IR body loop support exists
+- [ ] `irandom_range` — same blocker as `irandom`
+- [ ] `random_set_seed` / `xorgen_init` — constructor with initialization loop + 256-call warmup; deferred until loop IR bodies are supported
+- [ ] `random_get_seed` — XorGen does not store the original seed; would need to add a `seed: i32` field to XorGen and thread it through `xorgen_init`
+- [ ] `randomize` — blocked on platform API: needs `currentWallTimeMs()` which is a backend primitive (browser `Date.now()`)
 - [ ] `choose` blocked on varargs — handle at call site once varargs design is settled
 
 **`median`** — last function in the non-stateful `gamemaker/math` `function_modules` entry. Requires sorting; not expressible as a fold. Deferred until IR can express sorting or a backend primitive approach is designed.
