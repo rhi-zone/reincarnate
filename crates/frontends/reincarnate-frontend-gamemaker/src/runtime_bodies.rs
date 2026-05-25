@@ -141,6 +141,10 @@ pub fn register_runtime_bodies(module: &mut Module) {
     attach_body_matrix_build(module);
     attach_body_array_copy(module);
     attach_body_array_equals(module);
+    attach_body_array_get(module);
+    attach_body_array_set(module);
+    attach_body_array_height_2d(module);
+    attach_body_point_in_triangle(module);
 }
 
 // ---------------------------------------------------------------------------
@@ -2425,4 +2429,162 @@ fn attach_body_array_equals(module: &mut Module) {
             b.ret(Some(tv));
         },
     );
+}
+
+// ---------------------------------------------------------------------------
+// array_get(arr: Array(Unknown), index: f64) -> Unknown
+//   GML: returns arr[index]
+//   JS: arr[index]
+// ---------------------------------------------------------------------------
+
+fn attach_body_array_get(module: &mut Module) {
+    attach_runtime_body(
+        module,
+        "array_get",
+        &[Type::Array(Box::new(Type::Unknown)), Type::Float(64)],
+        Type::Unknown,
+        |b| {
+            let arr = b.param(0);
+            let index = b.param(1);
+            let result = b.get_index(arr, index, Type::Unknown);
+            b.ret(Some(result));
+        },
+    );
+}
+
+// ---------------------------------------------------------------------------
+// array_set(arr: Array(Unknown), index: f64, val: Unknown) -> void
+//   GML: arr[index] = val
+//   JS: arr[index] = val
+// ---------------------------------------------------------------------------
+
+fn attach_body_array_set(module: &mut Module) {
+    attach_runtime_body(
+        module,
+        "array_set",
+        &[
+            Type::Array(Box::new(Type::Unknown)),
+            Type::Float(64),
+            Type::Unknown,
+        ],
+        Type::Void,
+        |b| {
+            let arr = b.param(0);
+            let index = b.param(1);
+            let val = b.param(2);
+            b.set_index(arr, index, val);
+            b.ret(None);
+        },
+    );
+}
+
+// ---------------------------------------------------------------------------
+// array_height_2d(arr: Array(Unknown)) -> f64
+//   GML: length of the outer dimension (same as array_length)
+//   JS: arr.length
+// ---------------------------------------------------------------------------
+
+fn attach_body_array_height_2d(module: &mut Module) {
+    attach_runtime_body(
+        module,
+        "array_height_2d",
+        &[Type::Array(Box::new(Type::Unknown))],
+        Type::Float(64),
+        |b| {
+            let arr = b.param(0);
+            let result = b.call_named("array_length_arr", &[arr], Type::Float(64));
+            b.ret(Some(result));
+        },
+    );
+}
+
+// ---------------------------------------------------------------------------
+// point_in_triangle(px, py, x1, y1, x2, y2, x3, y3: f64) -> Bool
+//   Barycentric coordinate method:
+//     d = (y2-y3)*(x1-x3) + (x3-x2)*(y1-y3)
+//     a = ((y2-y3)*(px-x3) + (x3-x2)*(py-y3)) / d
+//     b = ((y3-y1)*(px-x3) + (x1-x3)*(py-y3)) / d
+//     c = 1 - a - b
+//     result = a >= 0 && b >= 0 && c >= 0
+// ---------------------------------------------------------------------------
+
+fn attach_body_point_in_triangle(module: &mut Module) {
+    let fid = module
+        .lookup_runtime("point_in_triangle")
+        .unwrap_or_else(|| {
+            panic!("attach_runtime_body: 'point_in_triangle' not in runtime registry")
+        });
+    let sig = FunctionSig {
+        params: vec![
+            Type::Float(64),
+            Type::Float(64),
+            Type::Float(64),
+            Type::Float(64),
+            Type::Float(64),
+            Type::Float(64),
+            Type::Float(64),
+            Type::Float(64),
+        ],
+        return_ty: Type::Bool,
+        defaults: vec![],
+        has_rest_param: false,
+        param_lower_bounds: vec![],
+    };
+    let mut b = make_builder(module, "point_in_triangle", sig);
+
+    let px = b.param(0);
+    let py = b.param(1);
+    let x1 = b.param(2);
+    let y1 = b.param(3);
+    let x2 = b.param(4);
+    let y2 = b.param(5);
+    let x3 = b.param(6);
+    let y3 = b.param(7);
+
+    // d = (y2-y3)*(x1-x3) + (x3-x2)*(y1-y3)
+    let y2_y3 = b.sub(y2, y3);
+    let x1_x3 = b.sub(x1, x3);
+    let x3_x2 = b.sub(x3, x2);
+    let y1_y3 = b.sub(y1, y3);
+    let d_left = b.mul(y2_y3, x1_x3);
+    let d_right = b.mul(x3_x2, y1_y3);
+    let d = b.add(d_left, d_right);
+
+    // px-x3, py-y3
+    let px_x3 = b.sub(px, x3);
+    let py_y3 = b.sub(py, y3);
+
+    // a = ((y2-y3)*(px-x3) + (x3-x2)*(py-y3)) / d
+    let a_left = b.mul(y2_y3, px_x3);
+    let a_right = b.mul(x3_x2, py_y3);
+    let a_num = b.add(a_left, a_right);
+    let a = b.div(a_num, d);
+
+    // bv = ((y3-y1)*(px-x3) + (x1-x3)*(py-y3)) / d
+    let y3_y1 = b.sub(y3, y1);
+    let bv_left = b.mul(y3_y1, px_x3);
+    let bv_right = b.mul(x1_x3, py_y3);
+    let bv_num = b.add(bv_left, bv_right);
+    let bv = b.div(bv_num, d);
+
+    // c = 1 - a - bv
+    let one = b.const_float(1.0);
+    let one_minus_a = b.sub(one, a);
+    let c = b.sub(one_minus_a, bv);
+
+    let zero = b.const_float(0.0);
+    let a_ge_0 = b.cmp(CmpKind::Ge, a, zero);
+    let b_ge_0 = b.cmp(CmpKind::Ge, bv, zero);
+    let c_ge_0 = b.cmp(CmpKind::Ge, c, zero);
+    let ab = b.bool_and(a_ge_0, b_ge_0);
+    let result = b.bool_and(ab, c_ge_0);
+    b.ret(Some(result));
+
+    let built = b.build();
+    let stub = &mut module.functions[fid];
+    stub.blocks = built.blocks;
+    stub.insts = built.insts;
+    stub.value_types = built.value_types;
+    stub.entry = built.entry;
+    // InlineHint left as Default (not Always) — complex multi-step function
 }
