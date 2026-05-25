@@ -3,8 +3,8 @@ use std::f64::consts::PI;
 use reincarnate_core::ir::builder::FunctionBuilder;
 use reincarnate_core::ir::func::{InlineHint, Visibility};
 use reincarnate_core::ir::inst::CmpKind;
-use reincarnate_core::ir::module::Module;
-use reincarnate_core::ir::ty::{FunctionSig, Type};
+use reincarnate_core::ir::module::{FieldDef, Module, TypeDecl};
+use reincarnate_core::ir::ty::{FunctionSig, Type, TypeId};
 
 /// Attach IR bodies to GML runtime stubs that have closed-form math definitions.
 ///
@@ -17,6 +17,82 @@ use reincarnate_core::ir::ty::{FunctionSig, Type};
 /// The bodies use only `*_f64` builtin calls and `Const(Float)` values, so they
 /// are legal IR for any pipeline stage that runs after registration.
 pub fn register_runtime_bodies(module: &mut Module) {
+    // Register XorGen type: { x: Array<i32>, i: i32 }
+    let xorgen_type_id = module.types.push(TypeDecl::Object {
+        name: Some("XorGen".to_string()),
+        parent: None,
+        fields: vec![
+            FieldDef {
+                name: "x".to_string(),
+                ty: Type::Array(Box::new(Type::Int(32))),
+                default: None,
+            },
+            FieldDef {
+                name: "i".to_string(),
+                ty: Type::Int(32),
+                default: None,
+            },
+        ],
+        methods: vec![],
+        class_ref: None,
+        inferred: false,
+    });
+    module
+        .name_table
+        .type_names
+        .push(Some("XorGen".to_string()));
+    module
+        .type_names
+        .insert("XorGen".to_string(), xorgen_type_id);
+
+    let xorgen_ty = Type::Instance(xorgen_type_id);
+
+    // Register MathState type: { prng: XorGen }
+    let math_state_type_id = module.types.push(TypeDecl::Object {
+        name: Some("MathState".to_string()),
+        parent: None,
+        fields: vec![FieldDef {
+            name: "prng".to_string(),
+            ty: xorgen_ty.clone(),
+            default: None,
+        }],
+        methods: vec![],
+        class_ref: None,
+        inferred: false,
+    });
+    module
+        .name_table
+        .type_names
+        .push(Some("MathState".to_string()));
+    module
+        .type_names
+        .insert("MathState".to_string(), math_state_type_id);
+
+    // Add _math field to GameRuntime
+    if let Some(rt_id) = module.runtime_type_id {
+        if let TypeDecl::Object { fields, .. } = &mut module.types[rt_id] {
+            fields.push(FieldDef {
+                name: "_math".to_string(),
+                ty: Type::Instance(math_state_type_id),
+                default: None,
+            });
+        }
+    }
+
+    // Register xorgen_next stub: (XorGen) -> i32
+    let xorgen_next_sig = FunctionSig {
+        params: vec![xorgen_ty.clone()],
+        return_ty: Type::Int(32),
+        defaults: vec![],
+        has_rest_param: false,
+        param_lower_bounds: vec![],
+    };
+    module.register_runtime("xorgen_next", xorgen_next_sig);
+
+    attach_body_xorgen_next(module, xorgen_type_id);
+    attach_body_random(module, xorgen_type_id, math_state_type_id);
+    attach_body_random_range(module);
+
     attach_body_point_in_rectangle(module);
     attach_body_point_in_circle(module);
     attach_body_lengthdir_x(module);
@@ -3036,4 +3112,177 @@ fn attach_body_variable_struct_set(module: &mut Module) {
             b.ret(None);
         },
     );
+}
+
+// ---------------------------------------------------------------------------
+// xorgen_next(prng: XorGen) -> i32
+// XorShift128 ring-buffer step (8 slots). Reads and writes prng.x[] and prng.i.
+// ---------------------------------------------------------------------------
+
+fn attach_body_xorgen_next(module: &mut Module, xorgen_type_id: TypeId) {
+    let xorgen_ty = Type::Instance(xorgen_type_id);
+    let sig = FunctionSig {
+        params: vec![xorgen_ty.clone()],
+        return_ty: Type::Int(32),
+        defaults: vec![],
+        has_rest_param: false,
+        param_lower_bounds: vec![],
+    };
+    let mut b = make_builder(module, "xorgen_next", sig);
+
+    let xorgen = b.param(0);
+    let x_arr = b.get_field(xorgen, "x", Type::Array(Box::new(Type::Int(32))));
+    let i = b.get_field(xorgen, "i", Type::Int(32));
+
+    // Pre-bind all integer constants to avoid nested mutable borrows
+    let c1 = b.const_int(1, 32);
+    let c3 = b.const_int(3, 32);
+    let c4 = b.const_int(4, 32);
+    let c7 = b.const_int(7, 32);
+    let c9 = b.const_int(9, 32);
+    let c10 = b.const_int(10, 32);
+    let c13 = b.const_int(13, 32);
+    let c24 = b.const_int(24, 32);
+
+    // Step 1: t = X[i]; t ^= (t >>> 7); v = t ^ (t << 24)
+    let t1 = b.get_index(x_arr, i, Type::Int(32));
+    let t1_shr7 = b.call_named("lshr_i32", &[t1, c7], Type::Int(32));
+    let t1x = b.call_named("bitxor_i32", &[t1, t1_shr7], Type::Int(32));
+    let t1x_shl24 = b.call_named("shl_i32", &[t1x, c24], Type::Int(32));
+    let v = b.call_named("bitxor_i32", &[t1x, t1x_shl24], Type::Int(32));
+
+    // Step 2: t = X[(i+1)&7]; v ^= t ^ (t >>> 10)
+    let i_p1 = b.call_named("add_i32", &[i, c1], Type::Int(32));
+    let idx2 = b.call_named("bitand_i32", &[i_p1, c7], Type::Int(32));
+    let t2 = b.get_index(x_arr, idx2, Type::Int(32));
+    let t2_shr10 = b.call_named("lshr_i32", &[t2, c10], Type::Int(32));
+    let t2x = b.call_named("bitxor_i32", &[t2, t2_shr10], Type::Int(32));
+    let v = b.call_named("bitxor_i32", &[v, t2x], Type::Int(32));
+
+    // Step 3: t = X[(i+3)&7]; v ^= t ^ (t >>> 3)
+    let i_p3 = b.call_named("add_i32", &[i, c3], Type::Int(32));
+    let idx3 = b.call_named("bitand_i32", &[i_p3, c7], Type::Int(32));
+    let t3 = b.get_index(x_arr, idx3, Type::Int(32));
+    let t3_shr3 = b.call_named("lshr_i32", &[t3, c3], Type::Int(32));
+    let t3x = b.call_named("bitxor_i32", &[t3, t3_shr3], Type::Int(32));
+    let v = b.call_named("bitxor_i32", &[v, t3x], Type::Int(32));
+
+    // Step 4: t = X[(i+4)&7]; v ^= t ^ (t << 7)
+    let i_p4 = b.call_named("add_i32", &[i, c4], Type::Int(32));
+    let idx4 = b.call_named("bitand_i32", &[i_p4, c7], Type::Int(32));
+    let t4 = b.get_index(x_arr, idx4, Type::Int(32));
+    let t4_shl7 = b.call_named("shl_i32", &[t4, c7], Type::Int(32));
+    let t4x = b.call_named("bitxor_i32", &[t4, t4_shl7], Type::Int(32));
+    let v = b.call_named("bitxor_i32", &[v, t4x], Type::Int(32));
+
+    // Step 5: t = X[(i+7)&7]; t ^= (t << 13); v ^= t ^ (t << 9)
+    let i_p7 = b.call_named("add_i32", &[i, c7], Type::Int(32));
+    let idx7 = b.call_named("bitand_i32", &[i_p7, c7], Type::Int(32));
+    let t5 = b.get_index(x_arr, idx7, Type::Int(32));
+    let t5_shl13 = b.call_named("shl_i32", &[t5, c13], Type::Int(32));
+    let t5x = b.call_named("bitxor_i32", &[t5, t5_shl13], Type::Int(32));
+    let t5x_shl9 = b.call_named("shl_i32", &[t5x, c9], Type::Int(32));
+    let t5xx = b.call_named("bitxor_i32", &[t5x, t5x_shl9], Type::Int(32));
+    let v = b.call_named("bitxor_i32", &[v, t5xx], Type::Int(32));
+
+    // X[i] = v
+    b.set_index(x_arr, i, v);
+
+    // this.i = (i + 1) & 7
+    let i_p1_new = b.call_named("add_i32", &[i, c1], Type::Int(32));
+    let new_i = b.call_named("bitand_i32", &[i_p1_new, c7], Type::Int(32));
+    b.set_field(xorgen, "i", new_i);
+
+    b.ret(Some(v));
+
+    let built = b.build();
+    let fid = module.lookup_runtime("xorgen_next").unwrap();
+    let stub = &mut module.functions[fid];
+    stub.blocks = built.blocks;
+    stub.insts = built.insts;
+    stub.value_types = built.value_types;
+    stub.entry = built.entry;
+    // InlineHint left as Default — complex multi-step function
+}
+
+// ---------------------------------------------------------------------------
+// random(_rt: GameRuntime, max: f64) -> f64
+// Calls xorgen_next on rt._math.prng, converts signed i32 to [0, max).
+// ---------------------------------------------------------------------------
+
+fn attach_body_random(module: &mut Module, xorgen_type_id: TypeId, math_state_type_id: TypeId) {
+    let rt_type_id = module.runtime_type_id.unwrap();
+    let rt_ty = Type::Instance(rt_type_id);
+    let sig = FunctionSig {
+        params: vec![rt_ty, Type::Float(64)],
+        return_ty: Type::Float(64),
+        defaults: vec![],
+        has_rest_param: false,
+        param_lower_bounds: vec![],
+    };
+    let mut b = make_builder(module, "random", sig);
+
+    let rt = b.param(0);
+    let max = b.param(1);
+
+    let math = b.get_field(rt, "_math", Type::Instance(math_state_type_id));
+    let prng = b.get_field(math, "prng", Type::Instance(xorgen_type_id));
+    let raw = b.call_named("xorgen_next", &[prng], Type::Int(32));
+
+    // Convert signed i32 to float in [0, max):
+    // (coerce(raw, f64) + 2147483648.0) * max / 4294967295.0
+    let raw_f = b.coerce(raw, Type::Float(64));
+    let c_i32_min = b.const_float(2_147_483_648.0);
+    let c_u32_max = b.const_float(4_294_967_295.0);
+    let shifted = b.call_named("add_f64", &[raw_f, c_i32_min], Type::Float(64));
+    let divided = b.call_named("div_f64", &[shifted, c_u32_max], Type::Float(64));
+    let result = b.call_named("mul_f64", &[divided, max], Type::Float(64));
+
+    b.ret(Some(result));
+
+    let built = b.build();
+    let fid = module.lookup_runtime("random").unwrap();
+    let stub = &mut module.functions[fid];
+    stub.blocks = built.blocks;
+    stub.insts = built.insts;
+    stub.value_types = built.value_types;
+    stub.entry = built.entry;
+    // InlineHint left as Default
+}
+
+// ---------------------------------------------------------------------------
+// random_range(_rt: GameRuntime, min: f64, max: f64) -> f64
+// Delegates to random(rt, max - min) + min.
+// ---------------------------------------------------------------------------
+
+fn attach_body_random_range(module: &mut Module) {
+    let rt_type_id = module.runtime_type_id.unwrap();
+    let rt_ty = Type::Instance(rt_type_id);
+    let sig = FunctionSig {
+        params: vec![rt_ty, Type::Float(64), Type::Float(64)],
+        return_ty: Type::Float(64),
+        defaults: vec![],
+        has_rest_param: false,
+        param_lower_bounds: vec![],
+    };
+    let mut b = make_builder(module, "random_range", sig);
+
+    let rt = b.param(0);
+    let min = b.param(1);
+    let max = b.param(2);
+
+    let range = b.call_named("sub_f64", &[max, min], Type::Float(64));
+    let r = b.call_named("random", &[rt, range], Type::Float(64));
+    let result = b.call_named("add_f64", &[r, min], Type::Float(64));
+
+    b.ret(Some(result));
+
+    let built = b.build();
+    let fid = module.lookup_runtime("random_range").unwrap();
+    let stub = &mut module.functions[fid];
+    stub.blocks = built.blocks;
+    stub.insts = built.insts;
+    stub.value_types = built.value_types;
+    stub.entry = built.entry;
+    // InlineHint left as Default
 }
