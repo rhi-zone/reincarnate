@@ -569,6 +569,7 @@ Full design: `docs/rewrite.md` (on `rewrite-v1` branch). Executed incrementally 
 **`median`** — last function in the non-stateful `gamemaker/math` `function_modules` entry. Requires sorting; not expressible as a fold. Deferred until IR can express sorting or a backend primitive approach is designed.
 
 **Pure IR bodies still missing** — survey `runtime.ts` for pure-GML functions (no `_rt` dependency) not yet in `runtime_bodies.rs`. Candidates: `array_create`, `array_push`, `array_pop`, `array_resize`, `array_sort`, `array_reverse`, `array_filter`, `array_map`, `array_concat`, and others. These can be done incrementally without IR formalization.
+  > **Done (2026-05-25):** `array_get`, `array_set`, `array_height_2d`, `point_in_triangle` all have pure IR bodies in `runtime_bodies.rs` (commit 69c7d52a). `array_get`/`array_set` use GetIndex/SetIndex ops; `array_height_2d` delegates to `array_length_arr`; `point_in_triangle` uses barycentric method.
 
 ### Out of scope until designed
 
@@ -3947,7 +3948,8 @@ From `bun scripts/gml-manual-sigs.ts --diff` vs GameMaker Manual.
 **22 `any` entries in `runtime.json`** (honest representation violation):
 - [ ] `draw_text` and all 6 `draw_text_*` variants — third param `any` → `string`
 - [ ] `array_contains`, `array_get_index` — params `any` → `unknown[]` + `unknown`
-- [ ] `array_height_2d`, `array_resize` — first param `any` → `unknown[]`
+- [x] `array_height_2d` — first param `any` → `unknown[]` (IR body done, 2026-05-25)
+- [ ] `array_resize` — first param `any` → `unknown[]`
 - [ ] `ptr` — `(any): any` → `(number): number`
 - [ ] `buffer_write` — third param `any`; return `void` not `number`
 - [ ] `get_string` — second param `any` → `string` (default value)
