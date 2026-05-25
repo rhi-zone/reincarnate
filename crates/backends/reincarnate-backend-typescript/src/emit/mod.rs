@@ -13,7 +13,7 @@ use std::path::Path;
 
 use reincarnate_core::error::CoreError;
 use reincarnate_core::ir::module::TypeDecl;
-use reincarnate_core::ir::{ClassDef, FuncId, MethodKind, Module, StructDef};
+use reincarnate_core::ir::{ClassDef, FieldDef, FuncId, MethodKind, Module, Visibility};
 use reincarnate_core::pipeline::{DebugConfig, Diagnostic, LoweringConfig};
 use reincarnate_core::project::{ExternalMethodSig, ExternalTypeDef, RuntimeConfig};
 
@@ -574,19 +574,43 @@ pub(crate) struct RefSets {
 // ---------------------------------------------------------------------------
 
 fn emit_structs(module: &Module, out: &mut String) {
-    for def in &module.structs {
-        let needs_index_sig = module.string_indexed_structs.contains(&def.name);
-        emit_struct(def, needs_index_sig, out);
+    // Pure structs are TypeDecl::Object entries whose TypeId does NOT appear as any
+    // ClassDef's type_id.  Class TypeDecls are emitted as `class` declarations elsewhere.
+    use reincarnate_core::ir::ty::TypeId;
+    let class_type_ids: HashSet<TypeId> = module.classes.iter().map(|c| c.type_id).collect();
+    for (id, td) in module.types.iter() {
+        if class_type_ids.contains(&id) {
+            continue;
+        }
+        if let TypeDecl::Object {
+            name: Some(name),
+            visibility,
+            fields,
+            ..
+        } = td
+        {
+            if fields.is_empty() {
+                continue;
+            }
+            let needs_index_sig = module.string_indexed_structs.contains(name.as_str());
+            emit_struct_fields(name, *visibility, fields, needs_index_sig, out);
+        }
     }
 }
 
-fn emit_struct(def: &StructDef, needs_index_signature: bool, out: &mut String) {
-    let vis = visibility_prefix(def.visibility);
-    let _ = writeln!(out, "{vis}interface {} {{", sanitize_ident(&def.name));
+fn emit_struct_fields(
+    name: &str,
+    visibility: Visibility,
+    fields: &[FieldDef],
+    needs_index_signature: bool,
+    out: &mut String,
+) {
+    let vis = visibility_prefix(visibility);
+    let _ = writeln!(out, "{vis}interface {} {{", sanitize_ident(name));
     if needs_index_signature {
         let _ = writeln!(out, "  [key: string]: unknown;");
     }
-    for field in &def.fields {
+    for field in fields {
         let _ = writeln!(
             out,
             "  {}: {};",

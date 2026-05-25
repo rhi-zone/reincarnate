@@ -31,7 +31,7 @@ use reincarnate_core::error::CoreError;
 use reincarnate_core::ir::block::BlockId;
 use reincarnate_core::ir::func::FuncId;
 use reincarnate_core::ir::inst::{CastKind, CmpKind, Inst, InstId, Op, Terminator};
-use reincarnate_core::ir::module::StructDef;
+use reincarnate_core::ir::module::TypeDecl;
 use reincarnate_core::ir::ty::{parse_type_notation, Type};
 use reincarnate_core::ir::value::Constant;
 use reincarnate_core::ir::{Function, Module, ValueId};
@@ -83,8 +83,8 @@ impl Transform for GmlBoolArithCoerce {
             .map(|(_, &fid)| fid)
             .collect();
 
-        // Build field type lookup from struct definitions for SetField coercion.
-        let struct_field_types = build_struct_field_type_map(&module.structs);
+        // Build field type lookup from module.types for SetField coercion.
+        let struct_field_types = build_struct_field_type_map(&module);
 
         // Collect numeric field names from external type definitions (e.g.
         // GMLObject.x, GMLObject.depth) so we don't hardcode field names.
@@ -471,16 +471,18 @@ fn coerce_bool_br_args(func: &mut Function) -> bool {
 /// Build a map of (field_name → Type) from all struct definitions.
 /// If multiple structs define the same field with different types, the entry
 /// is removed (ambiguous — don't coerce).
-fn build_struct_field_type_map(structs: &[StructDef]) -> HashMap<String, Option<Type>> {
+fn build_struct_field_type_map(module: &Module) -> HashMap<String, Option<Type>> {
     let mut map: HashMap<String, Option<Type>> = HashMap::new();
-    for s in structs {
-        for field in &s.fields {
-            let entry = map
-                .entry(field.name.clone())
-                .or_insert(Some(field.ty.clone()));
-            if let Some(existing) = entry {
-                if *existing != field.ty {
-                    *entry = None;
+    for (_id, td) in module.types.iter() {
+        if let TypeDecl::Object { fields, .. } = td {
+            for field in fields {
+                let entry = map
+                    .entry(field.name.clone())
+                    .or_insert(Some(field.ty.clone()));
+                if let Some(existing) = entry {
+                    if *existing != field.ty {
+                        *entry = None;
+                    }
                 }
             }
         }

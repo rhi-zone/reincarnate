@@ -9,7 +9,7 @@ use reincarnate_core::entity::PrimaryMap;
 use reincarnate_core::error::CoreError;
 use reincarnate_core::ir::module::TypeDecl;
 use reincarnate_core::ir::{
-    structurize, ClassDef, Constant, FuncId, Function, MethodKind, Module, StructDef, Type, TypeId,
+    structurize, ClassDef, Constant, FieldDef, FuncId, Function, MethodKind, Module, Type, TypeId,
 };
 use reincarnate_core::pipeline::{DebugConfig, Diagnostic, LoweringConfig};
 use reincarnate_core::project::{ExternalMethodSig, RuntimeConfig};
@@ -66,7 +66,7 @@ pub(super) fn resolve_object_ts_names(
 
 pub(crate) struct ClassGroup {
     pub(crate) class_def: ClassDef,
-    pub(crate) struct_def: StructDef,
+    pub(crate) fields: Vec<FieldDef>,
     pub(crate) methods: Vec<FuncId>,
 }
 
@@ -80,7 +80,11 @@ pub(super) fn group_by_class(module: &Module) -> (Vec<ClassGroup>, Vec<FuncId>) 
     let mut groups = Vec::new();
 
     for class in &module.classes {
-        let struct_def = module.structs[class.struct_index].clone();
+        let fields = module
+            .types
+            .get(class.type_id)
+            .map(|td| td.fields().to_vec())
+            .unwrap_or_default();
         let methods: Vec<FuncId> = class
             .methods
             .iter()
@@ -96,7 +100,7 @@ pub(super) fn group_by_class(module: &Module) -> (Vec<ClassGroup>, Vec<FuncId>) 
             .collect();
         groups.push(ClassGroup {
             class_def: class.clone(),
-            struct_def,
+            fields,
             methods,
         });
     }
@@ -525,8 +529,8 @@ pub(super) fn emit_class(
         }
     }
 
-    // Instance fields from struct def.
-    for field in &group.struct_def.fields {
+    // Instance fields from the class's TypeDecl.
+    for field in &group.fields {
         let ident = sanitize_ident(&field.name);
         let mut ts = if engine == EngineKind::Flash {
             flash_ts_type_with_names_and_module(&field.ty, class_names, &module.types)
@@ -587,24 +591,19 @@ pub(super) fn emit_class(
     // declarations so TypeScript knows the fields exist at runtime without managing
     // their initialization (suppresses TS2564 entirely for these fields).
     if engine == EngineKind::GameMaker {
-        if let Some(type_id) = module.find_type(&group.struct_def.name) {
-            // Fields already emitted by the struct_def loop above.
-            let struct_def_names: std::collections::HashSet<String> = group
-                .struct_def
-                .fields
-                .iter()
-                .map(|f| f.name.clone())
-                .collect();
-            // Fields declared on any ancestor in the module.types parent chain.
-            let ancestor_names = collect_ancestor_field_names(type_id, &module.types);
-            for field in module.types[type_id].fields() {
-                if struct_def_names.contains(&field.name) || ancestor_names.contains(&field.name) {
-                    continue;
-                }
-                let ident = sanitize_ident(&field.name);
-                let ts = ts_type_with_names_and_module(&field.ty, class_names, &module.types);
-                let _ = writeln!(out, "  declare {ident}: {ts};");
+        let type_id = group.class_def.type_id;
+        // Fields already emitted by the group.fields loop above.
+        let declared_names: std::collections::HashSet<String> =
+            group.fields.iter().map(|f| f.name.clone()).collect();
+        // Fields declared on any ancestor in the module.types parent chain.
+        let ancestor_names = collect_ancestor_field_names(type_id, &module.types);
+        for field in module.types[type_id].fields() {
+            if declared_names.contains(&field.name) || ancestor_names.contains(&field.name) {
+                continue;
             }
+            let ident = sanitize_ident(&field.name);
+            let ts = ts_type_with_names_and_module(&field.ty, class_names, &module.types);
+            let _ = writeln!(out, "  declare {ident}: {ts};");
         }
     }
     // Index signatures for AS3 `dynamic` classes and Proxy subclasses — these allow
@@ -621,7 +620,7 @@ pub(super) fn emit_class(
     for m in &group.class_def.abstract_members {
         emit_abstract_member(m, engine, &module.types, out);
     }
-    let has_fields = !group.struct_def.fields.is_empty()
+    let has_fields = !group.fields.is_empty()
         || !group.class_def.static_fields.is_empty()
         || needs_index_sig
         || !group.class_def.abstract_members.is_empty();

@@ -40,35 +40,16 @@ use crate::transforms::constraint_collect::{
 ///
 /// "Own fields" means only the fields declared directly on each struct, not
 /// inherited from parent types.  Used for struct narrowing discriminants.
-/// Build own-fields from `module.types` (the live graph), falling back to `module.structs`.
+/// Build own-fields from `module.types` (the live graph).
+///
+/// "Own fields" means only the fields declared directly on each struct, not
+/// inherited from parent types.  Used for struct narrowing discriminants.
 ///
 /// Used to build `all_fields` for HasField **resolution**: when the struct type is already
 /// known (e.g. `HasField(Instance(Gun), "bulletDamageMultiplier", X)`), use the full
 /// TypeDecl field set so that pass-inferred fields (from ConstructorStructInfer) are visible.
 fn build_own_fields(module: &Module) -> HashMap<String, HashMap<String, Type>> {
     let mut map: HashMap<String, HashMap<String, Type>> = HashMap::new();
-    for s in &module.structs {
-        // Prefer module.types fields when available — TypeDecl is the live graph,
-        // enriched by passes like ConstructorStructInfer with constructor/event fields.
-        // Fall back to the StructDef snapshot if module.types has no fields for this type.
-        let live_fields: Option<&[crate::ir::FieldDef]> = module
-            .find_type(&s.name)
-            .map(|id| module.types[id].fields())
-            .filter(|f| !f.is_empty());
-        let fields: HashMap<String, Type> = if let Some(live) = live_fields {
-            live.iter()
-                .map(|f| (f.name.clone(), f.ty.clone()))
-                .collect()
-        } else {
-            s.fields
-                .iter()
-                .map(|f| (f.name.clone(), f.ty.clone()))
-                .collect()
-        };
-        map.insert(s.name.clone(), fields);
-    }
-    // Also include types that exist only in module.types (e.g. GML 2.3 constructor structs
-    // inferred by ConstructorStructInfer that were never registered in module.structs).
     for (_id, decl) in module.types.iter() {
         if let TypeDecl::Object {
             name: Some(name),
@@ -76,9 +57,6 @@ fn build_own_fields(module: &Module) -> HashMap<String, HashMap<String, Type>> {
             ..
         } = decl
         {
-            if map.contains_key(name) {
-                continue;
-            }
             if fields.is_empty() {
                 continue;
             }
@@ -107,11 +85,28 @@ fn build_all_fields(
 ) -> HashMap<String, HashMap<String, Type>> {
     let mut all_fields = own_fields.clone();
 
-    for s in &module.structs {
+    // Walk the TypeDecl parent chain for every named Object type and merge
+    // ancestor own-fields into the all_fields entry.
+    let type_names: Vec<String> = module
+        .types
+        .values()
+        .filter_map(|td| {
+            if let TypeDecl::Object {
+                name: Some(name), ..
+            } = td
+            {
+                Some(name.clone())
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    for type_name in type_names {
         // Walk the TypeDecl parent chain and merge ancestor own-fields.
         // Own fields (already in the map) take priority — use entry().or_insert.
-        let entry = all_fields.entry(s.name.clone()).or_default();
-        let mut current_name: Option<String> = Some(s.name.clone());
+        let entry = all_fields.entry(type_name.clone()).or_default();
+        let mut current_name: Option<String> = Some(type_name.clone());
         loop {
             // Find the TypeId for the current name.
             let Some(name) = current_name else { break };
@@ -1277,9 +1272,9 @@ impl Transform for ConstraintSolveHM {
         //
         // ConstructorStructInfer commits field types before HM runs, so any
         // field whose type was Type::Var(v) at CSI time still holds that Var
-        // after HM write-back.  Walk module.structs and module.types here and
-        // resolve every field type.  Unions have Unknown stripped when a
-        // concrete alternative exists — matching CSI's merge_field_type rule.
+        // after HM write-back.  Walk module.types here and resolve every field
+        // type.  Unions have Unknown stripped when a concrete alternative exists
+        // — matching CSI's merge_field_type rule.
         // -----------------------------------------------------------------------
         {
             fn resolve_field_ty(ty: Type, arena: &TypeVarArena) -> Type {
@@ -1317,17 +1312,6 @@ impl Transform for ConstraintSolveHM {
                         }
                     }
                     other => other,
-                }
-            }
-
-            for s in &mut module.structs {
-                for field in &mut s.fields {
-                    if matches!(field.ty, Type::Var(_) | Type::Union(_)) {
-                        let new_ty = resolve_field_ty(field.ty.clone(), &arena);
-                        if new_ty != field.ty {
-                            field.ty = new_ty;
-                        }
-                    }
                 }
             }
 

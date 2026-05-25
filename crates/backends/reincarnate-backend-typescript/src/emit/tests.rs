@@ -576,7 +576,7 @@ fn emit_class_with_methods() {
     let mut mb = ModuleBuilder::new("test");
 
     // Struct for class fields.
-    mb.add_struct(StructDef {
+    let type_id_fighter = mb.add_struct(StructDef {
         name: "Fighter".into(),
         namespace: vec!["classes".into(), "Scenes".into()],
         fields: vec![FieldDef {
@@ -658,7 +658,7 @@ fn emit_class_with_methods() {
     mb.add_class(ClassDef {
         name: "Fighter".into(),
         namespace: vec!["classes".into(), "Scenes".into()],
-        struct_index: 0,
+        type_id: type_id_fighter,
         methods: vec![ctor_id, method_id, static_id, getter_id],
         super_class: Some("Object".into()),
         visibility: Visibility::Public,
@@ -720,7 +720,7 @@ fn emit_class_with_methods() {
 fn emit_class_and_free_functions() {
     let mut mb = ModuleBuilder::new("test");
 
-    mb.add_struct(StructDef {
+    let type_id_foo = mb.add_struct(StructDef {
         name: "Foo".into(),
         namespace: Vec::new(),
         fields: vec![],
@@ -740,7 +740,7 @@ fn emit_class_and_free_functions() {
     mb.add_class(ClassDef {
         name: "Foo".into(),
         namespace: Vec::new(),
-        struct_index: 0,
+        type_id: type_id_foo,
         methods: vec![ctor_id],
         super_class: None,
         visibility: Visibility::Public,
@@ -826,7 +826,7 @@ fn emit_nested_class_directory() {
     let mut mb = ModuleBuilder::new("frame1");
 
     // Class with namespace → nested directory.
-    mb.add_struct(StructDef {
+    let type_id_swamp = mb.add_struct(StructDef {
         name: "Swamp".into(),
         namespace: vec!["classes".into(), "Scenes".into()],
         fields: vec![FieldDef {
@@ -855,7 +855,7 @@ fn emit_nested_class_directory() {
     mb.add_class(ClassDef {
         name: "Swamp".into(),
         namespace: vec!["classes".into(), "Scenes".into()],
-        struct_index: 0,
+        type_id: type_id_swamp,
         methods: vec![ctor_id],
         super_class: None,
         visibility: Visibility::Public,
@@ -908,13 +908,13 @@ fn emit_intra_module_imports() {
     // Two classes: Monster (root) and Swamp (nested), where Swamp references Monster.
     // Intern the qualified name so the field type lookup works correctly.
     let monster_type_id = mb.intern_type("classes::Monster");
-    mb.add_struct(StructDef {
+    let type_id_monster = mb.add_struct(StructDef {
         name: "Monster".into(),
         namespace: vec!["classes".into()],
         fields: vec![],
         visibility: Visibility::Public,
     });
-    mb.add_struct(StructDef {
+    let type_id_swamp = mb.add_struct(StructDef {
         name: "Swamp".into(),
         namespace: vec!["classes".into(), "Scenes".into()],
         fields: vec![FieldDef {
@@ -951,7 +951,7 @@ fn emit_intra_module_imports() {
     mb.add_class(ClassDef {
         name: "Monster".into(),
         namespace: vec!["classes".into()],
-        struct_index: 0,
+        type_id: type_id_monster,
         methods: vec![monster_ctor],
         super_class: None,
         visibility: Visibility::Public,
@@ -966,7 +966,7 @@ fn emit_intra_module_imports() {
     mb.add_class(ClassDef {
         name: "Swamp".into(),
         namespace: vec!["classes".into(), "Scenes".into()],
-        struct_index: 1,
+        type_id: type_id_swamp,
         methods: vec![swamp_ctor],
         super_class: Some("classes::Monster".into()),
         visibility: Visibility::Public,
@@ -1006,7 +1006,7 @@ fn construct_super_emits_super_call() {
     let mut mb = ModuleBuilder::new("test");
 
     // Add Parent as a user-defined class so Child's super call gets _shims injected.
-    mb.add_struct(StructDef {
+    let type_id_parent = mb.add_struct(StructDef {
         name: "Parent".into(),
         namespace: Vec::new(),
         fields: vec![],
@@ -1015,7 +1015,7 @@ fn construct_super_emits_super_call() {
     mb.add_class(ClassDef {
         name: "Parent".into(),
         namespace: Vec::new(),
-        struct_index: 0,
+        type_id: type_id_parent,
         methods: vec![],
         super_class: None,
         visibility: Visibility::Public,
@@ -1028,7 +1028,7 @@ fn construct_super_emits_super_call() {
         needs_index_signature: false,
     });
 
-    mb.add_struct(StructDef {
+    let type_id_child = mb.add_struct(StructDef {
         name: "Child".into(),
         namespace: Vec::new(),
         fields: vec![],
@@ -1053,7 +1053,7 @@ fn construct_super_emits_super_call() {
     mb.add_class(ClassDef {
         name: "Child".into(),
         namespace: Vec::new(),
-        struct_index: 1, // Parent is struct 0, Child is struct 1
+        type_id: type_id_child, // Parent is struct 0, Child is struct 1
         methods: vec![ctor_id],
         super_class: Some("Parent".into()),
         visibility: Visibility::Public,
@@ -1099,13 +1099,13 @@ fn find_prop_strict_get_field_construct_emits_new() {
     let mut mb = ModuleBuilder::new("test");
 
     // Two classes: Container and Widget. Container constructs a Widget.
-    mb.add_struct(StructDef {
+    let type_id_container = mb.add_struct(StructDef {
         name: "Container".into(),
         namespace: Vec::new(),
         fields: vec![],
         visibility: Visibility::Public,
     });
-    mb.add_struct(StructDef {
+    let type_id_widget = mb.add_struct(StructDef {
         name: "Widget".into(),
         namespace: Vec::new(),
         fields: vec![],
@@ -1148,7 +1148,7 @@ fn find_prop_strict_get_field_construct_emits_new() {
     mb.add_class(ClassDef {
         name: "Container".into(),
         namespace: Vec::new(),
-        struct_index: 0,
+        type_id: type_id_container,
         methods: vec![ctor_id],
         super_class: None,
         visibility: Visibility::Public,
@@ -1163,7 +1163,7 @@ fn find_prop_strict_get_field_construct_emits_new() {
     mb.add_class(ClassDef {
         name: "Widget".into(),
         namespace: Vec::new(),
-        struct_index: 1,
+        type_id: type_id_widget,
         methods: vec![widget_ctor_id],
         super_class: None,
         visibility: Visibility::Public,
@@ -1284,7 +1284,7 @@ fn qualified_set_field_emits_short_name() {
 fn find_prop_strict_resolves_to_this_for_own_class() {
     let mut mb = ModuleBuilder::new("test");
 
-    mb.add_struct(StructDef {
+    let type_id_hero = mb.add_struct(StructDef {
         name: "Hero".into(),
         namespace: vec!["classes".into()],
         fields: vec![FieldDef {
@@ -1313,7 +1313,7 @@ fn find_prop_strict_resolves_to_this_for_own_class() {
     mb.add_class(ClassDef {
         name: "Hero".into(),
         namespace: vec!["classes".into()],
-        struct_index: 0,
+        type_id: type_id_hero,
         methods: vec![method_id],
         super_class: None,
         visibility: Visibility::Public,
@@ -1351,7 +1351,7 @@ fn find_prop_strict_resolves_to_this_for_own_class() {
 fn find_prop_strict_resolves_to_this_for_ancestor() {
     let mut mb = ModuleBuilder::new("test");
 
-    mb.add_struct(StructDef {
+    let type_id_base = mb.add_struct(StructDef {
         name: "Base".into(),
         namespace: vec!["classes".into()],
         fields: vec![FieldDef {
@@ -1361,7 +1361,7 @@ fn find_prop_strict_resolves_to_this_for_ancestor() {
         }],
         visibility: Visibility::Public,
     });
-    mb.add_struct(StructDef {
+    let type_id_child = mb.add_struct(StructDef {
         name: "Child".into(),
         namespace: vec!["classes".into()],
         fields: vec![],
@@ -1386,7 +1386,7 @@ fn find_prop_strict_resolves_to_this_for_ancestor() {
     mb.add_class(ClassDef {
         name: "Base".into(),
         namespace: vec!["classes".into()],
-        struct_index: 0,
+        type_id: type_id_base,
         methods: vec![],
         super_class: None,
         visibility: Visibility::Public,
@@ -1401,7 +1401,7 @@ fn find_prop_strict_resolves_to_this_for_ancestor() {
     mb.add_class(ClassDef {
         name: "Child".into(),
         namespace: vec!["classes".into()],
-        struct_index: 1,
+        type_id: type_id_child,
         methods: vec![method_id],
         super_class: Some("classes::Base".into()),
         visibility: Visibility::Public,
@@ -1469,13 +1469,13 @@ fn find_prop_strict_in_free_function_resolves_to_bare_name() {
 fn find_prop_strict_non_ancestor_resolves_to_bare_name() {
     let mut mb = ModuleBuilder::new("test");
 
-    mb.add_struct(StructDef {
+    let type_id_hero = mb.add_struct(StructDef {
         name: "Hero".into(),
         namespace: vec!["classes".into()],
         fields: vec![],
         visibility: Visibility::Public,
     });
-    mb.add_struct(StructDef {
+    let type_id_villain = mb.add_struct(StructDef {
         name: "Villain".into(),
         namespace: vec!["classes".into()],
         fields: vec![FieldDef {
@@ -1504,7 +1504,7 @@ fn find_prop_strict_non_ancestor_resolves_to_bare_name() {
     mb.add_class(ClassDef {
         name: "Hero".into(),
         namespace: vec!["classes".into()],
-        struct_index: 0,
+        type_id: type_id_hero,
         methods: vec![method_id],
         super_class: None,
         visibility: Visibility::Public,
@@ -1519,7 +1519,7 @@ fn find_prop_strict_non_ancestor_resolves_to_bare_name() {
     mb.add_class(ClassDef {
         name: "Villain".into(),
         namespace: vec!["classes".into()],
-        struct_index: 1,
+        type_id: type_id_villain,
         methods: vec![],
         super_class: None,
         visibility: Visibility::Public,
@@ -1619,7 +1619,7 @@ fn find_property_resolves_to_this_for_ancestor() {
     // findProperty("classes:Base::temp") in instance method → this
     let mut mb = ModuleBuilder::new("test");
 
-    mb.add_struct(StructDef {
+    let type_id_base = mb.add_struct(StructDef {
         name: "Base".into(),
         namespace: vec!["classes".into()],
         fields: vec![FieldDef {
@@ -1648,7 +1648,7 @@ fn find_property_resolves_to_this_for_ancestor() {
     mb.add_class(ClassDef {
         name: "Base".into(),
         namespace: vec!["classes".into()],
-        struct_index: 0,
+        type_id: type_id_base,
         methods: vec![method_id],
         super_class: None,
         visibility: Visibility::Public,
@@ -1855,13 +1855,13 @@ fn scope_lookup_call_resolves_to_this_for_inherited_method() {
     // this.method() instead of method().
     let mut mb = ModuleBuilder::new("test");
 
-    mb.add_struct(StructDef {
+    let type_id_base = mb.add_struct(StructDef {
         name: "Base".into(),
         namespace: vec![],
         fields: vec![],
         visibility: Visibility::Public,
     });
-    mb.add_struct(StructDef {
+    let type_id_child = mb.add_struct(StructDef {
         name: "Child".into(),
         namespace: vec![],
         fields: vec![],
@@ -1884,7 +1884,7 @@ fn scope_lookup_call_resolves_to_this_for_inherited_method() {
     mb.add_class(ClassDef {
         name: "Base".into(),
         namespace: vec![],
-        struct_index: 0,
+        type_id: type_id_base,
         methods: vec![base_method_id],
         super_class: None,
         visibility: Visibility::Public,
@@ -1915,7 +1915,7 @@ fn scope_lookup_call_resolves_to_this_for_inherited_method() {
     mb.add_class(ClassDef {
         name: "Child".into(),
         namespace: vec![],
-        struct_index: 1,
+        type_id: type_id_child,
         methods: vec![child_method_id],
         super_class: Some("Base".into()),
         visibility: Visibility::Public,
@@ -2254,7 +2254,7 @@ fn cinit_scope_lookup_emits_this_dot_field() {
     // still emit `this.field = value` (not bare `field = value`).
     let mut mb = ModuleBuilder::new("test");
 
-    mb.add_struct(StructDef {
+    let type_id_settings = mb.add_struct(StructDef {
         name: "Settings".into(),
         namespace: vec!["classes".into()],
         fields: vec![],
@@ -2284,7 +2284,7 @@ fn cinit_scope_lookup_emits_this_dot_field() {
     mb.add_class(ClassDef {
         name: "Settings".into(),
         namespace: vec!["classes".into()],
-        struct_index: 0,
+        type_id: type_id_settings,
         methods: vec![cinit_id],
         super_class: None,
         visibility: Visibility::Public,
@@ -2326,7 +2326,7 @@ fn cinit_scope_lookup_emits_this_dot_field() {
 fn emit_interface_class() {
     let mut mb = ModuleBuilder::new("test");
 
-    mb.add_struct(StructDef {
+    let type_id_ieventlistener = mb.add_struct(StructDef {
         name: "IEventListener".into(),
         namespace: Vec::new(),
         fields: vec![],
@@ -2347,7 +2347,7 @@ fn emit_interface_class() {
     mb.add_class(ClassDef {
         name: "IEventListener".into(),
         namespace: Vec::new(),
-        struct_index: 0,
+        type_id: type_id_ieventlistener,
         methods: vec![ctor_id],
         super_class: None,
         visibility: Visibility::Public,
@@ -2394,7 +2394,7 @@ fn emit_class_with_interfaces() {
     let mut mb = ModuleBuilder::new("test");
 
     // Interface.
-    mb.add_struct(StructDef {
+    let type_id_iclickable = mb.add_struct(StructDef {
         name: "IClickable".into(),
         namespace: Vec::new(),
         fields: vec![],
@@ -2412,7 +2412,7 @@ fn emit_class_with_interfaces() {
     mb.add_class(ClassDef {
         name: "IClickable".into(),
         namespace: Vec::new(),
-        struct_index: 0,
+        type_id: type_id_iclickable,
         methods: vec![iface_ctor],
         super_class: None,
         visibility: Visibility::Public,
@@ -2426,7 +2426,7 @@ fn emit_class_with_interfaces() {
     });
 
     // Implementing class.
-    mb.add_struct(StructDef {
+    let type_id_button = mb.add_struct(StructDef {
         name: "Button".into(),
         namespace: Vec::new(),
         fields: vec![],
@@ -2439,7 +2439,7 @@ fn emit_class_with_interfaces() {
     mb.add_class(ClassDef {
         name: "Button".into(),
         namespace: Vec::new(),
-        struct_index: 1,
+        type_id: type_id_button,
         methods: vec![button_ctor],
         super_class: None,
         visibility: Visibility::Public,

@@ -26,7 +26,7 @@ use super::inst::{CastKind, CmpKind, Inst, Op, Terminator};
 use super::module::{
     ClassDef, EntryPoint, EnumDef, ExternalImport, Global, Import, Module, StructDef, TypeDecl,
 };
-use super::ty::{FunctionSig, Type};
+use super::ty::{FunctionSig, Type, TypeId};
 use super::value::{Constant, ValueId};
 
 /// Builder for constructing a single [`Function`].
@@ -980,17 +980,42 @@ impl ModuleBuilder {
             .collect()
     }
 
-    pub fn add_struct(&mut self, def: StructDef) {
-        self.module.structs.push(def);
+    /// Register a struct and return the [`TypeId`] for use in [`ClassDef::type_id`].
+    ///
+    /// If a type with the same name is already interned (e.g. from a prior
+    /// `intern_type` call), its namespace, visibility, and fields are updated.
+    /// Fields are only written if the existing TypeDecl has none (frontend-declared
+    /// structs take precedence over any forward-interned empty stubs).
+    pub fn add_struct(&mut self, def: StructDef) -> TypeId {
+        let id = self.module.intern_type(&def.name);
+        if let Some(TypeDecl::Object {
+            namespace,
+            visibility,
+            fields,
+            ..
+        }) = self.module.types.get_mut(id)
+        {
+            *namespace = def.namespace;
+            *visibility = def.visibility;
+            if fields.is_empty() && !def.fields.is_empty() {
+                *fields = def.fields;
+            }
+        }
+        id
     }
 
+    /// Return the number of named Object types currently in the type arena.
     pub fn struct_count(&self) -> usize {
-        self.module.structs.len()
+        self.module
+            .types
+            .values()
+            .filter(|td| matches!(td, TypeDecl::Object { name: Some(_), .. }))
+            .count()
     }
 
-    /// Return `true` if a [`StructDef`] with the given name is already present.
+    /// Return `true` if a named Object type with the given name is already present.
     pub fn has_struct(&self, name: &str) -> bool {
-        self.module.structs.iter().any(|s| s.name == name)
+        self.module.type_names.contains_key(name)
     }
 
     pub fn add_enum(&mut self, def: EnumDef) {
@@ -1009,7 +1034,7 @@ impl ModuleBuilder {
         // Wire TypeDecl.parent from ClassDef.super_class so that the subtype
         // check in CallSiteTypeWiden can traverse the inheritance chain.
         if let Some(super_name) = &class.super_class {
-            let child_id = self.module.intern_type(&class.name);
+            let child_id = class.type_id;
             let parent_id = self.module.intern_type(super_name);
             if let Some(TypeDecl::Object { parent, .. }) = self.module.types.get_mut(child_id) {
                 *parent = Some(parent_id);
@@ -1090,18 +1115,8 @@ impl ModuleBuilder {
 
     pub fn build(self) -> Module {
         let mut module = self.module;
-        // Intern all named types from structs and classes into the type arena so
-        // that `module.types` / `module.type_names` are consistent with
-        // `module.structs`.  Consumers (type inference, constraint solving, etc.)
-        // rely on being able to look up TypeId by name.
-        for i in 0..module.structs.len() {
-            let name = module.structs[i].name.clone();
-            let fields = module.structs[i].fields.clone();
-            let id = module.intern_type(&name);
-            if module.types[id].fields().is_empty() && !fields.is_empty() {
-                *module.types[id].fields_mut() = fields;
-            }
-        }
+        // All structs are already registered in `module.types` by `add_struct`.
+        // Intern class names not yet in the arena (classes without a prior add_struct).
         for i in 0..module.classes.len() {
             let name = module.classes[i].name.clone();
             module.intern_type(&name);

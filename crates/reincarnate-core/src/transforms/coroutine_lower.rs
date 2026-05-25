@@ -5,7 +5,7 @@ use crate::error::CoreError;
 use crate::ir::block::{Block, BlockParam};
 use crate::ir::func::InlineHint;
 use crate::ir::inst::Inst;
-use crate::ir::module::{FieldDef, StructDef};
+use crate::ir::module::FieldDef;
 use crate::ir::ty::{FunctionSig, TypeId};
 use crate::ir::{
     BlockId, Constant, FuncId, Function, InstId, Module, Op, Type, ValueId, Visibility,
@@ -207,12 +207,12 @@ fn cross_yield_live_values(func: &Function, yield_points: &[YieldPoint]) -> Vec<
 // Phase 3: Generate state struct
 // ============================================================================
 
-/// Generate a struct definition for the coroutine state.
+/// Generate fields for the coroutine state struct.
 fn generate_state_struct(
     func: &Function,
     live_values: &[ValueId],
-    struct_name: &str,
-) -> (StructDef, Vec<FieldDef>) {
+    _struct_name: &str,
+) -> Vec<FieldDef> {
     let mut fields = Vec::new();
 
     // Internal state fields.
@@ -245,14 +245,7 @@ fn generate_state_struct(
         });
     }
 
-    let struct_def = StructDef {
-        name: struct_name.to_string(),
-        namespace: Vec::new(),
-        fields: fields.clone(),
-        visibility: Visibility::Private,
-    };
-
-    (struct_def, fields)
+    fields
 }
 
 // ============================================================================
@@ -943,13 +936,11 @@ impl Transform for CoroutineLowering {
             // Phase 2: Cross-yield liveness.
             let live_values = cross_yield_live_values(&func_clone, &yield_points);
 
-            // Phase 3: Generate state struct.
-            let (struct_def, _fields) =
-                generate_state_struct(&func_clone, &live_values, &struct_name);
-            module.structs.push(struct_def.clone());
+            // Phase 3: Generate state struct and register in module.types.
+            let fields = generate_state_struct(&func_clone, &live_values, &struct_name);
             let struct_type_id = module.intern_type(&struct_name);
-            // Sync fields into the type arena so downstream passes see them.
-            *module.types[struct_type_id].fields_mut() = struct_def.fields;
+            *module.types[struct_type_id].fields_mut() = fields;
+            module.types[struct_type_id].set_visibility(Visibility::Private);
 
             // Phase 4: Build resume function.
             let new_func = build_resume_function(
@@ -1058,15 +1049,12 @@ mod tests {
 
         assert!(changed);
 
-        // State struct should be created.
-        assert_eq!(module.structs.len(), 1);
-        assert_eq!(module.structs[0].name, "gen_state");
+        // State struct should be created in module.types.
+        let gen_state_id = module.find_type("gen_state").expect("gen_state interned");
+        let fields = module.types[gen_state_id].fields();
+        assert!(!fields.is_empty(), "gen_state should have fields");
         // Should have at least __state and __done fields.
-        let field_names: Vec<&str> = module.structs[0]
-            .fields
-            .iter()
-            .map(|f| f.name.as_str())
-            .collect();
+        let field_names: Vec<&str> = fields.iter().map(|f| f.name.as_str()).collect();
         assert!(field_names.contains(&"__state"));
         assert!(field_names.contains(&"__done"));
 
@@ -1164,8 +1152,11 @@ mod tests {
         assert!(changed);
 
         // State struct should have saved values (__v0, etc.) or at least __p0.
-        let struct_def = &module.structs[0];
-        let field_names: Vec<&str> = struct_def.fields.iter().map(|f| f.name.as_str()).collect();
+        let gen_state_id = module
+            .find_type("gen_loop_state")
+            .expect("gen_loop_state interned");
+        let fields = module.types[gen_state_id].fields();
+        let field_names: Vec<&str> = fields.iter().map(|f| f.name.as_str()).collect();
         assert!(
             field_names.contains(&"__p0"),
             "should save function param: {:?}",
@@ -1311,7 +1302,8 @@ mod tests {
 
         let (module, changed) = apply_lowering(module);
         assert!(!changed);
-        assert!(module.structs.is_empty());
+        // No state struct should be created for non-coroutines.
+        assert!(module.find_type("normal_state").is_none());
     }
 
     // ---- Edge case tests ----
@@ -1484,8 +1476,9 @@ mod tests {
         assert!(changed);
 
         // The state struct should have __v0 for the cross-yield value.
-        let struct_def = &module.structs[0];
-        let field_names: Vec<&str> = struct_def.fields.iter().map(|f| f.name.as_str()).collect();
+        let gen_state_id = module.find_type("gen_state").expect("gen_state interned");
+        let fields = module.types[gen_state_id].fields();
+        let field_names: Vec<&str> = fields.iter().map(|f| f.name.as_str()).collect();
         assert!(
             field_names.iter().any(|n| n.starts_with("__v")),
             "struct should have saved value fields: {:?}",

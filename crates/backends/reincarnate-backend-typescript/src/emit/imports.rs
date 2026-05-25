@@ -588,7 +588,7 @@ pub(super) fn collect_class_references(
     }
 
     // Struct fields (class instance fields) — type-only.
-    for field in &group.struct_def.fields {
+    for field in &group.fields {
         collect_type_ref(
             &field.ty,
             self_name,

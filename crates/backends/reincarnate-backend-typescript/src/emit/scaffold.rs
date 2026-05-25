@@ -682,8 +682,12 @@ pub(super) fn build_instance_field_sets(
         let mut current = class;
         let mut external_parent: Option<&str> = None;
         loop {
-            let struct_def = &module.structs[current.struct_index];
-            for field in &struct_def.fields {
+            let class_fields = module
+                .types
+                .get(current.type_id)
+                .map(|td| td.fields())
+                .unwrap_or(&[]);
+            for field in class_fields {
                 fields.insert(field.name.clone());
             }
             match current.super_class {
