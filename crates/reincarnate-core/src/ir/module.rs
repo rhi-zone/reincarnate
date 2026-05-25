@@ -854,16 +854,16 @@ impl Module {
     /// not/and/or bool = 3, 6 bitwise ops × 1 type (i32) = 6, bitnot × 1 = 1 → 35.
     /// Math single-arg f64 = 17, math binary f64 = 5, string ops = 12, array ops = 2,
     /// coercion ops = 5 (to_number_unknown, to_number_str, to_string_unknown, to_i32_f64, to_u32_f64) → 76.
-    /// predicate ops = 1 (is_struct_unknown) → 77.
+    /// predicate ops = 2 (is_struct_unknown, is_numeric_unknown) → 78.
     /// `is_array_unknown` was removed: array membership is expressed as
     /// `Op::TypeCheck(x, Type::Array(...))`, which the TypeScript backend lowers
     /// to `Array.isArray(x)`.  Naming a named builtin for what the IR already
     /// expresses structurally is a Law 2 violation.
-    /// Comparison ops = 6 (cmp_eq, cmp_ne, cmp_lt, cmp_le, cmp_ge, cmp_gt) → 83.
-    /// select = 1 (select) → 84.
+    /// Comparison ops = 6 (cmp_eq, cmp_ne, cmp_lt, cmp_le, cmp_ge, cmp_gt) → 84.
+    /// select = 1 (select) → 85.
     /// Polymorphic `_any` stubs are GML-specific and registered by the GML frontend,
     /// not by `register_core_builtins`, so they are not counted here.
-    pub const NUM_CORE_BUILTINS: u32 = 85;
+    pub const NUM_CORE_BUILTINS: u32 = 86;
 
     pub fn new(name: String) -> Self {
         let mut module = Self {
@@ -1187,6 +1187,16 @@ impl Module {
         // structurally violate Law 2 (engine specificity at boundaries).
         let fid = self.register_runtime(
             "is_struct_unknown",
+            FunctionSig {
+                params: vec![Type::Unknown],
+                return_ty: Type::Bool,
+                ..Default::default()
+            },
+        );
+        self.core_builtin_fids.insert(fid);
+        // is_numeric_unknown: (Unknown) -> Bool  — emit as typeof x === "number"
+        let fid = self.register_runtime(
+            "is_numeric_unknown",
             FunctionSig {
                 params: vec![Type::Unknown],
                 return_ty: Type::Bool,
