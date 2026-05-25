@@ -552,6 +552,24 @@ Full design: `docs/rewrite.md` (on `rewrite-v1` branch). Executed incrementally 
   > **`_rt` migration design (2026-04-05, updated 2026-05-25):** The migration is largely complete. GML-translated user functions have `_rt: GameRuntime` as explicit IR param 0 (pushed unconditionally by `build_signature_with_args`). Stateful runtime stubs have `_rt` prepended to their param lists by the frontend (`STATEFUL_RUNTIME_FUNS` + `sig.params.insert(0, rt_ty)`); `lower_call` promotes it to the JS receiver (`_rt.method(rest_args)`). `rewrite_stateful_calls` and `prepend_rt_arg_to_free_calls` are deleted. Remaining hack: inside generated class methods, `_rt` comes from `this._rt` (a property set on GMLObject by `_instanceCreate` in handwritten `runtime.ts`) via `rt_via_this: true` in `LowerCtx` — this is necessary given TS class method calling conventions and is not blocking IR body work. The actual blockers for IR bodies of stateful functions are: (1) `GameRuntime` as IR struct with typed fields (so IR bodies can access `rt.rng`, `rt.audio`, etc.); (2) platform API design (functions calling browser APIs need a defined platform API to call into from IR).
   > **`int64`/`string` lowered at call site (2026-05-25):** GML frontend intercepts `int64(x)` → `Cast(x, Int(32), Coerce)` and `string(x)` → `Cast(x, String, Coerce)`. TS backend already handles both Cast variants correctly (`(x)|0` and `String(x)`). Removed from `function_modules`. No IR bodies needed.
 
+### Immediate next steps (2026-05-25)
+
+**IR formalization** — The IR currently has informal semantics that work for the TypeScript target but are undefined for others. Required before modeling complex mutable state and before adding non-JS backends:
+- [ ] Formally define value vs. reference semantics for `Array`, `Map`, and `Instance` types
+- [ ] Define mutation rules: when does `SetIndex`/`SetField` on a value obtained via `GetField` propagate back to the parent struct?
+- [ ] Adversarial audit rounds specifically against the IR design once formalized
+
+**XorGen / RNG IR bodies** — blocked on IR memory model. XorGen has an 8-word mutable ring buffer (`x: Array(Int(32))`, `i: Int(32)`). `SetIndex` on a sub-field array must propagate back through the `GameRuntime._math.prng` chain. Cannot safely write these IR bodies until mutation semantics are defined.
+- [ ] Define `MathState` and `XorGen` as IR structs once memory model is settled
+- [ ] `xorgen_next` and `xorgen_init` as IR bodies (InlineHint::Default — not inlined)
+- [ ] IR bodies for `random`, `random_range`, `irandom`, `irandom_range`, `random_set_seed`
+- [ ] `randomize` blocked additionally on platform API (needs `currentWallTimeMs`)
+- [ ] `choose` blocked on varargs — handle at call site once varargs design is settled
+
+**`median`** — last function in the non-stateful `gamemaker/math` `function_modules` entry. Requires sorting; not expressible as a fold. Deferred until IR can express sorting or a backend primitive approach is designed.
+
+**Pure IR bodies still missing** — survey `runtime.ts` for pure-GML functions (no `_rt` dependency) not yet in `runtime_bodies.rs`. Candidates: `array_create`, `array_push`, `array_pop`, `array_resize`, `array_sort`, `array_reverse`, `array_filter`, `array_map`, `array_concat`, and others. These can be done incrementally without IR formalization.
+
 ### Out of scope until designed
 
 - **Twine `State.get`/`State.set`:** banned by Phase 3 (`SystemCall` removal) but the replacement for temp vars (`_args`, `$vars`) passed between passages needs explicit design first. Tracked separately below.
