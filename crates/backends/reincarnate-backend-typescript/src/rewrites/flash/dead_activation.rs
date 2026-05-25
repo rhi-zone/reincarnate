@@ -58,6 +58,9 @@ fn expr_references_var(expr: &JsExpr, name: &str) -> bool {
         JsExpr::NullCoalesceAssign { target, value } => {
             expr_references_var(target, name) || expr_references_var(value, name)
         }
+        JsExpr::Assign { lhs, rhs } => {
+            expr_references_var(lhs, name) || expr_references_var(rhs, name)
+        }
     }
 }
 
@@ -323,6 +326,10 @@ fn eliminate_dead_activations_in_expr(expr: &mut JsExpr) {
         JsExpr::NullCoalesceAssign { target, value } => {
             eliminate_dead_activations_in_expr(target);
             eliminate_dead_activations_in_expr(value);
+        }
+        JsExpr::Assign { lhs, rhs } => {
+            eliminate_dead_activations_in_expr(lhs);
+            eliminate_dead_activations_in_expr(rhs);
         }
         JsExpr::Literal(_)
         | JsExpr::Var(_)

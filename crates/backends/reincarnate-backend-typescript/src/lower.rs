@@ -617,9 +617,14 @@ fn lower_builtin_opt(op_name: &str, args: &[Expr], ctx: &LowerCtx) -> Option<JsE
                 args: vec![index, zero, val],
             })
         }
-        // array_resize_arr(arr, newSize) -> arr.splice(newSize)
-        // (arr.length = newSize is a statement, not an expression; splice(n) removes all from n onward)
-        "array_resize_arr" => Some(method_call(0, "splice", &[1], args, ctx)),
+        // array_resize_arr(arr, newSize) -> arr.length = newSize
+        "array_resize_arr" => Some(JsExpr::Assign {
+            lhs: Box::new(JsExpr::Field {
+                object: Box::new(lower_expr(&args[0], ctx)),
+                field: "length".to_string(),
+            }),
+            rhs: Box::new(lower_expr(&args[1], ctx)),
+        }),
         // array_get_index_arr(arr, value) -> arr.indexOf(value)
         "array_get_index_arr" => Some(method_call(0, "indexOf", &[1], args, ctx)),
 

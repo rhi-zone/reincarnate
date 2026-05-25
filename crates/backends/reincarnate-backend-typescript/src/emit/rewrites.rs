@@ -278,6 +278,10 @@ pub(super) fn rewrite_late_bound_expr(
             rewrite_late_bound_expr(target, late_bound, short_to_qualified);
             rewrite_late_bound_expr(value, late_bound, short_to_qualified);
         }
+        JsExpr::Assign { lhs, rhs } => {
+            rewrite_late_bound_expr(lhs, late_bound, short_to_qualified);
+            rewrite_late_bound_expr(rhs, late_bound, short_to_qualified);
+        }
         JsExpr::ArrowFunction { body, .. } => {
             rewrite_late_bound_types(body, late_bound, short_to_qualified);
         }

@@ -2108,7 +2108,10 @@ fn count_js_var_reads_in_expr(expr: &JsExpr, name: &str) -> usize {
         | JsExpr::NullCoalesceAssign {
             target: lhs,
             value: rhs,
-        } => count_js_var_reads_in_expr(lhs, name) + count_js_var_reads_in_expr(rhs, name),
+        }
+        | JsExpr::Assign { lhs, rhs } => {
+            count_js_var_reads_in_expr(lhs, name) + count_js_var_reads_in_expr(rhs, name)
+        }
         JsExpr::Unary { expr: inner, .. }
         | JsExpr::Cast { expr: inner, .. }
         | JsExpr::TypeCheck { expr: inner, .. }
@@ -2320,7 +2323,8 @@ fn substitute_js_var_in_expr(
         | JsExpr::NullCoalesceAssign {
             target: lhs,
             value: rhs,
-        } => {
+        }
+        | JsExpr::Assign { lhs, rhs } => {
             substitute_js_var_in_expr(lhs, name, replacement)
                 || substitute_js_var_in_expr(rhs, name, replacement)
         }
@@ -2682,7 +2686,10 @@ fn expr_references_for_promote(expr: &JsExpr, name: &str) -> bool {
         | JsExpr::NullCoalesceAssign {
             target: lhs,
             value: rhs,
-        } => expr_references_for_promote(lhs, name) || expr_references_for_promote(rhs, name),
+        }
+        | JsExpr::Assign { lhs, rhs } => {
+            expr_references_for_promote(lhs, name) || expr_references_for_promote(rhs, name)
+        }
         JsExpr::Unary { expr: inner, .. }
         | JsExpr::Cast { expr: inner, .. }
         | JsExpr::TypeCheck { expr: inner, .. }

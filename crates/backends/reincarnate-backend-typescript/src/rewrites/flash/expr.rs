@@ -444,6 +444,12 @@ pub(super) fn rewrite_expr(expr: JsExpr, ctx: &FlashRewriteCtx) -> JsExpr {
             value: Box::new(rewrite_expr(*value, ctx)),
         },
 
+        // Assign is a GML-only construct (array_resize_arr); pass through unchanged for Flash.
+        JsExpr::Assign { lhs, rhs } => JsExpr::Assign {
+            lhs: Box::new(rewrite_expr(*lhs, ctx)),
+            rhs: Box::new(rewrite_expr(*rhs, ctx)),
+        },
+
         // LooseEq/LooseNe are SugarCube-only; pass through unchanged for Flash.
         JsExpr::LooseEq { lhs, rhs } => JsExpr::LooseEq {
             lhs: Box::new(rewrite_expr(*lhs, ctx)),

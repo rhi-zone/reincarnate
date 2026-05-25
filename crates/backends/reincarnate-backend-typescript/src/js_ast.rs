@@ -148,6 +148,11 @@ pub enum JsExpr {
     SuperGet(String),
     /// `super.prop = value` — super property write in expression context.
     SuperSet { prop: String, value: Box<JsExpr> },
+    /// Property/variable assignment in expression context: `lhs = rhs`.
+    ///
+    /// Used where an assignment must appear as an expression (e.g.
+    /// `arr.length = newSize` for `array_resize_arr`).
+    Assign { lhs: Box<JsExpr>, rhs: Box<JsExpr> },
     /// Loose equality: `lhs == rhs` (JavaScript coercing equality).
     /// Lowered from `SugarCube.Engine.loose_eq` SystemCall.
     LooseEq { lhs: Box<JsExpr>, rhs: Box<JsExpr> },

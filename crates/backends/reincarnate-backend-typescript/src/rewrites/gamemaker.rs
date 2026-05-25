@@ -1433,6 +1433,26 @@ fn rewrite_expr_children(
                 global_state_type_id,
             );
         }
+        JsExpr::Assign { lhs, rhs } => {
+            rewrite_expr(
+                lhs,
+                sprite_names,
+                object_names,
+                closure_bodies,
+                event_name,
+                name_map,
+                global_state_type_id,
+            );
+            rewrite_expr(
+                rhs,
+                sprite_names,
+                object_names,
+                closure_bodies,
+                event_name,
+                name_map,
+                global_state_type_id,
+            );
+        }
         JsExpr::Activation => {}
         JsExpr::SystemCall { args, .. } => {
             for arg in args {
@@ -2037,6 +2057,10 @@ fn coerce_bool_expr(expr: &mut JsExpr, sigs: &BTreeMap<String, ExternalMethodSig
         JsExpr::NullCoalesceAssign { target, value } => {
             coerce_bool_expr(target, sigs);
             coerce_bool_expr(value, sigs);
+        }
+        JsExpr::Assign { lhs, rhs } => {
+            coerce_bool_expr(lhs, sigs);
+            coerce_bool_expr(rhs, sigs);
         }
         JsExpr::Literal(_)
         | JsExpr::Var(_)

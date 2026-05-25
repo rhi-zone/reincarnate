@@ -222,6 +222,10 @@ fn rewrite_expr_children(expr: &mut JsExpr, closures: &HashMap<String, JsFunctio
             rewrite_expr(target, closures);
             rewrite_expr(value, closures);
         }
+        JsExpr::Assign { lhs, rhs } => {
+            rewrite_expr(lhs, closures);
+            rewrite_expr(rhs, closures);
+        }
         JsExpr::Activation => {}
         JsExpr::SystemCall { args, .. } => {
             for arg in args {

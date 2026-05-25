@@ -442,6 +442,10 @@ fn resolve_expr_types(expr: &mut JsExpr, module_types: &PrimaryMap<TypeId, TypeD
             resolve_expr_types(target, module_types);
             resolve_expr_types(value, module_types);
         }
+        JsExpr::Assign { lhs, rhs } => {
+            resolve_expr_types(lhs, module_types);
+            resolve_expr_types(rhs, module_types);
+        }
         JsExpr::SystemCall { args, .. } => {
             for arg in args.iter_mut() {
                 resolve_expr_types(arg, module_types);

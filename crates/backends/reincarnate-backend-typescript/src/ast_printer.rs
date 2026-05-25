@@ -1320,6 +1320,10 @@ fn print_expr(expr: &JsExpr) -> String {
             format!("(super.{} = {})", sanitize_ident(prop), print_expr(value),)
         }
 
+        JsExpr::Assign { lhs, rhs } => {
+            format!("({} = {})", print_expr(lhs), print_expr(rhs))
+        }
+
         JsExpr::NonNull(inner) => format!("{}!", print_expr(inner)),
 
         // GML array auto-init: `(this.field ??= [])`.
@@ -1414,6 +1418,7 @@ fn needs_parens(expr: &JsExpr) -> bool {
         | JsExpr::Not(_)
         | JsExpr::In { .. }
         | JsExpr::SuperSet { .. }
+        | JsExpr::Assign { .. }
         | JsExpr::ArrowFunction { .. } => true,
         _ => false,
     }

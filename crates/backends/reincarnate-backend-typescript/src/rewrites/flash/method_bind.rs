@@ -198,6 +198,10 @@ pub(super) fn bind_method_refs_expr(
             bind_method_refs_expr(target, bindable, false);
             bind_method_refs_expr(value, bindable, false);
         }
+        JsExpr::Assign { lhs, rhs } => {
+            bind_method_refs_expr(lhs, bindable, false);
+            bind_method_refs_expr(rhs, bindable, false);
+        }
         JsExpr::Literal(_)
         | JsExpr::Var(_)
         | JsExpr::This

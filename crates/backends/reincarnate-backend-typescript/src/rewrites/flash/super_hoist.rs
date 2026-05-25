@@ -144,6 +144,10 @@ pub(super) fn collect_expr_vars(expr: &JsExpr, out: &mut HashSet<String>) {
             collect_expr_vars(target, out);
             collect_expr_vars(value, out);
         }
+        JsExpr::Assign { lhs, rhs } => {
+            collect_expr_vars(lhs, out);
+            collect_expr_vars(rhs, out);
+        }
     }
 }
 
@@ -319,7 +323,8 @@ fn subst_var_to_this_expr(expr: &mut JsExpr, var_name: &str) {
         | JsExpr::NullCoalesceAssign {
             target: lhs,
             value: rhs,
-        } => {
+        }
+        | JsExpr::Assign { lhs, rhs } => {
             subst_var_to_this_expr(lhs, var_name);
             subst_var_to_this_expr(rhs, var_name);
         }
@@ -517,6 +522,10 @@ pub(super) fn rewrite_this_to_prototype(expr: &mut JsExpr, class_name: &str) {
         JsExpr::NullCoalesceAssign { target, value } => {
             rewrite_this_to_prototype(target, class_name);
             rewrite_this_to_prototype(value, class_name);
+        }
+        JsExpr::Assign { lhs, rhs } => {
+            rewrite_this_to_prototype(lhs, class_name);
+            rewrite_this_to_prototype(rhs, class_name);
         }
         // Leaves: no recursion needed.
         JsExpr::Literal(_)
