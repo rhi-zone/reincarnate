@@ -467,15 +467,23 @@ impl Transform for IntToBoolPromotion {
         // Build external param type map once
         let external_param_types = build_external_param_types(&module.external_function_sigs);
 
-        // Build struct field type map from module structs + external type defs
+        // Build struct field type map from module.types + external type defs
         let mut struct_fields: HashMap<String, HashMap<String, Type>> = HashMap::new();
-        for s in &module.structs {
-            let fields: HashMap<String, Type> = s
-                .fields
-                .iter()
-                .map(|f| (f.name.clone(), f.ty.clone()))
-                .collect();
-            struct_fields.insert(s.name.clone(), fields);
+        for (_id, td) in module.types.iter() {
+            if let crate::ir::module::TypeDecl::Object {
+                name: Some(name),
+                fields,
+                ..
+            } = td
+            {
+                if !fields.is_empty() {
+                    let field_map: HashMap<String, Type> = fields
+                        .iter()
+                        .map(|f| (f.name.clone(), f.ty.clone()))
+                        .collect();
+                    struct_fields.insert(name.clone(), field_map);
+                }
+            }
         }
         for (name, ext) in &module.external_type_defs {
             if !ext.fields.is_empty() {
@@ -1139,8 +1147,7 @@ mod tests {
         use crate::ir::module::{FieldDef, StructDef};
         // Setting a Bool-typed field with Int(1) should promote to Bool(true).
         let mut mb = ModuleBuilder::new("test");
-        let obj_id = mb.intern_type("Obj");
-        mb.add_struct(StructDef {
+        let obj_id = mb.add_struct(StructDef {
             name: "Obj".into(),
             namespace: vec![],
             fields: vec![FieldDef {

@@ -138,38 +138,19 @@ Always pass `--include-ignored`. Edit all files first, then build once.
 
 ## IR Type System Architecture
 
-The IR has two parallel type representations that serve different purposes and must not be conflated.
-
-### `module.structs: Vec<StructDef>`
-
-**Purpose:** Frozen, backend-facing record of struct shapes as declared by the frontend. Contains `namespace`, `visibility`, and `fields` — everything the emitter needs to output a type declaration.
-
-**Lifecycle:** Written by the frontend (ModuleBuilder), read by the backend emitter. Never mutated by core passes.
-
-**Consumers:** Backend emitters only. `build_own_fields` in `constraint_solve_hm.rs` reads this to seed field type maps.
-
 ### `module.types: PrimaryMap<TypeId, TypeDecl>`
 
-**Purpose:** Mutable inference-time representation of the type graph. Contains `parent` (for inheritance chains), `inferred` flag, and `methods`. Used by all core transforms and constraint solving.
+The single authoritative type representation. `TypeDecl::Object` carries `name`, `namespace`, `visibility`, `parent`, `fields`, `methods`, `class_ref`, and `inferred`.
 
-**Lifecycle:** Initialized by the frontend; enriched by passes (e.g. `ConstructorStructInfer` adds `TypeDecl::Object` entries, `GmlConstructorParent` sets `parent`). Authoritative during inference.
+**Lifecycle:** Written by `ModuleBuilder::add_struct()` and `intern_type()`. Enriched by core passes (`ConstructorStructInfer` adds inferred entries, `GmlConstructorParent` sets `parent`). Read by all passes and backend emitters.
 
-**Consumers:** All core passes. The backend reads it for parent-chain traversal during `build_all_fields`.
+**Key invariants:**
+- Instance-side entries are keyed by plain name in `module.type_names` (e.g. `"Foo"` → TypeId).
+- Static-side (classref) entries are keyed by `"classref::Foo"` in `module.type_names`. Both have `name: Some("Foo")`.
+- `ClassDef.type_id` points to the instance-side TypeId. Pure structs are TypeDecl::Object entries whose TypeId does not appear as any `ClassDef.type_id`.
+- `build_own_fields` in `constraint_solve_hm.rs` reads fields from `module.types`. `build_all_fields` walks the `parent` chain via `module.types`.
 
-### Invariant: They are used in tandem by `constraint_solve_hm.rs`
-
-`build_own_fields` seeds field types from `module.structs`. `build_all_fields` then walks the TypeDecl parent chain via `module.types` to merge inherited fields. Both systems must agree on struct names — a name present in one but not the other will produce wrong or missing types.
-
-After `ModuleBuilder::build()`, enrichments made to `module.types` by later passes (e.g. setting `parent`) do **not** sync back to `StructDef` — this is intentional. `StructDef` is a snapshot; `TypeDecl` is the live graph.
-
-### Migration path
-
-`TypeDecl::Object` is strictly more capable than `StructDef`. The end state is one system. Migration requires:
-1. Add `namespace: Vec<String>` and `visibility: Visibility` to `TypeDecl::Object`
-2. Migrate all `module.structs` consumers to read from `module.types`
-3. Remove `StructDef` and `module.structs`
-
-Until that migration is complete: **never add new fields to `StructDef`** — add them to `TypeDecl::Object` instead. Never route around `module.types` by reading `module.structs` for anything that should be in the live type graph (parent chains, inferred flag, methods).
+`StructDef` is retained as a parameter type for `ModuleBuilder::add_struct()` for frontend convenience — it is not stored on `Module`. Frontends call `add_struct(def: StructDef) -> TypeId` which interns the name and writes namespace, visibility, and fields into `module.types`.
 
 ## Crate Structure
 

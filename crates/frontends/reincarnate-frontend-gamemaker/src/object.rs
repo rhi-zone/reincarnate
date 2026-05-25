@@ -92,8 +92,7 @@ pub fn translate_objects(
 
         let ns = vec!["objects".into()];
 
-        let struct_index = mb.struct_count();
-        mb.add_struct(StructDef {
+        let type_id = mb.add_struct(StructDef {
             name: obj_name.clone(),
             namespace: ns.clone(),
             fields,
@@ -197,7 +196,7 @@ pub fn translate_objects(
         mb.add_class(ClassDef {
             name: obj_name.clone(),
             namespace: ns,
-            struct_index,
+            type_id,
             methods: method_ids,
             super_class,
             visibility: Visibility::Public,

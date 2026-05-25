@@ -846,15 +846,10 @@ mod tests {
 
     #[test]
     fn main_with_class_entry_point() {
-        use reincarnate_core::ir::{ClassDef, StructDef};
+        use reincarnate_core::ir::ClassDef;
 
         let mut mb = ModuleBuilder::new("game");
-        mb.add_struct(StructDef {
-            name: "App".into(),
-            namespace: Vec::new(),
-            fields: vec![],
-            visibility: Visibility::Public,
-        });
+        let app_type_id = mb.intern_type("App");
 
         let sig = FunctionSig {
             params: vec![],
@@ -874,7 +869,7 @@ mod tests {
         mb.add_class(ClassDef {
             name: "App".into(),
             namespace: Vec::new(),
-            struct_index: 0,
+            type_id: app_type_id,
             methods: vec![init_id, render_id],
             super_class: None,
             visibility: Visibility::Public,
@@ -905,15 +900,10 @@ mod tests {
 
     #[test]
     fn main_with_construct_class_entry() {
-        use reincarnate_core::ir::{ClassDef, EntryPoint, StructDef};
+        use reincarnate_core::ir::{ClassDef, EntryPoint};
 
         let mut mb = ModuleBuilder::new("game");
-        mb.add_struct(StructDef {
-            name: "MyApp".into(),
-            namespace: Vec::new(),
-            fields: vec![],
-            visibility: Visibility::Public,
-        });
+        let myapp_type_id = mb.intern_type("MyApp");
 
         let sig = FunctionSig {
             params: vec![],
@@ -928,7 +918,7 @@ mod tests {
         mb.add_class(ClassDef {
             name: "MyApp".into(),
             namespace: Vec::new(),
-            struct_index: 0,
+            type_id: myapp_type_id,
             methods: vec![ctor_id],
             super_class: None,
             visibility: Visibility::Public,
@@ -989,15 +979,10 @@ mod tests {
 
     #[test]
     fn main_with_construct_class_no_init_order() {
-        use reincarnate_core::ir::{ClassDef, EntryPoint, StructDef};
+        use reincarnate_core::ir::{ClassDef, EntryPoint};
 
         let mut mb = ModuleBuilder::new("game");
-        mb.add_struct(StructDef {
-            name: "App".into(),
-            namespace: Vec::new(),
-            fields: vec![],
-            visibility: Visibility::Public,
-        });
+        let app_type_id = mb.intern_type("App");
 
         let sig = FunctionSig {
             params: vec![],
@@ -1013,7 +998,7 @@ mod tests {
         mb.add_class(ClassDef {
             name: "App".into(),
             namespace: Vec::new(),
-            struct_index: 0,
+            type_id: app_type_id,
             methods: vec![ctor_id],
             super_class: None,
             visibility: Visibility::Public,

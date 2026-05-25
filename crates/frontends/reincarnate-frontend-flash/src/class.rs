@@ -569,8 +569,7 @@ pub fn translate_abc_to_module(
     // Translate classes
     for i in 0..abc.instances.len() {
         let info = translate_class(abc, i, &class_type_ids)?;
-        let struct_index = mb.struct_count();
-        mb.add_struct(info.struct_def);
+        let type_id = mb.add_struct(info.struct_def);
 
         let mut method_ids = Vec::new();
         for func in info.functions {
@@ -581,7 +580,7 @@ pub fn translate_abc_to_module(
         mb.add_class(ClassDef {
             name: info.name,
             namespace: info.namespace,
-            struct_index,
+            type_id,
             methods: method_ids,
             super_class: info.super_class,
             visibility: Visibility::Public,
@@ -838,11 +837,11 @@ fn populate_external_imports(module: &mut Module) {
         try_register_external(iface, module);
     }
 
-    // Struct fields (class instance fields + standalone structs).
+    // Struct fields (class instance fields + standalone structs) from module.types.
     let field_types: Vec<Type> = module
-        .structs
-        .iter()
-        .flat_map(|s| s.fields.iter().map(|f| f.ty.clone()))
+        .types
+        .values()
+        .flat_map(|td| td.fields().iter().map(|f| f.ty.clone()))
         .collect();
     for ty in &field_types {
         collect_type_names(ty, module);

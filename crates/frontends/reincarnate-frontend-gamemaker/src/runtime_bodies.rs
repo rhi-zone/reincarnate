@@ -20,6 +20,8 @@ pub fn register_runtime_bodies(module: &mut Module) {
     // Register XorGen type: { x: Array<i32>, i: i32 }
     let xorgen_type_id = module.types.push(TypeDecl::Object {
         name: Some("XorGen".to_string()),
+        namespace: Vec::new(),
+        visibility: Visibility::Public,
         parent: None,
         fields: vec![
             FieldDef {
@@ -50,6 +52,8 @@ pub fn register_runtime_bodies(module: &mut Module) {
     // Register MathState type: { prng: XorGen }
     let math_state_type_id = module.types.push(TypeDecl::Object {
         name: Some("MathState".to_string()),
+        namespace: Vec::new(),
+        visibility: Visibility::Public,
         parent: None,
         fields: vec![FieldDef {
             name: "prng".to_string(),

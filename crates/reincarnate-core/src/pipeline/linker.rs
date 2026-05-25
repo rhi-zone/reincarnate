@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::error::CoreError;
 use crate::ir::func::Visibility;
+use crate::ir::module::TypeDecl;
 use crate::ir::Module;
 
 /// Kind of exported symbol.
@@ -73,16 +74,23 @@ fn build_symbol_table(modules: &[Module]) -> SymbolTable {
             }
         }
 
-        for def in &module.structs {
-            if def.visibility == Visibility::Public {
-                mod_exports.insert(
-                    def.name.clone(),
-                    Symbol {
-                        name: def.name.clone(),
-                        module: module.name.clone(),
-                        kind: SymbolKind::Struct,
-                    },
-                );
+        for (_id, td) in module.types.iter() {
+            if let TypeDecl::Object {
+                name: Some(name),
+                visibility,
+                ..
+            } = td
+            {
+                if *visibility == Visibility::Public {
+                    mod_exports.insert(
+                        name.clone(),
+                        Symbol {
+                            name: name.clone(),
+                            module: module.name.clone(),
+                            kind: SymbolKind::Struct,
+                        },
+                    );
+                }
             }
         }
 
@@ -234,7 +242,7 @@ mod tests {
     #[test]
     fn link_struct_and_global_exports() {
         let mut mb_a = ModuleBuilder::new("mod_a");
-        mb_a.add_struct(StructDef {
+        let point_id = mb_a.add_struct(StructDef {
             name: "Point".into(),
             namespace: Vec::new(),
             fields: vec![
@@ -251,7 +259,6 @@ mod tests {
             ],
             visibility: Visibility::Public,
         });
-        let point_id = mb_a.intern_type("Point");
         mb_a.add_global(Global {
             name: "ORIGIN".into(),
             ty: Type::Instance(point_id),

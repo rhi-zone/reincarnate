@@ -506,16 +506,26 @@ impl fmt::Display for Module {
             writeln!(f)?;
         }
 
-        // Struct definitions
-        for s in &self.structs {
-            writeln!(f)?;
-            writeln!(f, "struct {} {{", s.name)?;
-            for field in &s.fields {
-                write!(f, "    {}: ", field.name)?;
-                fmt_type(&field.ty, f)?;
-                writeln!(f, ",")?;
+        // Struct definitions — print from module.types (live graph).
+        for (_id, td) in self.types.iter() {
+            if let crate::ir::module::TypeDecl::Object {
+                name: Some(name),
+                fields,
+                ..
+            } = td
+            {
+                if fields.is_empty() {
+                    continue;
+                }
+                writeln!(f)?;
+                writeln!(f, "struct {name} {{")?;
+                for field in fields {
+                    write!(f, "    {}: ", field.name)?;
+                    fmt_type(&field.ty, f)?;
+                    writeln!(f, ",")?;
+                }
+                writeln!(f, "}}")?;
             }
-            writeln!(f, "}}")?;
         }
 
         // Enum definitions

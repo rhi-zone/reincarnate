@@ -81,6 +81,8 @@ impl<'a> TypeInterner<'a> {
         }
         let id = self.types.push(TypeDecl::Object {
             name: Some(name.to_string()),
+            namespace: Vec::new(),
+            visibility: Visibility::Public,
             parent: None,
             fields: Vec::new(),
             methods: Vec::new(),
@@ -110,6 +112,8 @@ impl<'a> TypeInterner<'a> {
         }
         let id = self.types.push(TypeDecl::Object {
             name: Some(name.to_string()),
+            namespace: Vec::new(),
+            visibility: Visibility::Public,
             parent: None,
             fields: Vec::new(),
             methods: Vec::new(),
@@ -145,6 +149,13 @@ impl<'a> TypeInterner<'a> {
     }
 }
 
+fn default_visibility() -> Visibility {
+    Visibility::Public
+}
+fn is_public_visibility(v: &Visibility) -> bool {
+    *v == Visibility::Public
+}
+
 /// A type declaration stored in the module's type arena.
 ///
 /// Referenced by [`TypeId`] in [`Type::Instance`] and [`Type::ClassRef`] variants.
@@ -154,6 +165,15 @@ pub enum TypeDecl {
     Object {
         /// Short or qualified name of the type (e.g. `"MyClass"`, `"objects::Obj1"`).
         name: Option<String>,
+        /// Namespace segments (e.g. `["objects"]`).
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        namespace: Vec<String>,
+        /// Visibility of this type.
+        #[serde(
+            default = "default_visibility",
+            skip_serializing_if = "is_public_visibility"
+        )]
+        visibility: Visibility,
         /// Superclass TypeId, if any (instance-side inheritance).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         parent: Option<TypeId>,
@@ -187,6 +207,44 @@ impl TypeDecl {
         match self {
             TypeDecl::Object { name, .. } => name.as_deref(),
             TypeDecl::Enum { name, .. } => name.as_deref(),
+        }
+    }
+
+    /// Return the namespace of an Object TypeDecl, or an empty slice for enums.
+    pub fn namespace(&self) -> &[String] {
+        match self {
+            TypeDecl::Object { namespace, .. } => namespace,
+            TypeDecl::Enum { .. } => &[],
+        }
+    }
+
+    /// Return the visibility of an Object TypeDecl, or Public for enums.
+    pub fn visibility(&self) -> Visibility {
+        match self {
+            TypeDecl::Object { visibility, .. } => *visibility,
+            TypeDecl::Enum { .. } => Visibility::Public,
+        }
+    }
+
+    /// Set the namespace on an Object TypeDecl.
+    ///
+    /// # Panics
+    /// Panics if this TypeDecl is not an Object.
+    pub fn set_namespace(&mut self, ns: Vec<String>) {
+        match self {
+            TypeDecl::Object { namespace, .. } => *namespace = ns,
+            TypeDecl::Enum { .. } => panic!("TypeDecl::Enum has no namespace"),
+        }
+    }
+
+    /// Set the visibility on an Object TypeDecl.
+    ///
+    /// # Panics
+    /// Panics if this TypeDecl is not an Object.
+    pub fn set_visibility(&mut self, vis: Visibility) {
+        match self {
+            TypeDecl::Object { visibility, .. } => *visibility = vis,
+            TypeDecl::Enum { .. } => panic!("TypeDecl::Enum has no visibility"),
         }
     }
 
@@ -310,8 +368,8 @@ pub struct ClassDef {
     pub name: String,
     /// Namespace segments (e.g. `["classes", "Scenes", "Areas", "Bog"]`).
     pub namespace: Vec<String>,
-    /// Index into `Module::structs`.
-    pub struct_index: usize,
+    /// TypeId of the instance-side `TypeDecl::Object` for this class.
+    pub type_id: TypeId,
     /// Method `FuncId`s belonging to this class.
     pub methods: Vec<FuncId>,
     /// Superclass qualified name, if any.
@@ -398,7 +456,6 @@ pub struct Module {
     /// Name → TypeId reverse index. Not serialized — rebuilt from `types` on load.
     #[serde(skip)]
     pub type_names: HashMap<String, TypeId>,
-    pub structs: Vec<StructDef>,
     pub enums: Vec<EnumDef>,
     pub globals: Vec<Global>,
     pub imports: Vec<Import>,
@@ -599,6 +656,8 @@ impl Module {
         }
         let id = self.types.push(TypeDecl::Object {
             name: Some(name.to_string()),
+            namespace: Vec::new(),
+            visibility: Visibility::Public,
             parent: None,
             fields: Vec::new(),
             methods: Vec::new(),
@@ -647,6 +706,8 @@ impl Module {
         }
         let id = self.types.push(TypeDecl::Object {
             name: Some(name.to_string()),
+            namespace: Vec::new(),
+            visibility: Visibility::Public,
             parent: None,
             fields: Vec::new(),
             methods: Vec::new(),
@@ -697,11 +758,16 @@ impl Module {
     /// This is called by `ModuleBuilder::build()` after all structs/classes are
     /// registered.
     pub fn normalize_struct_types(&mut self) {
-        // Normalize struct field types.
-        for i in 0..self.structs.len() {
-            for j in 0..self.structs[i].fields.len() {
-                let ty = self.structs[i].fields[j].ty.clone();
-                self.structs[i].fields[j].ty = normalize_type(ty);
+        // Normalize TypeDecl::Object field types.
+        let type_ids: Vec<_> = self.types.keys().collect();
+        for id in type_ids {
+            let field_count = self.types[id].fields().len();
+            for j in 0..field_count {
+                let ty = self.types[id].fields()[j].ty.clone();
+                let normalized = normalize_type(ty);
+                if let TypeDecl::Object { fields, .. } = &mut self.types[id] {
+                    fields[j].ty = normalized;
+                }
             }
         }
         // Normalize class static fields and abstract member types.
@@ -806,7 +872,6 @@ impl Module {
             functions: PrimaryMap::new(),
             types: PrimaryMap::new(),
             type_names: HashMap::new(),
-            structs: Vec::new(),
             enums: Vec::new(),
             globals: Vec::new(),
             imports: Vec::new(),
