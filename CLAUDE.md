@@ -12,7 +12,7 @@ Reincarnate translates games from any source engine into working, type-safe, hig
 
 **TS error counts are not a goal.** Any change that reduces errors by widening a type, guessing at correct behavior, or silencing a diagnostic is a regression. The only valid reason to make a change is that it is correct.
 
-**`Type::Unknown` is an inference failure, not a legitimate type.** Every value has a concrete source-language type. Unknown means inference wasn't good enough. Suppressing Unknown at emit time, or propagating types by guessing from downstream uses, are both monkeypatches.
+**`Type::Unknown` is an inference failure, not a legitimate type.** Every value has a concrete source-language type. Unknown means inference wasn't good enough. Suppressing Unknown at emit time, or propagating types by guessing from downstream uses, are both monkeypatches. When inference is genuinely blocked, leave Unknown in the IR, fail the build with a diagnostic pointing at the source location, and file a TODO entry. Do not emit.
 
 **Fix the real problem.** A correct fix changes the model so the case can't arise. A branch that compensates for upstream failures is a monkeypatch — fix the upstream failure instead. Document blocked fixes in TODO.md and leave the code unchanged until unblocked.
 
@@ -21,8 +21,6 @@ Reincarnate translates games from any source engine into working, type-safe, hig
 **Tech debt is never an acceptable tradeoff for easier implementation.** A workaround that avoids touching more files, breaking more callers, or requiring more refactoring is still a workaround. Do the right thing — rename, update all callers, restructure. The cost of carrying debt always exceeds the cost of paying it immediately. If a solution is tech debt, do not list it as an option — apply the constraint before generating options, not after.
 
 **Known gaps live in TODO.md.** Every gap, unverified assumption, and unimplemented behavior must be tracked there. Not adding a TODO entry is an implicit claim of correctness.
-
-**Read before modifying or proposing.** Confidence is not a feeling — it is a result of having verified. When a request is ambiguous, state your interpretation and wait for confirmation. Design proposals require the same standard: read the relevant code before making claims about how things work. Reasoning from first principles when the implementation is readable is not a substitute for reading it.
 
 **Multi-step reasoning belongs in subagents.** When checking whether a proposed change is correct requires non-trivial reasoning (e.g. does this violate Law 2? is this expressible in IR?), do the reasoning in a subagent. Wrong reasoning in main context poisons the session; wrong reasoning in a subagent contaminates only that subagent's context. Only the conclusion returns to main.
 
@@ -42,7 +40,7 @@ Subagent reports, mid-session realizations, "I'll remember this" — none of the
 
 ## Authenticity
 
-When asked to analyze X, read X. Claims must correspond to evidence produced this session, not conversation memory or prior summaries.
+Read before modifying or proposing. Confidence is not a feeling — it is a result of having verified. Claims must correspond to evidence produced this session, not memory or prior summaries. When a request is ambiguous, state your interpretation and wait for confirmation. Reasoning from first principles when the implementation is readable is not a substitute for reading it.
 
 **Something unexpected is a signal.** Surprising output, anomalous numbers, a file containing what it shouldn't — stop and find out why. Do not accept the anomaly and proceed.
 
@@ -91,10 +89,8 @@ Invariant. When a violation appears, adjust the law — don't add a corollary.
 **3. Behavioral Equivalence.** Emitted code produces identical observable output for any input. Preserve source-language bugs.
 
 **4. Honest Representation.** IR types reflect source-language semantics, not VM storage format. A GML boolean is `Bool`, not `Float`. Source-level type violations surface as target-language type errors — that is correct behavior. Prohibited:
-- `any` anywhere — unconditionally forbidden. In TypeScript: `unknown`. In Rust emit paths: concrete types. No exceptions for "open" objects, dynamic fields, or handwritten runtime code. The full source is available; every field is statically known.
-- `(expr as any)` in the emitter — fix the IR type instead
+- Type escape of any kind. Every value has a source-language type; every field is statically known. If something can't be typed, inference is wrong — fix the model. There is no situation where a cast, suppression, widening, or type-system workaround is correct.
 - Backward type propagation (inferring a value's type from how it is used downstream)
-- Any of the above added to reduce TS error counts
 
 **5. Instantiability.** All mutable runtime state lives on root runtime instances. No module-level mutable variables. Multiple game instances must coexist on one page. The correct mechanism for instanced runtimes is to pass the runtime object as an explicit first parameter (`rt`) to all translated functions. An optional dead parameter elimination pass removes `rt` from functions that never use it. No special-casing in the IR — the runtime is just a typed value like any other.
 
@@ -131,7 +127,6 @@ Always pass `--include-ignored`. Edit all files first, then build once.
 
 - No engine-specific logic in `reincarnate-core` — no named engine functions, no engine-specific heuristics, no backward inference that compensates for engine gaps
 - No backward type propagation in core transforms (inferring a value's type from how it is used downstream)
-- No `any` anywhere — unconditionally forbidden in emitted TypeScript, handwritten runtime code, and Rust emit paths. No exceptions.
 - No widening runtime types to match wrong emitter output — fix the inference
 - No path dependencies in Cargo.toml
 - No `--no-verify`
