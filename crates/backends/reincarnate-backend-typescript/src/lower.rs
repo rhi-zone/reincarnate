@@ -599,6 +599,29 @@ fn lower_builtin_opt(op_name: &str, args: &[Expr], ctx: &LowerCtx) -> Option<JsE
             field: "length".to_string(),
         }),
         "array_contains_arr" => Some(method_call(0, "includes", &[1], args, ctx)),
+        // array_pop_arr(arr) -> arr.pop()
+        "array_pop_arr" => Some(method_call(0, "pop", &[], args, ctx)),
+        // array_delete_arr(arr, index, count) -> arr.splice(index, count)
+        "array_delete_arr" => Some(method_call(0, "splice", &[1, 2], args, ctx)),
+        // array_insert_arr(arr, index, val) -> arr.splice(index, 0, val)
+        "array_insert_arr" => {
+            let receiver = lower_expr(&args[0], ctx);
+            let index = lower_expr(&args[1], ctx);
+            let zero = JsExpr::Literal(reincarnate_core::ir::value::Constant::Float(0.0));
+            let val = lower_expr(&args[2], ctx);
+            Some(JsExpr::Call {
+                callee: Box::new(JsExpr::Field {
+                    object: Box::new(receiver),
+                    field: "splice".to_string(),
+                }),
+                args: vec![index, zero, val],
+            })
+        }
+        // array_resize_arr(arr, newSize) -> arr.splice(newSize)
+        // (arr.length = newSize is a statement, not an expression; splice(n) removes all from n onward)
+        "array_resize_arr" => Some(method_call(0, "splice", &[1], args, ctx)),
+        // array_get_index_arr(arr, value) -> arr.indexOf(value)
+        "array_get_index_arr" => Some(method_call(0, "indexOf", &[1], args, ctx)),
 
         // --- Other ---
         "chr_f64" => Some(JsExpr::Call {

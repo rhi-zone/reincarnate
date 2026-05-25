@@ -146,6 +146,11 @@ pub fn register_runtime_bodies(module: &mut Module) {
     attach_body_array_get(module);
     attach_body_array_set(module);
     attach_body_array_height_2d(module);
+    attach_body_array_pop(module);
+    attach_body_array_delete(module);
+    attach_body_array_insert(module);
+    attach_body_array_resize(module);
+    attach_body_array_get_index(module);
     attach_body_point_in_triangle(module);
 }
 
@@ -2523,6 +2528,120 @@ fn attach_body_array_height_2d(module: &mut Module) {
         |b| {
             let arr = b.param(0);
             let result = b.call_named("array_length_arr", &[arr], Type::Float(64));
+            b.ret(Some(result));
+        },
+    );
+}
+
+// ---------------------------------------------------------------------------
+// array_pop(arr: Array(Unknown)) -> Unknown
+//   GML: removes and returns last element
+//   JS: arr.pop()
+// ---------------------------------------------------------------------------
+
+fn attach_body_array_pop(module: &mut Module) {
+    attach_runtime_body(
+        module,
+        "array_pop",
+        &[Type::Array(Box::new(Type::Unknown))],
+        Type::Unknown,
+        |b| {
+            let arr = b.param(0);
+            let result = b.call_named("array_pop_arr", &[arr], Type::Unknown);
+            b.ret(Some(result));
+        },
+    );
+}
+
+// ---------------------------------------------------------------------------
+// array_delete(arr: Array(Unknown), index: Float64, count: Float64) -> Void
+//   GML: removes count elements starting at index
+//   JS: arr.splice(index, count)
+// ---------------------------------------------------------------------------
+
+fn attach_body_array_delete(module: &mut Module) {
+    attach_runtime_body(
+        module,
+        "array_delete",
+        &[
+            Type::Array(Box::new(Type::Unknown)),
+            Type::Float(64),
+            Type::Float(64),
+        ],
+        Type::Void,
+        |b| {
+            let arr = b.param(0);
+            let index = b.param(1);
+            let count = b.param(2);
+            b.call_named("array_delete_arr", &[arr, index, count], Type::Void);
+            b.ret(None);
+        },
+    );
+}
+
+// ---------------------------------------------------------------------------
+// array_insert(arr: Array(Unknown), index: Float64, val: Unknown) -> Void
+//   GML: inserts val at index
+//   JS: arr.splice(index, 0, val)
+// ---------------------------------------------------------------------------
+
+fn attach_body_array_insert(module: &mut Module) {
+    attach_runtime_body(
+        module,
+        "array_insert",
+        &[
+            Type::Array(Box::new(Type::Unknown)),
+            Type::Float(64),
+            Type::Unknown,
+        ],
+        Type::Void,
+        |b| {
+            let arr = b.param(0);
+            let index = b.param(1);
+            let val = b.param(2);
+            b.call_named("array_insert_arr", &[arr, index, val], Type::Void);
+            b.ret(None);
+        },
+    );
+}
+
+// ---------------------------------------------------------------------------
+// array_resize(arr: Array(Unknown), newSize: Float64) -> Void
+//   GML: resizes array to newSize
+//   JS: arr.splice(newSize) — removes all elements from newSize onward
+// ---------------------------------------------------------------------------
+
+fn attach_body_array_resize(module: &mut Module) {
+    attach_runtime_body(
+        module,
+        "array_resize",
+        &[Type::Array(Box::new(Type::Unknown)), Type::Float(64)],
+        Type::Void,
+        |b| {
+            let arr = b.param(0);
+            let new_size = b.param(1);
+            b.call_named("array_resize_arr", &[arr, new_size], Type::Void);
+            b.ret(None);
+        },
+    );
+}
+
+// ---------------------------------------------------------------------------
+// array_get_index(arr: Array(Unknown), value: Unknown) -> Float64
+//   GML: returns index of value, or -1 if not found
+//   JS: arr.indexOf(value)
+// ---------------------------------------------------------------------------
+
+fn attach_body_array_get_index(module: &mut Module) {
+    attach_runtime_body(
+        module,
+        "array_get_index",
+        &[Type::Array(Box::new(Type::Unknown)), Type::Unknown],
+        Type::Float(64),
+        |b| {
+            let arr = b.param(0);
+            let val = b.param(1);
+            let result = b.call_named("array_get_index_arr", &[arr, val], Type::Float(64));
             b.ret(Some(result));
         },
     );
