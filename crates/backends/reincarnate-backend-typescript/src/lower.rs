@@ -759,6 +759,98 @@ fn lower_builtin_opt(op_name: &str, args: &[Expr], ctx: &LowerCtx) -> Option<JsE
             })
         }
 
+        // is_numeric_unknown: (Unknown) -> Bool
+        // emit as: !isNaN(Number(val))
+        "is_numeric_unknown" => {
+            let arg = lower_expr(&args[0], ctx);
+            let number_call = JsExpr::Call {
+                callee: Box::new(JsExpr::Var("Number".to_string())),
+                args: vec![arg],
+            };
+            let is_nan_call = JsExpr::Call {
+                callee: Box::new(build_dotted_path("Number.isNaN")),
+                args: vec![number_call],
+            };
+            Some(JsExpr::Not(Box::new(is_nan_call)))
+        }
+
+        // typeof_gml: (Unknown) -> String
+        // GML typeof() — returns the GML type name for a value.
+        // emit as: val === undefined ? "undefined" : val === null ? "null" :
+        //   typeof val === "boolean" ? "bool" : typeof val === "string" ? "string" :
+        //   Array.isArray(val) ? "array" : typeof val === "number" ? "number" :
+        //   typeof val === "object" ? "struct" : "unknown"
+        "typeof_gml" => {
+            let arg = lower_expr(&args[0], ctx);
+            let str_lit = |s: &str| {
+                Box::new(JsExpr::Literal(
+                    reincarnate_core::ir::value::Constant::String(s.to_string()),
+                ))
+            };
+            let typeof_eq = |a: JsExpr, s: &str| JsExpr::Cmp {
+                kind: CmpKind::Eq,
+                lhs: Box::new(JsExpr::TypeOf(Box::new(a))),
+                rhs: Box::new(JsExpr::Literal(
+                    reincarnate_core::ir::value::Constant::String(s.to_string()),
+                )),
+            };
+            // Build innermost to outermost: "unknown" fallback
+            // typeof val === "object" ? "struct" : "unknown"
+            let t7 = JsExpr::Ternary {
+                cond: Box::new(typeof_eq(arg.clone(), "object")),
+                then_val: str_lit("struct"),
+                else_val: str_lit("unknown"),
+            };
+            // typeof val === "number" ? "number" : ...
+            let t6 = JsExpr::Ternary {
+                cond: Box::new(typeof_eq(arg.clone(), "number")),
+                then_val: str_lit("number"),
+                else_val: Box::new(t7),
+            };
+            // Array.isArray(val) ? "array" : ...
+            let t5 = JsExpr::Ternary {
+                cond: Box::new(JsExpr::Call {
+                    callee: Box::new(build_dotted_path("Array.isArray")),
+                    args: vec![arg.clone()],
+                }),
+                then_val: str_lit("array"),
+                else_val: Box::new(t6),
+            };
+            // typeof val === "string" ? "string" : ...
+            let t4 = JsExpr::Ternary {
+                cond: Box::new(typeof_eq(arg.clone(), "string")),
+                then_val: str_lit("string"),
+                else_val: Box::new(t5),
+            };
+            // typeof val === "boolean" ? "bool" : ...
+            let t3 = JsExpr::Ternary {
+                cond: Box::new(typeof_eq(arg.clone(), "boolean")),
+                then_val: str_lit("bool"),
+                else_val: Box::new(t4),
+            };
+            // val === null ? "null" : ...
+            let t2 = JsExpr::Ternary {
+                cond: Box::new(JsExpr::Cmp {
+                    kind: CmpKind::Eq,
+                    lhs: Box::new(arg.clone()),
+                    rhs: Box::new(JsExpr::Literal(reincarnate_core::ir::value::Constant::Null)),
+                }),
+                then_val: str_lit("null"),
+                else_val: Box::new(t3),
+            };
+            // val === undefined ? "undefined" : ...
+            let t1 = JsExpr::Ternary {
+                cond: Box::new(JsExpr::Cmp {
+                    kind: CmpKind::Eq,
+                    lhs: Box::new(arg),
+                    rhs: Box::new(JsExpr::Var("undefined".to_string())),
+                }),
+                then_val: str_lit("undefined"),
+                else_val: Box::new(t2),
+            };
+            Some(t1)
+        }
+
         // variable_struct_exists_rt: (Unknown, String) -> Bool
         // emit as: struct != null && Object.prototype.hasOwnProperty.call(struct, name)
         "variable_struct_exists_rt" => {

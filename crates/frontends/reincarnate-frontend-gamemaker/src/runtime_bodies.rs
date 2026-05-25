@@ -133,6 +133,8 @@ pub fn register_runtime_bodies(module: &mut Module) {
     attach_body_is_array(module);
     attach_body_is_method(module);
     attach_body_is_struct(module);
+    attach_body_is_numeric(module);
+    attach_body_typeof(module);
     attach_body_real(module);
     attach_body_pass(module);
     attach_body_try_hook(module);
@@ -2062,6 +2064,32 @@ fn attach_body_is_struct(module: &mut Module) {
     attach_runtime_body(module, "is_struct", &[Type::Unknown], Type::Bool, |b| {
         let x = b.param(0);
         let result = b.call_named("is_struct_unknown", &[x], Type::Bool);
+        b.ret(Some(result));
+    });
+}
+
+// ---------------------------------------------------------------------------
+// is_numeric(x: Unknown) -> Bool  =  is_numeric_unknown(x)
+// JS semantics: !isNaN(Number(val))
+// ---------------------------------------------------------------------------
+
+fn attach_body_is_numeric(module: &mut Module) {
+    attach_runtime_body(module, "is_numeric", &[Type::Unknown], Type::Bool, |b| {
+        let x = b.param(0);
+        let result = b.call_named("is_numeric_unknown", &[x], Type::Bool);
+        b.ret(Some(result));
+    });
+}
+
+// ---------------------------------------------------------------------------
+// _typeof(x: Unknown) -> String  =  typeof_gml(x)
+// JS semantics: GML type name string (ternary chain)
+// ---------------------------------------------------------------------------
+
+fn attach_body_typeof(module: &mut Module) {
+    attach_runtime_body(module, "_typeof", &[Type::Unknown], Type::String, |b| {
+        let x = b.param(0);
+        let result = b.call_named("typeof_gml", &[x], Type::String);
         b.ret(Some(result));
     });
 }
