@@ -710,6 +710,104 @@ fn lower_builtin_opt(op_name: &str, args: &[Expr], ctx: &LowerCtx) -> Option<JsE
             })
         }
 
+        // variable_struct_exists_rt: (Unknown, String) -> Bool
+        // emit as: struct != null && Object.prototype.hasOwnProperty.call(struct, name)
+        "variable_struct_exists_rt" => {
+            let s = lower_expr(&args[0], ctx);
+            let name = lower_expr(&args[1], ctx);
+            let not_null = JsExpr::LooseNe {
+                lhs: Box::new(s.clone()),
+                rhs: Box::new(JsExpr::Literal(reincarnate_core::ir::value::Constant::Null)),
+            };
+            let has_own = JsExpr::Call {
+                callee: Box::new(build_dotted_path("Object.prototype.hasOwnProperty.call")),
+                args: vec![s, name],
+            };
+            Some(JsExpr::LogicalAnd {
+                lhs: Box::new(not_null),
+                rhs: Box::new(has_own),
+            })
+        }
+
+        // variable_struct_get_rt: (Unknown, String) -> Unknown
+        // emit as: struct != null ? struct[name] : undefined
+        "variable_struct_get_rt" => {
+            let s = lower_expr(&args[0], ctx);
+            let name = lower_expr(&args[1], ctx);
+            let not_null = JsExpr::LooseNe {
+                lhs: Box::new(s.clone()),
+                rhs: Box::new(JsExpr::Literal(reincarnate_core::ir::value::Constant::Null)),
+            };
+            let index = JsExpr::Index {
+                collection: Box::new(s),
+                index: Box::new(name),
+            };
+            Some(JsExpr::Ternary {
+                cond: Box::new(not_null),
+                then_val: Box::new(index),
+                else_val: Box::new(JsExpr::Var("undefined".to_string())),
+            })
+        }
+
+        // variable_struct_names_count_rt: (Unknown) -> Float64
+        // emit as: struct != null ? Object.keys(struct).length : 0
+        "variable_struct_names_count_rt" => {
+            let s = lower_expr(&args[0], ctx);
+            let not_null = JsExpr::LooseNe {
+                lhs: Box::new(s.clone()),
+                rhs: Box::new(JsExpr::Literal(reincarnate_core::ir::value::Constant::Null)),
+            };
+            let keys_call = JsExpr::Call {
+                callee: Box::new(build_dotted_path("Object.keys")),
+                args: vec![s],
+            };
+            let length = JsExpr::Field {
+                object: Box::new(keys_call),
+                field: "length".to_string(),
+            };
+            Some(JsExpr::Ternary {
+                cond: Box::new(not_null),
+                then_val: Box::new(length),
+                else_val: Box::new(JsExpr::Literal(
+                    reincarnate_core::ir::value::Constant::Float(0.0),
+                )),
+            })
+        }
+
+        // variable_struct_get_names_rt: (Unknown) -> Array<String>
+        // emit as: struct != null ? Object.keys(struct) : []
+        "variable_struct_get_names_rt" => {
+            let s = lower_expr(&args[0], ctx);
+            let not_null = JsExpr::LooseNe {
+                lhs: Box::new(s.clone()),
+                rhs: Box::new(JsExpr::Literal(reincarnate_core::ir::value::Constant::Null)),
+            };
+            let keys_call = JsExpr::Call {
+                callee: Box::new(build_dotted_path("Object.keys")),
+                args: vec![s],
+            };
+            Some(JsExpr::Ternary {
+                cond: Box::new(not_null),
+                then_val: Box::new(keys_call),
+                else_val: Box::new(JsExpr::ArrayInit(vec![])),
+            })
+        }
+
+        // variable_struct_set_rt: (Unknown, String, Unknown) -> Void
+        // emit as: struct[name] = val
+        "variable_struct_set_rt" => {
+            let s = lower_expr(&args[0], ctx);
+            let name = lower_expr(&args[1], ctx);
+            let val = lower_expr(&args[2], ctx);
+            Some(JsExpr::Assign {
+                lhs: Box::new(JsExpr::Index {
+                    collection: Box::new(s),
+                    index: Box::new(name),
+                }),
+                rhs: Box::new(val),
+            })
+        }
+
         // --- Not a core builtin ---
         _ => None,
     }

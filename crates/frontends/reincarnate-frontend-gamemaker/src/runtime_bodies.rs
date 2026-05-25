@@ -152,6 +152,11 @@ pub fn register_runtime_bodies(module: &mut Module) {
     attach_body_array_resize(module);
     attach_body_array_get_index(module);
     attach_body_point_in_triangle(module);
+    attach_body_variable_struct_exists(module);
+    attach_body_variable_struct_get(module);
+    attach_body_variable_struct_names_count(module);
+    attach_body_variable_struct_get_names(module);
+    attach_body_variable_struct_set(module);
 }
 
 // ---------------------------------------------------------------------------
@@ -2736,4 +2741,107 @@ fn attach_body_point_in_triangle(module: &mut Module) {
     stub.value_types = built.value_types;
     stub.entry = built.entry;
     // InlineHint left as Default (not Always) — complex multi-step function
+}
+
+// ---------------------------------------------------------------------------
+// variable_struct_exists(struct: Unknown, name: String) -> Bool
+// JS emit: struct != null && Object.prototype.hasOwnProperty.call(struct, name)
+// ---------------------------------------------------------------------------
+
+fn attach_body_variable_struct_exists(module: &mut Module) {
+    attach_runtime_body(
+        module,
+        "variable_struct_exists",
+        &[Type::Unknown, Type::String],
+        Type::Bool,
+        |b| {
+            let s = b.param(0);
+            let name = b.param(1);
+            let result = b.call_named("variable_struct_exists_rt", &[s, name], Type::Bool);
+            b.ret(Some(result));
+        },
+    );
+}
+
+// ---------------------------------------------------------------------------
+// variable_struct_get(struct: Unknown, name: String) -> Unknown
+// JS emit: struct?.[name]  (or fallback ternary if optional chaining not present)
+// ---------------------------------------------------------------------------
+
+fn attach_body_variable_struct_get(module: &mut Module) {
+    attach_runtime_body(
+        module,
+        "variable_struct_get",
+        &[Type::Unknown, Type::String],
+        Type::Unknown,
+        |b| {
+            let s = b.param(0);
+            let name = b.param(1);
+            let result = b.call_named("variable_struct_get_rt", &[s, name], Type::Unknown);
+            b.ret(Some(result));
+        },
+    );
+}
+
+// ---------------------------------------------------------------------------
+// variable_struct_names_count(struct: Unknown) -> Float64
+// JS emit: struct != null ? Object.keys(struct).length : 0
+// ---------------------------------------------------------------------------
+
+fn attach_body_variable_struct_names_count(module: &mut Module) {
+    attach_runtime_body(
+        module,
+        "variable_struct_names_count",
+        &[Type::Unknown],
+        Type::Float(64),
+        |b| {
+            let s = b.param(0);
+            let result = b.call_named("variable_struct_names_count_rt", &[s], Type::Float(64));
+            b.ret(Some(result));
+        },
+    );
+}
+
+// ---------------------------------------------------------------------------
+// variable_struct_get_names(struct: Unknown) -> Array<String>
+// JS emit: struct != null ? Object.keys(struct) : []
+// ---------------------------------------------------------------------------
+
+fn attach_body_variable_struct_get_names(module: &mut Module) {
+    attach_runtime_body(
+        module,
+        "variable_struct_get_names",
+        &[Type::Unknown],
+        Type::Array(Box::new(Type::String)),
+        |b| {
+            let s = b.param(0);
+            let result = b.call_named(
+                "variable_struct_get_names_rt",
+                &[s],
+                Type::Array(Box::new(Type::String)),
+            );
+            b.ret(Some(result));
+        },
+    );
+}
+
+// ---------------------------------------------------------------------------
+// variable_struct_set(struct: Unknown, name: String, val: Unknown) -> Void
+// JS emit: struct[name] = val
+// ---------------------------------------------------------------------------
+
+fn attach_body_variable_struct_set(module: &mut Module) {
+    attach_runtime_body(
+        module,
+        "variable_struct_set",
+        &[Type::Unknown, Type::String, Type::Unknown],
+        Type::Void,
+        |b| {
+            let s = b.param(0);
+            let name = b.param(1);
+            let val = b.param(2);
+            b.call_named("variable_struct_set_rt", &[s, name, val], Type::Void);
+            b.ret(None);
+        },
+    );
 }
