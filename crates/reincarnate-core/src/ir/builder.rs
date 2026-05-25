@@ -535,7 +535,15 @@ impl FunctionBuilder {
     // ========================================================================
 
     pub fn cmp(&mut self, kind: CmpKind, a: ValueId, b: ValueId) -> ValueId {
-        self.emit(Op::Cmp(kind, a, b), Type::Bool)
+        let name = match kind {
+            CmpKind::Eq => "cmp_eq",
+            CmpKind::Ne => "cmp_ne",
+            CmpKind::Lt => "cmp_lt",
+            CmpKind::Le => "cmp_le",
+            CmpKind::Ge => "cmp_ge",
+            CmpKind::Gt => "cmp_gt",
+        };
+        self.call_named(name, &[a, b], Type::Bool)
     }
 
     pub fn not(&mut self, a: ValueId) -> ValueId {

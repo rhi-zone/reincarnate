@@ -4,7 +4,7 @@ use std::fmt;
 use crate::entity::EntityRef;
 
 use super::func::{FuncId, Function, MethodKind, Visibility};
-use super::inst::{CastKind, CmpKind, Op, Terminator};
+use super::inst::{CastKind, Op, Terminator};
 use super::module::Module;
 use super::ty::Type;
 use super::value::Constant;
@@ -123,17 +123,6 @@ fn fmt_block_target(
     write!(f, ")")
 }
 
-fn fmt_cmp_kind(kind: CmpKind, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    match kind {
-        CmpKind::Eq => write!(f, "eq"),
-        CmpKind::Ne => write!(f, "ne"),
-        CmpKind::Lt => write!(f, "lt"),
-        CmpKind::Le => write!(f, "le"),
-        CmpKind::Gt => write!(f, "gt"),
-        CmpKind::Ge => write!(f, "ge"),
-    }
-}
-
 fn fmt_method_kind(kind: MethodKind, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match kind {
         MethodKind::Free => Ok(()),
@@ -156,14 +145,6 @@ fn fmt_op(
         Op::Const(c) => {
             write!(f, "const ")?;
             fmt_constant(c, f)
-        }
-        Op::Cmp(kind, a, b) => {
-            write!(f, "cmp.")?;
-            fmt_cmp_kind(*kind, f)?;
-            write!(f, " ")?;
-            fmt_value(*a, f)?;
-            write!(f, ", ")?;
-            fmt_value(*b, f)
         }
         Op::Alloc(ty) => {
             write!(f, "alloc ")?;

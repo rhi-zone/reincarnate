@@ -538,6 +538,7 @@ pub(super) fn translate_with_body(
 
     let mut func = fb.build();
     func.method_kind = MethodKind::Closure;
-    detect_switches(&mut func);
+    let cmp_eq_fid = wctx.ctx.registry.get("cmp_eq").copied();
+    detect_switches(&mut func, cmp_eq_fid);
     Ok(func)
 }

@@ -49,13 +49,19 @@ impl Transform for FlashBoolCoerce {
         mut module: Module,
         dirty: Option<&HashSet<FuncId>>,
     ) -> Result<TransformResult, CoreError> {
+        // Collect FuncIds of ordering comparison builtins (exclude Eq/Ne).
+        let ordering_cmp_fids: HashSet<FuncId> = ["cmp_lt", "cmp_le", "cmp_gt", "cmp_ge"]
+            .iter()
+            .filter_map(|name| module.lookup_runtime(name))
+            .collect();
+
         let mut changed_funcs: HashSet<FuncId> = HashSet::new();
         for func_id in module.functions.keys().collect::<Vec<_>>() {
             if dirty.is_some_and(|d| !d.contains(&func_id)) {
                 continue;
             }
             let func = &mut module.functions[func_id];
-            let mut func_changed = coerce_bool_cmp(func);
+            let mut func_changed = coerce_bool_cmp(func, &ordering_cmp_fids);
             func_changed |= coerce_void_brif(func);
             if func_changed {
                 changed_funcs.insert(func_id);
@@ -113,22 +119,20 @@ fn insert_cast_before(
 // Pass 1 — Bool operands in ordering comparisons (TS2365)
 // ---------------------------------------------------------------------------
 
-fn coerce_bool_cmp(func: &mut Function) -> bool {
-    use reincarnate_core::ir::inst::CmpKind;
-
+fn coerce_bool_cmp(func: &mut Function, ordering_cmp_fids: &HashSet<FuncId>) -> bool {
     // Collect: (inst_id, lhs, rhs, coerce_lhs, coerce_rhs)
     let targets: Vec<(InstId, ValueId, ValueId, bool, bool)> = func
         .insts
         .iter()
         .filter_map(|(id, inst)| {
-            let (kind, lhs, rhs) = match &inst.op {
-                Op::Cmp(k, a, b) => (*k, *a, *b),
+            let (lhs, rhs) = match &inst.op {
+                Op::Call { func: fid, args }
+                    if ordering_cmp_fids.contains(fid) && args.len() == 2 =>
+                {
+                    (args[0], args[1])
+                }
                 _ => return None,
             };
-            // Only ordering comparisons — Eq/Ne are fine as-is in TypeScript.
-            if !matches!(kind, CmpKind::Lt | CmpKind::Le | CmpKind::Gt | CmpKind::Ge) {
-                return None;
-            }
             let lhs_c = is_bool(func, lhs);
             let rhs_c = is_bool(func, rhs);
             if lhs_c || rhs_c {
@@ -154,9 +158,11 @@ fn coerce_bool_cmp(func: &mut Function) -> bool {
         } else {
             rhs
         };
-        if let Op::Cmp(_, a, b) = &mut func.insts[inst_id].op {
-            *a = new_lhs;
-            *b = new_rhs;
+        if let Op::Call { args, .. } = &mut func.insts[inst_id].op {
+            if args.len() == 2 {
+                args[0] = new_lhs;
+                args[1] = new_rhs;
+            }
         }
     }
 

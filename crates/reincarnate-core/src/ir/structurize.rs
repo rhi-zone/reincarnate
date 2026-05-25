@@ -433,6 +433,10 @@ struct Structurizer<'a> {
     /// FuncIds of boolean-not builtins (used for BrIf condition simplification).
     /// Empty when module context is not available (disables the optimization).
     not_fids: std::collections::HashSet<crate::ir::func::FuncId>,
+    /// Map from cmp builtin FuncId → its inverse's FuncId (e.g. cmp_lt → cmp_ge).
+    /// Used by `is_boolean_inverse` to detect complementary cmp pairs.
+    /// Empty when module context is not available.
+    cmp_inv_fids: HashMap<crate::ir::func::FuncId, crate::ir::func::FuncId>,
 }
 
 impl<'a> Structurizer<'a> {
@@ -452,6 +456,7 @@ impl<'a> Structurizer<'a> {
             depth: 0,
             emitted: HashSet::new(),
             not_fids: std::collections::HashSet::new(),
+            cmp_inv_fids: HashMap::new(),
         }
     }
 
@@ -484,16 +489,9 @@ impl<'a> Structurizer<'a> {
             }
         }
 
-        // Find and flip the Cmp instruction.
-        for inst in self.func.insts.values_mut() {
-            if inst.result == Some(cond) {
-                if let Op::Cmp(ref mut kind, _, _) = inst.op {
-                    *kind = kind.inverse();
-                    return true;
-                }
-                break;
-            }
-        }
+        // Find and flip the cmp_* builtin call.
+        // (Requires a name map — structurizer doesn't have module context, so
+        // this optimization is skipped; cond_negated=false is still correct.)
         false
     }
 
@@ -1579,7 +1577,13 @@ impl<'a> Structurizer<'a> {
         // comparison (e.g. CmpLt for BrIf + CmpGe for the short-circuit
         // value) instead of reusing the same value.
         if then_assigns.len() == 1
-            && is_boolean_inverse(self.func, then_assigns[0].src, cond, &self.not_fids)
+            && is_boolean_inverse(
+                self.func,
+                then_assigns[0].src,
+                cond,
+                &self.not_fids,
+                &self.cmp_inv_fids,
+            )
             && **then_body == Shape::Seq(vec![])
             && then_trailing_assigns.is_empty()
             && else_assigns.is_empty()
@@ -1601,7 +1605,13 @@ impl<'a> Structurizer<'a> {
         // Inverted OR: else assigns phi=!cond (always true when cond is
         // falsy), then computes rhs → phi = !cond || rhs
         if else_assigns.len() == 1
-            && is_boolean_inverse(self.func, else_assigns[0].src, cond, &self.not_fids)
+            && is_boolean_inverse(
+                self.func,
+                else_assigns[0].src,
+                cond,
+                &self.not_fids,
+                &self.cmp_inv_fids,
+            )
             && **else_body == Shape::Seq(vec![])
             && else_trailing_assigns.is_empty()
             && then_assigns.is_empty()
@@ -1732,16 +1742,16 @@ impl<'a> Structurizer<'a> {
 /// Check if two values are boolean inverses of each other.
 ///
 /// Recognizes:
-/// - `Not(a)` vs `a`
-/// - `Cmp(k1, x, y)` vs `Cmp(k2, x, y)` where `k1 == k2.inverse()`
+/// - `not_bool(a)` vs `a`
+/// - `cmp_*(x, y)` vs `cmp_inv*(x, y)` where the two FuncIds are in `cmp_inv_fids`
 ///
-/// Comparison operands are considered equal if they share the same
-/// `ValueId` or are structurally identical constants.
+/// Comparison operands are considered equal if they share the same `ValueId`.
 fn is_boolean_inverse(
     func: &Function,
     a: ValueId,
     b: ValueId,
     not_fids: &std::collections::HashSet<crate::ir::func::FuncId>,
+    cmp_inv_fids: &HashMap<crate::ir::func::FuncId, crate::ir::func::FuncId>,
 ) -> bool {
     let a_op = func
         .insts
@@ -1762,29 +1772,52 @@ fn is_boolean_inverse(
             false
         }
     };
-    match (a_op, b_op) {
-        (Some(a_op), _) if is_not_of(a_op, b) => true,
-        (_, Some(b_op)) if is_not_of(b_op, a) => true,
-        (Some(Op::Cmp(k1, x1, y1)), Some(Op::Cmp(k2, x2, y2))) => {
-            values_equivalent(func, *x1, *x2)
-                && values_equivalent(func, *y1, *y2)
-                && *k1 == k2.inverse()
-        }
-        _ => false,
+    // Check not_bool patterns.
+    if matches!((a_op, b_op), (Some(a_op), _) if is_not_of(a_op, b)) {
+        return true;
     }
+    if matches!((a_op, b_op), (_, Some(b_op)) if is_not_of(b_op, a)) {
+        return true;
+    }
+    // Check complementary cmp calls: cmp_*(x, y) vs cmp_inv*(x, y).
+    if !cmp_inv_fids.is_empty() {
+        if let (
+            Some(Op::Call {
+                func: fa,
+                args: args_a,
+            }),
+            Some(Op::Call {
+                func: fb,
+                args: args_b,
+            }),
+        ) = (a_op, b_op)
+        {
+            if args_a.len() == 2 && args_b.len() == 2 {
+                if let Some(&inv_of_a) = cmp_inv_fids.get(fa) {
+                    if inv_of_a == *fb
+                        && vals_equiv(func, args_a[0], args_b[0])
+                        && vals_equiv(func, args_a[1], args_b[1])
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    false
 }
 
 /// Check if two values are equivalent: same `ValueId` or identical constants.
-fn values_equivalent(func: &Function, a: ValueId, b: ValueId) -> bool {
+fn vals_equiv(func: &Function, a: ValueId, b: ValueId) -> bool {
     if a == b {
         return true;
     }
     let a_const = func.insts.iter().find_map(|(_, inst)| match &inst.op {
-        Op::Const(c) if inst.result == Some(a) => Some(c),
+        Op::Const(c) if inst.result == Some(a) => Some(c.clone()),
         _ => None,
     });
     let b_const = func.insts.iter().find_map(|(_, inst)| match &inst.op {
-        Op::Const(c) if inst.result == Some(b) => Some(c),
+        Op::Const(c) if inst.result == Some(b) => Some(c.clone()),
         _ => None,
     });
     matches!((a_const, b_const), (Some(a), Some(b)) if a == b)
@@ -1809,6 +1842,14 @@ pub fn structurize_with_not_fids(
     func: &mut Function,
     not_fids: std::collections::HashSet<crate::ir::func::FuncId>,
 ) -> Shape {
+    structurize_with_cmp_inv_fids(func, not_fids, HashMap::new())
+}
+
+pub fn structurize_with_cmp_inv_fids(
+    func: &mut Function,
+    not_fids: std::collections::HashSet<crate::ir::func::FuncId>,
+    cmp_inv_fids: HashMap<crate::ir::func::FuncId, crate::ir::func::FuncId>,
+) -> Shape {
     if func.blocks.len() == 1 {
         return Shape::Block(func.entry);
     }
@@ -1816,6 +1857,7 @@ pub fn structurize_with_not_fids(
     let entry = func.entry;
     let mut s = Structurizer::new(func);
     s.not_fids = not_fids;
+    s.cmp_inv_fids = cmp_inv_fids;
     s.structurize_region(entry, None, None)
 }
 
@@ -2455,9 +2497,9 @@ mod tests {
         // Simulates the ABC pattern where && is lowered with inverse
         // comparisons:
         //
-        //   entry: v_ge = cmp.ge(x, 0); v_lt = cmp.lt(x, 0);
+        //   entry: v_ge = cmp_ge(x, 0); v_lt = cmp_lt(x, 0);
         //          br_if v_lt, merge(v_ge), rhs_block()
-        //   rhs_block: v_rhs = cmp.ge(y, 60); br merge(v_rhs)
+        //   rhs_block: v_rhs = cmp_ge(y, 60); br merge(v_rhs)
         //   merge(v_phi): return v_phi
         //
         // v_lt is true ⟹ v_ge is false (short-circuit), so:
@@ -2492,7 +2534,27 @@ mod tests {
         fb.ret(Some(v_phi));
 
         let mut func = fb.build();
-        let shape = structurize(&mut func);
+        // Build cmp_inv_fids from core module so is_boolean_inverse can detect
+        // cmp_ge vs cmp_lt as complementary pairs.
+        let core_mod = crate::ir::Module::new("__core__".to_string());
+        let reg = &core_mod.runtime_registry;
+        let cmp_inv: &[(&str, &str)] = &[
+            ("cmp_eq", "cmp_ne"),
+            ("cmp_ne", "cmp_eq"),
+            ("cmp_lt", "cmp_ge"),
+            ("cmp_ge", "cmp_lt"),
+            ("cmp_gt", "cmp_le"),
+            ("cmp_le", "cmp_gt"),
+        ];
+        let cmp_inv_fids: HashMap<crate::ir::func::FuncId, crate::ir::func::FuncId> = cmp_inv
+            .iter()
+            .filter_map(|(a, b)| Some((*reg.get(*a)?, *reg.get(*b)?)))
+            .collect();
+        let shape = structurize_with_cmp_inv_fids(
+            &mut func,
+            std::collections::HashSet::new(),
+            cmp_inv_fids,
+        );
 
         fn find_logical_and(shape: &Shape) -> Option<&Shape> {
             match shape {
@@ -2563,7 +2625,26 @@ mod tests {
         fb.ret(Some(v_phi));
 
         let mut func = fb.build();
-        let shape = structurize(&mut func);
+        // Build cmp_inv_fids so is_boolean_inverse detects cmp_ge vs cmp_lt.
+        let core_mod = crate::ir::Module::new("__core__".to_string());
+        let reg = &core_mod.runtime_registry;
+        let cmp_inv: &[(&str, &str)] = &[
+            ("cmp_eq", "cmp_ne"),
+            ("cmp_ne", "cmp_eq"),
+            ("cmp_lt", "cmp_ge"),
+            ("cmp_ge", "cmp_lt"),
+            ("cmp_gt", "cmp_le"),
+            ("cmp_le", "cmp_gt"),
+        ];
+        let cmp_inv_fids: HashMap<crate::ir::func::FuncId, crate::ir::func::FuncId> = cmp_inv
+            .iter()
+            .filter_map(|(a, b)| Some((*reg.get(*a)?, *reg.get(*b)?)))
+            .collect();
+        let shape = structurize_with_cmp_inv_fids(
+            &mut func,
+            std::collections::HashSet::new(),
+            cmp_inv_fids,
+        );
 
         fn find_logical_or(shape: &Shape) -> Option<&Shape> {
             match shape {

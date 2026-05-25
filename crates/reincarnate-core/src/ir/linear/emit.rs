@@ -554,11 +554,6 @@ impl<'a> EmitCtx<'a> {
         Some(match op {
             Op::Const(c) => Expr::Literal(c.clone()),
 
-            Op::Cmp(kind, a, b) => Expr::Cmp {
-                kind: *kind,
-                lhs: Box::new(self.build_val(*a)),
-                rhs: Box::new(self.build_val(*b)),
-            },
             Op::Select {
                 cond,
                 on_true,
@@ -900,16 +895,32 @@ impl<'a> EmitCtx<'a> {
 
     fn negate_cond(&mut self, cond: ValueId) -> Expr {
         if let Some(&inst_id) = self.pending_lazy.get(&cond) {
-            if let Op::Cmp(kind, a, b) = &self.func.insts[inst_id].op {
-                let a = *a;
-                let b = *b;
-                let kind = kind.inverse();
-                self.pending_lazy.remove(&cond);
-                return Expr::Cmp {
-                    kind,
-                    lhs: Box::new(self.build_val(a)),
-                    rhs: Box::new(self.build_val(b)),
+            // `cmp_*(a, b)` — flip to the inverse comparison builtin.
+            if let Op::Call { func: fid, args } = &self.func.insts[inst_id].op {
+                let fname = self
+                    .config
+                    .func_names
+                    .get(fid)
+                    .map(|s| s.as_str())
+                    .unwrap_or("");
+                let inv = match fname {
+                    "cmp_eq" => Some("cmp_ne"),
+                    "cmp_ne" => Some("cmp_eq"),
+                    "cmp_lt" => Some("cmp_ge"),
+                    "cmp_ge" => Some("cmp_lt"),
+                    "cmp_gt" => Some("cmp_le"),
+                    "cmp_le" => Some("cmp_gt"),
+                    _ => None,
                 };
+                if let (Some(inv_name), [a, b]) = (inv, args.as_slice()) {
+                    let a = *a;
+                    let b = *b;
+                    self.pending_lazy.remove(&cond);
+                    return Expr::Call {
+                        func: inv_name.to_string(),
+                        args: vec![self.build_val(a), self.build_val(b)],
+                    };
+                }
             }
             // `not_bool(x)` is boolean NOT — unwrap the inner value
             // instead of double-negating.

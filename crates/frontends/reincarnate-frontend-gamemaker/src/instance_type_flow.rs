@@ -19,7 +19,7 @@ use std::collections::{HashMap, HashSet};
 
 use reincarnate_core::error::CoreError;
 use reincarnate_core::ir::func::FuncId;
-use reincarnate_core::ir::inst::{CmpKind, Inst, InstId, Op};
+use reincarnate_core::ir::inst::{Inst, InstId, Op};
 use reincarnate_core::ir::ty::Type;
 use reincarnate_core::ir::{Function, Module, ValueId};
 use reincarnate_core::pipeline::{PureIrPass, Transform, TransformResult};
@@ -70,6 +70,8 @@ impl Transform for GmlInstanceTypeFlow {
             .filter_map(|name| module.runtime_registry.get(*name).copied())
             .collect();
         let not_bool_fid: Option<FuncId> = module.runtime_registry.get("not_bool").copied();
+        let cmp_eq_fid: Option<FuncId> = module.runtime_registry.get("cmp_eq").copied();
+        let cmp_ne_fid: Option<FuncId> = module.runtime_registry.get("cmp_ne").copied();
 
         let mut changed_funcs: HashSet<FuncId> = HashSet::new();
         for func_id in module.functions.keys().collect::<Vec<_>>() {
@@ -77,7 +79,14 @@ impl Transform for GmlInstanceTypeFlow {
                 continue;
             }
             let func = &mut module.functions[func_id];
-            if self.process_function(func, &type_ids, &instance_create_fids, not_bool_fid) {
+            if self.process_function(
+                func,
+                &type_ids,
+                &instance_create_fids,
+                not_bool_fid,
+                cmp_eq_fid,
+                cmp_ne_fid,
+            ) {
                 changed_funcs.insert(func_id);
             }
         }
@@ -99,6 +108,8 @@ impl GmlInstanceTypeFlow {
         type_ids: &std::collections::HashMap<String, reincarnate_core::ir::TypeId>,
         instance_create_fids: &HashSet<FuncId>,
         not_bool_fid: Option<FuncId>,
+        cmp_eq_fid: Option<FuncId>,
+        cmp_ne_fid: Option<FuncId>,
     ) -> bool {
         let mut changed = false;
 
@@ -155,17 +166,24 @@ impl GmlInstanceTypeFlow {
         }
 
         // --- Step C: rewrite object_index == OEnemy → TypeCheck ---
-        // Collect: (inst_id, object_vid, class_name, negate) for Cmp(Eq|Ne, lhs, rhs)
+        // Collect: (inst_id, object_vid, class_name, negate) for cmp_eq/cmp_ne calls
         // where one side comes from GetField(x, "object_index") and the other is in objref_map.
         let cmp_rewrites: Vec<(InstId, ValueId, String, bool)> = func
             .insts
             .iter()
             .filter_map(|(id, inst)| {
-                let (kind, lhs, rhs) = match &inst.op {
-                    Op::Cmp(k @ (CmpKind::Eq | CmpKind::Ne), l, r) => (*k, *l, *r),
+                let (lhs, rhs, negate) = match &inst.op {
+                    Op::Call { func: fid, args } if args.len() == 2 => {
+                        if Some(*fid) == cmp_eq_fid {
+                            (args[0], args[1], false)
+                        } else if Some(*fid) == cmp_ne_fid {
+                            (args[0], args[1], true)
+                        } else {
+                            return None;
+                        }
+                    }
                     _ => return None,
                 };
-                let negate = kind == CmpKind::Ne;
 
                 // Check if lhs is a GetField(_, "object_index") and rhs is OBJT ref.
                 if let Some(class_name) = objref_map.get(&rhs) {

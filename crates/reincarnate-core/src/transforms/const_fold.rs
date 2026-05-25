@@ -292,9 +292,6 @@ fn try_fold(
     func_names: &HashMap<super::super::ir::func::FuncId, String>,
 ) -> Option<Constant> {
     match op {
-        // Comparison
-        Op::Cmp(kind, a, b) => fold_cmp(*kind, consts.get(a)?, consts.get(b)?),
-
         // Cast
         Op::Cast(a, ty, _) => fold_cast(consts.get(a)?, ty),
 
@@ -303,6 +300,17 @@ fn try_fold(
             let fname = func_names.get(fid).map(|s| s.as_str()).unwrap_or("");
             // Derive the base operation name (strip type suffix, e.g. "add_f64" → "add").
             let base = fname.rsplit_once('_').map(|(b, _)| b).unwrap_or(fname);
+
+            // Comparison builtins — match on full name (no type suffix).
+            match (fname, args.as_slice()) {
+                ("cmp_eq", [a, b]) => return fold_cmp(CmpKind::Eq, consts.get(a)?, consts.get(b)?),
+                ("cmp_ne", [a, b]) => return fold_cmp(CmpKind::Ne, consts.get(a)?, consts.get(b)?),
+                ("cmp_lt", [a, b]) => return fold_cmp(CmpKind::Lt, consts.get(a)?, consts.get(b)?),
+                ("cmp_le", [a, b]) => return fold_cmp(CmpKind::Le, consts.get(a)?, consts.get(b)?),
+                ("cmp_ge", [a, b]) => return fold_cmp(CmpKind::Ge, consts.get(a)?, consts.get(b)?),
+                ("cmp_gt", [a, b]) => return fold_cmp(CmpKind::Gt, consts.get(a)?, consts.get(b)?),
+                _ => {}
+            }
 
             match (base, args.as_slice()) {
                 // Binary arithmetic builtins
@@ -446,7 +454,7 @@ fn try_fold(
     }
 }
 
-/// Peephole: rewrite `Not(Cmp(kind, a, b))` → `Cmp(inverse(kind), a, b)`.
+/// Peephole: rewrite `not_bool(cmp_*(a, b))` → `cmp_inv(a, b)`.
 ///
 /// This turns `!(x >= 1)` into `x < 1` at the IR level, so the emitter
 /// doesn't need to handle comparison flipping as a syntax transformation.
@@ -454,15 +462,38 @@ fn fold_not_cmp(
     func: &mut Function,
     func_names: &HashMap<super::super::ir::func::FuncId, String>,
 ) -> bool {
-    // Map from ValueId → (CmpKind, lhs, rhs) for all Cmp instructions.
-    let mut cmp_defs: HashMap<ValueId, (CmpKind, ValueId, ValueId)> = HashMap::new();
-    for (_, inst) in func.insts.iter() {
-        if let (Op::Cmp(kind, a, b), Some(result)) = (&inst.op, inst.result) {
-            cmp_defs.insert(result, (*kind, *a, *b));
+    // Build name→FuncId map for the inverse cmp builtins.
+    let mut name_to_fid: HashMap<&str, FuncId> = HashMap::new();
+    for (fid, name) in func_names.iter().map(|(&f, n)| (f, n.as_str())) {
+        if matches!(
+            name,
+            "cmp_eq" | "cmp_ne" | "cmp_lt" | "cmp_le" | "cmp_ge" | "cmp_gt"
+        ) {
+            name_to_fid.insert(name, fid);
         }
     }
 
-    let updates: Vec<(InstId, CmpKind, ValueId, ValueId)> = func
+    // Map from ValueId → (inverse_name, lhs, rhs) for all cmp_* calls.
+    let mut cmp_defs: HashMap<ValueId, (&'static str, ValueId, ValueId)> = HashMap::new();
+    for (_, inst) in func.insts.iter() {
+        if let (Op::Call { func: fid, args }, Some(result)) = (&inst.op, inst.result) {
+            let fname = func_names.get(fid).map(|s| s.as_str()).unwrap_or("");
+            let inv = match fname {
+                "cmp_eq" => "cmp_ne",
+                "cmp_ne" => "cmp_eq",
+                "cmp_lt" => "cmp_ge",
+                "cmp_ge" => "cmp_lt",
+                "cmp_gt" => "cmp_le",
+                "cmp_le" => "cmp_gt",
+                _ => continue,
+            };
+            if args.len() == 2 {
+                cmp_defs.insert(result, (inv, args[0], args[1]));
+            }
+        }
+    }
+
+    let updates: Vec<(InstId, FuncId, ValueId, ValueId)> = func
         .insts
         .keys()
         .filter_map(|inst_id| {
@@ -472,8 +503,9 @@ fn fold_not_cmp(
                 let fname = func_names.get(fid).map(|s| s.as_str()).unwrap_or("");
                 if fname == "not_bool" && args.len() == 1 {
                     let inner = args[0];
-                    let &(kind, a, b) = cmp_defs.get(&inner)?;
-                    return Some((inst_id, kind.inverse(), a, b));
+                    let &(inv_name, a, b) = cmp_defs.get(&inner)?;
+                    let inv_fid = *name_to_fid.get(inv_name)?;
+                    return Some((inst_id, inv_fid, a, b));
                 }
             }
             None
@@ -481,8 +513,11 @@ fn fold_not_cmp(
         .collect();
 
     let changed = !updates.is_empty();
-    for (inst_id, inv_kind, a, b) in updates {
-        func.insts[inst_id].op = Op::Cmp(inv_kind, a, b);
+    for (inst_id, inv_fid, a, b) in updates {
+        func.insts[inst_id].op = Op::Call {
+            func: inv_fid,
+            args: vec![a, b],
+        };
     }
     changed
 }
@@ -829,7 +864,7 @@ mod tests {
         ));
     }
 
-    /// `Not(Cmp(Ge, param, 1))` folds to `Cmp(Lt, param, 1)`.
+    /// `not_bool(cmp_ge(param, 1))` folds to `cmp_lt(param, 1)`.
     #[test]
     fn not_cmp_folds_to_inverse() {
         let sig = FunctionSig {
@@ -844,11 +879,15 @@ mod tests {
         let result = fb.not(cmp);
         fb.ret(Some(result));
 
-        let (func, _module) = apply_fold(fb.build());
+        let (func, module) = apply_fold(fb.build());
         let inst = find_inst_for(&func, result);
         assert!(
-            matches!(&inst.op, Op::Cmp(CmpKind::Lt, a, b) if *a == param && *b == one),
-            "expected Cmp(Lt, param, 1), got {:?}",
+            matches!(&inst.op, Op::Call { func: fid, args }
+                if module.func_name(*fid) == "cmp_lt"
+                    && args.len() == 2
+                    && args[0] == param
+                    && args[1] == one),
+            "expected cmp_lt(param, 1), got {:?}",
             inst.op
         );
     }

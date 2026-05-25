@@ -30,7 +30,7 @@ use std::collections::{HashMap, HashSet};
 use reincarnate_core::error::CoreError;
 use reincarnate_core::ir::block::BlockId;
 use reincarnate_core::ir::func::FuncId;
-use reincarnate_core::ir::inst::{CastKind, CmpKind, Inst, InstId, Op, Terminator};
+use reincarnate_core::ir::inst::{CastKind, Inst, InstId, Op, Terminator};
 use reincarnate_core::ir::module::StructDef;
 use reincarnate_core::ir::ty::{parse_type_notation, Type};
 use reincarnate_core::ir::value::Constant;
@@ -73,6 +73,19 @@ impl Transform for GmlBoolArithCoerce {
             .filter(|(_, f)| f.sig.return_ty == Type::Bool)
             .map(|(fid, _)| fid)
             .collect();
+
+        // Pre-collect equality comparison FuncIds (cmp_eq, cmp_ne).
+        let eq_cmp_fids: HashSet<FuncId> = ["cmp_eq", "cmp_ne"]
+            .iter()
+            .filter_map(|name| module.lookup_runtime(name))
+            .collect();
+
+        // Pre-collect all comparison FuncIds.
+        let all_cmp_fids: HashSet<FuncId> =
+            ["cmp_eq", "cmp_ne", "cmp_lt", "cmp_le", "cmp_ge", "cmp_gt"]
+                .iter()
+                .filter_map(|name| module.lookup_runtime(name))
+                .collect();
 
         // Pre-collect arithmetic builtin FuncIds for coerce_bool_arithmetic.
         let arith_prefixes = ["add_", "sub_", "mul_", "div_", "rem_"];
@@ -143,9 +156,13 @@ impl Transform for GmlBoolArithCoerce {
                 &external_param_types,
                 &func_names,
             );
-            func_changed |=
-                coerce_bool_cmp_operands(func, &bool_returning, &dynamic_declared_fields);
-            func_changed |= coerce_noone_sentinel(func);
+            func_changed |= coerce_bool_cmp_operands(
+                func,
+                &all_cmp_fids,
+                &bool_returning,
+                &dynamic_declared_fields,
+            );
+            func_changed |= coerce_noone_sentinel(func, &eq_cmp_fids);
             if func_changed {
                 changed_funcs.insert(func_id);
             }
@@ -783,6 +800,7 @@ fn insert_bool_const_before(func: &mut Function, val: bool, before_inst_id: Inst
 /// to `Cast(Bool→Float(64))` (emits `Number(expr)`).
 fn coerce_bool_cmp_operands(
     func: &mut Function,
+    all_cmp_fids: &HashSet<FuncId>,
     bool_returning: &HashSet<FuncId>,
     _dynamic_declared_fields: &HashSet<String>,
 ) -> bool {
@@ -796,7 +814,9 @@ fn coerce_bool_cmp_operands(
         .iter()
         .filter_map(|(id, inst)| {
             let (a, b) = match &inst.op {
-                Op::Cmp(_, a, b) => (*a, *b),
+                Op::Call { func: fid, args } if all_cmp_fids.contains(fid) && args.len() == 2 => {
+                    (args[0], args[1])
+                }
                 _ => return None,
             };
             let a_bool = needs_arith_coerce(func, a, &result_map, bool_returning, cmp_fields);
@@ -826,14 +846,18 @@ fn coerce_bool_cmp_operands(
             if let Some(bool_val) = try_get_const(func, rhs).and_then(|c| numeric_const_to_bool(&c))
             {
                 let new_rhs = insert_bool_const_before(func, bool_val, inst_id);
-                if let Op::Cmp(_, _, b) = &mut func.insts[inst_id].op {
-                    *b = new_rhs;
+                if let Op::Call { args, .. } = &mut func.insts[inst_id].op {
+                    if args.len() == 2 {
+                        args[1] = new_rhs;
+                    }
                 }
             } else {
                 // Non-constant or not 0/1 — cast the bool side to number
                 let new_lhs = insert_cast_before(func, lhs, inst_id, Type::Float(64));
-                if let Op::Cmp(_, a, _) = &mut func.insts[inst_id].op {
-                    *a = new_lhs;
+                if let Op::Call { args, .. } = &mut func.insts[inst_id].op {
+                    if args.len() == 2 {
+                        args[0] = new_lhs;
+                    }
                 }
             }
         } else if rhs_is_bool {
@@ -841,14 +865,18 @@ fn coerce_bool_cmp_operands(
             if let Some(bool_val) = try_get_const(func, lhs).and_then(|c| numeric_const_to_bool(&c))
             {
                 let new_lhs = insert_bool_const_before(func, bool_val, inst_id);
-                if let Op::Cmp(_, a, _) = &mut func.insts[inst_id].op {
-                    *a = new_lhs;
+                if let Op::Call { args, .. } = &mut func.insts[inst_id].op {
+                    if args.len() == 2 {
+                        args[0] = new_lhs;
+                    }
                 }
             } else {
                 // Non-constant or not 0/1 — cast the bool side to number
                 let new_rhs = insert_cast_before(func, rhs, inst_id, Type::Float(64));
-                if let Op::Cmp(_, _, b) = &mut func.insts[inst_id].op {
-                    *b = new_rhs;
+                if let Op::Call { args, .. } = &mut func.insts[inst_id].op {
+                    if args.len() == 2 {
+                        args[1] = new_rhs;
+                    }
                 }
             }
         }
@@ -872,7 +900,7 @@ fn coerce_bool_cmp_operands(
 /// Only fires for equality comparisons where the other operand originates
 /// from a function call (which could return an object-or-noone), preventing
 /// false positives on genuine `counter === -4` patterns.
-fn coerce_noone_sentinel(func: &mut Function) -> bool {
+fn coerce_noone_sentinel(func: &mut Function, eq_cmp_fids: &HashSet<FuncId>) -> bool {
     fn is_noone_const(c: &Constant) -> bool {
         match c {
             Constant::Float(f) => *f == -4.0,
@@ -898,14 +926,12 @@ fn coerce_noone_sentinel(func: &mut Function) -> bool {
         .insts
         .iter()
         .filter_map(|(id, inst)| {
-            let (kind, a, b) = match &inst.op {
-                Op::Cmp(kind, a, b) => (kind, *a, *b),
+            let (a, b) = match &inst.op {
+                Op::Call { func: fid, args } if eq_cmp_fids.contains(fid) && args.len() == 2 => {
+                    (args[0], args[1])
+                }
                 _ => return None,
             };
-            // Only equality comparisons — noone checks are always == or !=.
-            if !matches!(kind, CmpKind::Eq | CmpKind::Ne) {
-                return None;
-            }
             let a_noone = try_get_const(func, a).is_some_and(|c| is_noone_const(&c));
             let b_noone = try_get_const(func, b).is_some_and(|c| is_noone_const(&c));
             if !a_noone && !b_noone {
@@ -942,8 +968,10 @@ fn coerce_noone_sentinel(func: &mut Function) -> bool {
                     }
                 }
             }
-            if let Op::Cmp(_, a, _) = &mut func.insts[inst_id].op {
-                *a = null_vid;
+            if let Op::Call { args, .. } = &mut func.insts[inst_id].op {
+                if args.len() == 2 {
+                    args[0] = null_vid;
+                }
             }
         }
         if replace_b {
@@ -961,8 +989,10 @@ fn coerce_noone_sentinel(func: &mut Function) -> bool {
                     }
                 }
             }
-            if let Op::Cmp(_, _, b) = &mut func.insts[inst_id].op {
-                *b = null_vid;
+            if let Op::Call { args, .. } = &mut func.insts[inst_id].op {
+                if args.len() == 2 {
+                    args[1] = null_vid;
+                }
             }
         }
     }

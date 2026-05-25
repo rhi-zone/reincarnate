@@ -1015,16 +1015,10 @@ fn inverted_cmp_not_wrapped_in_not() {
     // Find the If statement and check its condition.
     let if_stmt = ast.body.iter().find(|s| matches!(s, Stmt::If { .. }));
     if let Some(Stmt::If { cond, .. }) = if_stmt {
-        // Condition should be inverted Cmp (Ge), not Not(Cmp(Lt)).
+        // Condition should be inverted cmp_ge call, not Not(cmp_lt(...)).
         assert!(
-            matches!(
-                cond,
-                Expr::Cmp {
-                    kind: CmpKind::Ge,
-                    ..
-                }
-            ),
-            "Expected inverted Cmp (Ge), not Not wrapper: {cond:?}"
+            matches!(cond, Expr::Call { func, .. } if func == "cmp_ge"),
+            "Expected inverted cmp_ge call, not Not wrapper: {cond:?}"
         );
     }
     // If the if was eliminated by AST passes, that's also fine.

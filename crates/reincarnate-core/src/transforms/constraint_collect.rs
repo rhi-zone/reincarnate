@@ -1000,13 +1000,6 @@ pub fn collect_function(
                     }
                 }
 
-                // Comparison — result is Bool.
-                Op::Cmp(_, _, _) => {
-                    if let Some(rv) = result_var {
-                        constraints.push(TypeConstraint::Equal(rv, Type::Bool));
-                    }
-                }
-
                 // TypeCheck — result is Bool.
                 Op::TypeCheck(_, _) => {
                     if let Some(rv) = result_var {

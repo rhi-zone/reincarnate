@@ -2,8 +2,8 @@ use std::collections::HashSet;
 
 use reincarnate_core::entity::EntityRef;
 use reincarnate_core::ir::block::BlockId;
-use reincarnate_core::ir::func::Function;
-use reincarnate_core::ir::inst::{CmpKind, Op, Terminator};
+use reincarnate_core::ir::func::{FuncId, Function};
+use reincarnate_core::ir::inst::{Op, Terminator};
 use reincarnate_core::ir::value::{Constant, ValueId};
 
 /// Detect BrIf chains that represent switch statements and rewrite them
@@ -20,7 +20,7 @@ use reincarnate_core::ir::value::{Constant, ValueId};
 ///
 /// Each block in the chain tests one case. The switch value is threaded
 /// through block parameters. The chain ends with a `Br` to the default body.
-pub(super) fn detect_switches(func: &mut Function) {
+pub(super) fn detect_switches(func: &mut Function, cmp_eq_fid: Option<FuncId>) {
     let num_blocks = func.blocks.len();
     let mut consumed = HashSet::new();
 
@@ -31,7 +31,7 @@ pub(super) fn detect_switches(func: &mut Function) {
         }
 
         // Try to extract a switch chain starting at this block.
-        if let Some(chain) = extract_switch_chain(func, block_id) {
+        if let Some(chain) = extract_switch_chain(func, block_id, cmp_eq_fid) {
             if chain.cases.len() < 2 {
                 continue;
             }
@@ -60,9 +60,13 @@ struct SwitchChain {
 }
 
 /// Try to extract a switch chain starting from `block_id`.
-fn extract_switch_chain(func: &Function, block_id: BlockId) -> Option<SwitchChain> {
+fn extract_switch_chain(
+    func: &Function,
+    block_id: BlockId,
+    cmp_eq_fid: Option<FuncId>,
+) -> Option<SwitchChain> {
     let (switch_value, case_const, case_target, case_args, next_block, next_args, remove_insts) =
-        match_switch_block(func, block_id, None)?;
+        match_switch_block(func, block_id, None, cmp_eq_fid)?;
 
     let mut cases = vec![(case_const, case_target, case_args)];
     let mut intermediate = Vec::new();
@@ -102,7 +106,7 @@ fn extract_switch_chain(func: &Function, block_id: BlockId) -> Option<SwitchChai
         };
 
         if let Some((_, case_const, case_target, case_args, next, next_incoming, _)) =
-            match_switch_block(func, current, Some(next_switch_val))
+            match_switch_block(func, current, Some(next_switch_val), cmp_eq_fid)
         {
             // Remap case_args and next_incoming through the substitution so that
             // after `current` is cleared, all ValueIds trace back to the first block.
@@ -145,6 +149,7 @@ fn match_switch_block(
     func: &Function,
     block_id: BlockId,
     expected_switch_val: Option<ValueId>,
+    cmp_eq_fid: Option<FuncId>,
 ) -> Option<SwitchBlockMatch> {
     let block = &func.blocks[block_id];
 
@@ -166,12 +171,14 @@ fn match_switch_block(
         _ => return None,
     };
 
-    // The condition must be a Cmp(Eq, lhs, rhs) where one operand is the
+    // The condition must be a cmp_eq(lhs, rhs) call where one operand is the
     // switch value (or a Copy of it) and the other is a Const.
     let cond_inst_id = find_def_inst(func, block_id, cond_val)?;
     let cond_inst = &func.insts[cond_inst_id];
     let (cmp_lhs, cmp_rhs) = match &cond_inst.op {
-        Op::Cmp(CmpKind::Eq, lhs, rhs) => (*lhs, *rhs),
+        Op::Call { func: fid, args } if Some(*fid) == cmp_eq_fid && args.len() == 2 => {
+            (args[0], args[1])
+        }
         _ => return None,
     };
 

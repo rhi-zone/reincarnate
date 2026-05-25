@@ -252,7 +252,6 @@ fn is_deferrable(op: &Op, pure_fids: &std::collections::HashSet<crate::ir::func:
     matches!(
         op,
         Op::Const(_)
-            | Op::Cmp(..)
             | Op::Cast(..)
             | Op::GetField { .. }
             | Op::GetIndex { .. }

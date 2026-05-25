@@ -1008,6 +1008,38 @@ fn lower_builtin_opt(op_name: &str, args: &[Expr], ctx: &LowerCtx) -> Option<JsE
             })
         }
 
+        // --- Comparison builtins ---
+        "cmp_eq" => Some(JsExpr::Cmp {
+            kind: CmpKind::Eq,
+            lhs: Box::new(lower_expr(&args[0], ctx)),
+            rhs: Box::new(lower_expr(&args[1], ctx)),
+        }),
+        "cmp_ne" => Some(JsExpr::Cmp {
+            kind: CmpKind::Ne,
+            lhs: Box::new(lower_expr(&args[0], ctx)),
+            rhs: Box::new(lower_expr(&args[1], ctx)),
+        }),
+        "cmp_lt" => Some(JsExpr::Cmp {
+            kind: CmpKind::Lt,
+            lhs: Box::new(lower_expr(&args[0], ctx)),
+            rhs: Box::new(lower_expr(&args[1], ctx)),
+        }),
+        "cmp_le" => Some(JsExpr::Cmp {
+            kind: CmpKind::Le,
+            lhs: Box::new(lower_expr(&args[0], ctx)),
+            rhs: Box::new(lower_expr(&args[1], ctx)),
+        }),
+        "cmp_ge" => Some(JsExpr::Cmp {
+            kind: CmpKind::Ge,
+            lhs: Box::new(lower_expr(&args[0], ctx)),
+            rhs: Box::new(lower_expr(&args[1], ctx)),
+        }),
+        "cmp_gt" => Some(JsExpr::Cmp {
+            kind: CmpKind::Gt,
+            lhs: Box::new(lower_expr(&args[0], ctx)),
+            rhs: Box::new(lower_expr(&args[1], ctx)),
+        }),
+
         // --- Not a core builtin ---
         _ => None,
     }

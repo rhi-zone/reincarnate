@@ -267,7 +267,8 @@ pub fn translate_code_entry(
     }
 
     let mut func = fb.build();
-    detect_switches(&mut func);
+    let cmp_eq_fid = ctx.registry.get("cmp_eq").copied();
+    detect_switches(&mut func, cmp_eq_fid);
     Ok((func, extra_funcs))
 }
 

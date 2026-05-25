@@ -887,7 +887,6 @@ fn test_arithmetic_add_sub_mul() {
 #[test]
 fn test_cmp_equal_emits_cmp_eq() {
     use datawin::bytecode::types::ComparisonKind;
-    use reincarnate_core::ir::inst::CmpKind;
 
     let instructions = vec![
         pushi(10),
@@ -918,18 +917,24 @@ fn test_cmp_equal_emits_cmp_eq() {
         &obj_names,
         &fn_names,
         &script_names,
-        &EMPTY_REGISTRY,
+        &CORE_MODULE.runtime_registry,
     );
+
+    let cmp_eq_fid = CORE_MODULE
+        .runtime_registry
+        .get("cmp_eq")
+        .copied()
+        .expect("cmp_eq must be registered in CORE_MODULE");
 
     let (func, _) = translate_code_entry(&bytecode, "test_cmp", &ctx).expect("translation failed");
     let ops = collect_ops(&func);
 
     let has_cmp_eq = ops
         .iter()
-        .any(|op| matches!(op, Op::Cmp(CmpKind::Eq, _, _)));
+        .any(|op| matches!(op, Op::Call { func: f, args } if *f == cmp_eq_fid && args.len() == 2));
     assert!(
         has_cmp_eq,
-        "Cmp with Equal must produce Op::Cmp(Eq, ..); ops: {ops:?}"
+        "Cmp with Equal must produce Op::Call to cmp_eq; ops: {ops:?}"
     );
 }
 

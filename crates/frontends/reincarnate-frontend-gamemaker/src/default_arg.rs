@@ -33,7 +33,6 @@ use std::collections::HashSet;
 
 use reincarnate_core::error::CoreError;
 use reincarnate_core::ir::func::FuncId;
-use reincarnate_core::ir::inst::CmpKind;
 use reincarnate_core::ir::inst::Terminator;
 use reincarnate_core::ir::ty::Type;
 use reincarnate_core::ir::{BlockId, Constant, Function, Module, Op, ValueId};
@@ -51,13 +50,14 @@ impl Transform for GmlDefaultArgRecovery {
         mut module: Module,
         dirty: Option<&HashSet<FuncId>>,
     ) -> Result<TransformResult, CoreError> {
+        let cmp_eq_fid = module.lookup_runtime("cmp_eq");
         let mut changed_funcs: HashSet<FuncId> = HashSet::new();
         for func_id in module.functions.keys().collect::<Vec<_>>() {
             if dirty.is_some_and(|d| !d.contains(&func_id)) {
                 continue;
             }
             let func = &mut module.functions[func_id];
-            let mut func_changed = recover_defaults(func);
+            let mut func_changed = recover_defaults(func, cmp_eq_fid);
             func_changed |= set_variadic_defaults(func);
             if func_changed {
                 changed_funcs.insert(func_id);
@@ -75,7 +75,7 @@ impl Transform for GmlDefaultArgRecovery {
 impl PureIrPass for GmlDefaultArgRecovery {}
 
 /// Try to recover default argument values from the entry block chain.
-fn recover_defaults(func: &mut Function) -> bool {
+fn recover_defaults(func: &mut Function, cmp_eq_fid: Option<FuncId>) -> bool {
     // Need at least 2 params (self + one arg) to have default-check patterns.
     if func.sig.params.len() < 2 {
         return false;
@@ -87,7 +87,7 @@ fn recover_defaults(func: &mut Function) -> bool {
     }
 
     // Collect recovered defaults: (param_index, constant).
-    let matches = scan_default_chain(func);
+    let matches = scan_default_chain(func, cmp_eq_fid);
     if matches.is_empty() {
         return false;
     }
@@ -247,7 +247,7 @@ struct DefaultCheckMatch {
 
 /// Walk the entry block chain looking for the `if (arg === undefined) arg = default` pattern.
 /// Returns match info for each recovered default.
-fn scan_default_chain(func: &Function) -> Vec<DefaultCheckMatch> {
+fn scan_default_chain(func: &Function, cmp_eq_fid: Option<FuncId>) -> Vec<DefaultCheckMatch> {
     let mut results = Vec::new();
     let mut current_block = func.entry;
 
@@ -263,7 +263,7 @@ fn scan_default_chain(func: &Function) -> Vec<DefaultCheckMatch> {
     }
 
     while let Some((param_idx, constant, next_block)) =
-        try_match_default_check(func, current_block, &entry_params)
+        try_match_default_check(func, current_block, &entry_params, cmp_eq_fid)
     {
         results.push(DefaultCheckMatch {
             param_idx,
@@ -281,7 +281,7 @@ fn scan_default_chain(func: &Function) -> Vec<DefaultCheckMatch> {
 ///
 /// Pattern:
 ///   v_undef = const null           (GML `undefined` compiled to IR Constant::Null)
-///   v_cmp = cmp.eq param[N], v_undef
+///   v_cmp = cmp_eq(param[N], v_undef)
 ///   br_if v_cmp, then_block, else_block(param[N])
 ///
 /// then_block:
@@ -293,6 +293,7 @@ fn try_match_default_check(
     func: &Function,
     block_id: BlockId,
     entry_params: &[ValueId],
+    cmp_eq_fid: Option<FuncId>,
 ) -> Option<(usize, Constant, BlockId)> {
     let block = &func.blocks[block_id];
     let insts = &block.insts;
@@ -310,22 +311,26 @@ fn try_match_default_check(
     }
     let undefined_val = undefined_val?;
 
-    // Find a Cmp.Eq comparing an entry param with the undefined value.
+    // Find a cmp_eq call comparing an entry param with the undefined value.
     let mut cmp_val = None;
     let mut checked_param_idx = None;
     for &inst_id in insts {
         let inst = &func.insts[inst_id];
-        if let Op::Cmp(CmpKind::Eq, lhs, rhs) = &inst.op {
+        if let Op::Call { func: fid, args } = &inst.op {
+            if Some(*fid) != cmp_eq_fid || args.len() != 2 {
+                continue;
+            }
+            let (lhs, rhs) = (args[0], args[1]);
             // Check if one side is an entry param and the other is the undefined sentinel.
-            if *rhs == undefined_val {
-                if let Some(idx) = entry_params.iter().position(|&p| p == *lhs) {
+            if rhs == undefined_val {
+                if let Some(idx) = entry_params.iter().position(|&p| p == lhs) {
                     cmp_val = inst.result;
                     checked_param_idx = Some(idx);
                     break;
                 }
             }
-            if *lhs == undefined_val {
-                if let Some(idx) = entry_params.iter().position(|&p| p == *rhs) {
+            if lhs == undefined_val {
+                if let Some(idx) = entry_params.iter().position(|&p| p == rhs) {
                     cmp_val = inst.result;
                     checked_param_idx = Some(idx);
                     break;
@@ -390,6 +395,7 @@ fn try_match_default_check(
 mod tests {
     use super::*;
     use reincarnate_core::ir::builder::FunctionBuilder;
+    use reincarnate_core::ir::inst::CmpKind;
     use reincarnate_core::ir::ty::{FunctionSig, Type};
     use reincarnate_core::ir::ModuleBuilder;
     use reincarnate_core::ir::Visibility;

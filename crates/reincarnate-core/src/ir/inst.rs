@@ -70,7 +70,6 @@ pub enum Op {
     Const(Constant),
 
     // -- Comparison --
-    Cmp(CmpKind, ValueId, ValueId),
     /// Conditional select: `cond ? on_true : on_false`
     Select {
         cond: ValueId,
@@ -84,18 +83,12 @@ pub enum Op {
     /// Load from a pointer/reference.
     Load(ValueId),
     /// Store to a pointer/reference.
-    Store {
-        ptr: ValueId,
-        value: ValueId,
-    },
+    Store { ptr: ValueId, value: ValueId },
     /// Read a field from a struct or object instance.
     /// For reference types (`Array`, `Map`, `Instance`), returns a live reference —
     /// mutations through the result via `SetIndex`/`SetField` propagate back to the source.
     /// Each backend must preserve this contract.
-    GetField {
-        object: ValueId,
-        field: String,
-    },
+    GetField { object: ValueId, field: String },
     /// Write a field on a struct or object instance.
     /// For reference types, see `GetField` note on reference semantics.
     SetField {
@@ -105,10 +98,7 @@ pub enum Op {
     },
     /// Read an element from an array or map by index.
     /// For reference types, returns a live reference — see `GetField` for the contract.
-    GetIndex {
-        collection: ValueId,
-        index: ValueId,
-    },
+    GetIndex { collection: ValueId, index: ValueId },
     /// Write an element to an array or map by index.
     /// Mutates in place for reference types — no copy.
     SetIndex {
@@ -119,10 +109,7 @@ pub enum Op {
 
     // -- Calls --
     /// Direct function call.
-    Call {
-        func: FuncId,
-        args: Vec<ValueId>,
-    },
+    Call { func: FuncId, args: Vec<ValueId> },
     /// Create a closure: packages a function with captured outer-scope values.
     /// `captures` are bound to the function's capture params (in declaration order).
     MakeClosure {
@@ -130,10 +117,7 @@ pub enum Op {
         captures: Vec<ValueId>,
     },
     /// Indirect call through a value (function pointer / closure).
-    CallIndirect {
-        callee: ValueId,
-        args: Vec<ValueId>,
-    },
+    CallIndirect { callee: ValueId, args: Vec<ValueId> },
     /// System trait method call — string-based, resolved at codegen.
     SystemCall {
         system: String,
@@ -168,10 +152,7 @@ pub enum Op {
     /// Yield a value from a coroutine.
     Yield(Option<ValueId>),
     /// Create a coroutine from a function reference.
-    CoroutineCreate {
-        func: String,
-        args: Vec<ValueId>,
-    },
+    CoroutineCreate { func: String, args: Vec<ValueId> },
     /// Resume a coroutine, returning the yielded value.
     CoroutineResume(ValueId),
 
@@ -188,7 +169,6 @@ impl Op {
     pub fn variant_name(&self) -> &'static str {
         match self {
             Op::Const(_) => "Const",
-            Op::Cmp(..) => "Cmp",
             Op::Select { .. } => "Select",
             Op::Alloc(_) => "Alloc",
             Op::Load(_) => "Load",

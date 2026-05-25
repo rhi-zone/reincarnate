@@ -793,9 +793,10 @@ impl Module {
     /// `Op::TypeCheck(x, Type::Array(...))`, which the TypeScript backend lowers
     /// to `Array.isArray(x)`.  Naming a named builtin for what the IR already
     /// expresses structurally is a Law 2 violation.
+    /// Comparison ops = 6 (cmp_eq, cmp_ne, cmp_lt, cmp_le, cmp_ge, cmp_gt) → 83.
     /// Polymorphic `_any` stubs are GML-specific and registered by the GML frontend,
     /// not by `register_core_builtins`, so they are not counted here.
-    pub const NUM_CORE_BUILTINS: u32 = 78;
+    pub const NUM_CORE_BUILTINS: u32 = 84;
 
     pub fn new(name: String) -> Self {
         let mut module = Self {
@@ -1127,6 +1128,19 @@ impl Module {
             },
         );
         self.core_builtin_fids.insert(fid);
+
+        // Comparison: cmp_eq, cmp_ne, cmp_lt, cmp_le, cmp_ge, cmp_gt
+        // Parameters are (Unknown, Unknown) → Bool so the signature accepts
+        // any comparable value without constraining the operand types.
+        let cmp_sig = || FunctionSig {
+            params: vec![Type::Unknown, Type::Unknown],
+            return_ty: Type::Bool,
+            ..Default::default()
+        };
+        for name in &["cmp_eq", "cmp_ne", "cmp_lt", "cmp_le", "cmp_ge", "cmp_gt"] {
+            let fid = self.register_runtime(*name, cmp_sig());
+            self.core_builtin_fids.insert(fid);
+        }
     }
 
     /// Register a runtime/builtin function (e.g. `"add_f64"`).
