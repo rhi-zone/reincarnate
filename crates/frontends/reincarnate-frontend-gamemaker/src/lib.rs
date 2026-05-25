@@ -1848,6 +1848,114 @@ fn register_gml_backend_primitives(module: &mut Module) {
             ..Default::default()
         },
     );
+    // pass() -> Void  — GML no-op used as a placeholder call.
+    module.register_runtime(
+        "pass",
+        FunctionSig {
+            params: vec![],
+            return_ty: Type::Void,
+            ..Default::default()
+        },
+    );
+    // __try_hook__(begin: f64, end: f64) -> Void  — GML try/catch instrumentation no-op.
+    module.register_runtime(
+        "__try_hook__",
+        FunctionSig {
+            params: vec![Type::Float(64), Type::Float(64)],
+            return_ty: Type::Void,
+            ..Default::default()
+        },
+    );
+    // __try_unhook__() -> Void  — GML try/catch instrumentation no-op.
+    module.register_runtime(
+        "__try_unhook__",
+        FunctionSig {
+            params: vec![],
+            return_ty: Type::Void,
+            ..Default::default()
+        },
+    );
+    // approach(value: f64, target: f64, amount: f64) -> f64
+    // GML approach() — moves value toward target by at most amount.
+    module.register_runtime(
+        "approach",
+        FunctionSig {
+            params: vec![Type::Float(64), Type::Float(64), Type::Float(64)],
+            return_ty: Type::Float(64),
+            ..Default::default()
+        },
+    );
+    // array_pop_arr(arr) -> Unknown  — emitted as arr.pop()
+    module.register_runtime(
+        "array_pop_arr",
+        FunctionSig {
+            params: vec![Type::Array(Box::new(Type::Unknown))],
+            return_ty: Type::Unknown,
+            ..Default::default()
+        },
+    );
+    // array_delete_arr(arr, index, count) -> Void  — emitted as arr.splice(index, count)
+    module.register_runtime(
+        "array_delete_arr",
+        FunctionSig {
+            params: vec![
+                Type::Array(Box::new(Type::Unknown)),
+                Type::Float(64),
+                Type::Float(64),
+            ],
+            return_ty: Type::Void,
+            ..Default::default()
+        },
+    );
+    // array_insert_arr(arr, index, val) -> Void  — emitted as arr.splice(index, 0, val)
+    module.register_runtime(
+        "array_insert_arr",
+        FunctionSig {
+            params: vec![
+                Type::Array(Box::new(Type::Unknown)),
+                Type::Float(64),
+                Type::Unknown,
+            ],
+            return_ty: Type::Void,
+            ..Default::default()
+        },
+    );
+    // array_resize_arr(arr, newSize) -> Void  — emitted as arr.length = newSize
+    module.register_runtime(
+        "array_resize_arr",
+        FunctionSig {
+            params: vec![Type::Array(Box::new(Type::Unknown)), Type::Float(64)],
+            return_ty: Type::Void,
+            ..Default::default()
+        },
+    );
+    // array_get_index_arr(arr, value) -> Float64  — emitted as arr.indexOf(value)
+    module.register_runtime(
+        "array_get_index_arr",
+        FunctionSig {
+            params: vec![Type::Array(Box::new(Type::Unknown)), Type::Unknown],
+            return_ty: Type::Float(64),
+            ..Default::default()
+        },
+    );
+    // array_sort_arr(arr, ascending) -> Void  — emitted as arr.sort(comparator)
+    module.register_runtime(
+        "array_sort_arr",
+        FunctionSig {
+            params: vec![Type::Array(Box::new(Type::Unknown)), Type::Bool],
+            return_ty: Type::Void,
+            ..Default::default()
+        },
+    );
+    // array_unique_arr(arr) -> Array(Unknown)  — emitted as [...new Set(arr)]
+    module.register_runtime(
+        "array_unique_arr",
+        FunctionSig {
+            params: vec![Type::Array(Box::new(Type::Unknown))],
+            return_ty: Type::Array(Box::new(Type::Unknown)),
+            ..Default::default()
+        },
+    );
 }
 
 pub(crate) fn register_gml_syscall_intrinsics(module: &mut Module, rt_ty: Type) {
