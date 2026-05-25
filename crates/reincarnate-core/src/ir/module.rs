@@ -785,17 +785,17 @@ impl Module {
     /// `FuncId::new(Self::NUM_CORE_BUILTINS)` instead of `FuncId::new(0)`.
     ///
     /// Breakdown: 5 arith ops × 4 types = 20, concat_str = 1, neg × 4 = 4,
-    /// not/and/or bool = 3, 5 bitwise ops × 1 type (i32) = 5, bitnot × 1 = 1 → 34.
+    /// not/and/or bool = 3, 6 bitwise ops × 1 type (i32) = 6, bitnot × 1 = 1 → 35.
     /// Math single-arg f64 = 17, math binary f64 = 5, string ops = 12, array ops = 2,
-    /// coercion ops = 5 (to_number_unknown, to_number_str, to_string_unknown, to_i32_f64, to_u32_f64) → 75.
-    /// predicate ops = 1 (is_struct_unknown) → 76.
+    /// coercion ops = 5 (to_number_unknown, to_number_str, to_string_unknown, to_i32_f64, to_u32_f64) → 76.
+    /// predicate ops = 1 (is_struct_unknown) → 77.
     /// `is_array_unknown` was removed: array membership is expressed as
     /// `Op::TypeCheck(x, Type::Array(...))`, which the TypeScript backend lowers
     /// to `Array.isArray(x)`.  Naming a named builtin for what the IR already
     /// expresses structurally is a Law 2 violation.
     /// Polymorphic `_any` stubs are GML-specific and registered by the GML frontend,
     /// not by `register_core_builtins`, so they are not counted here.
-    pub const NUM_CORE_BUILTINS: u32 = 77;
+    pub const NUM_CORE_BUILTINS: u32 = 78;
 
     pub fn new(name: String) -> Self {
         let mut module = Self {
@@ -891,7 +891,7 @@ impl Module {
         // Float(64) operands are a GML-specific behaviour (bitwise on Reals via
         // implicit ToInt32 coercion).  The GML frontend coerces Float(64) → Int(32)
         // before emitting these ops and coerces the Int(32) result back to Float(64).
-        for op in &["bitand", "bitor", "bitxor", "shl", "shr"] {
+        for op in &["bitand", "bitor", "bitxor", "shl", "shr", "lshr"] {
             let fid = self.register_runtime(format!("{op}_i32"), bin(Type::Int(32)));
             self.core_builtin_fids.insert(fid);
         }

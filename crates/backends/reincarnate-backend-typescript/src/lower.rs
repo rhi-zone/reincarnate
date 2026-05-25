@@ -500,6 +500,7 @@ fn lower_builtin_opt(op_name: &str, args: &[Expr], ctx: &LowerCtx) -> Option<JsE
         // --- Bitwise binary ---
         "shl_i32" => Some(bin_op(BinOp::Shl, args, ctx)),
         "shr_i32" => Some(bin_op(BinOp::Shr, args, ctx)),
+        "lshr_i32" => Some(bin_op(BinOp::Ushr, args, ctx)),
         "bitand_i32" => Some(bin_op(BinOp::BitAnd, args, ctx)),
         "bitor_i32" => Some(bin_op(BinOp::BitOr, args, ctx)),
         "bitxor_i32" => Some(bin_op(BinOp::BitXor, args, ctx)),
