@@ -124,6 +124,8 @@ pub fn register_runtime_bodies(module: &mut Module) {
     attach_body_chr(module);
     attach_body_ln(module);
     attach_body_math_get_epsilon(module);
+    attach_body_is_nan(module);
+    attach_body_is_infinity(module);
     attach_body_is_bool(module);
     attach_body_is_real(module);
     attach_body_is_string(module);
@@ -1921,6 +1923,34 @@ fn attach_body_ln(module: &mut Module) {
 fn attach_body_math_get_epsilon(module: &mut Module) {
     attach_runtime_body(module, "math_get_epsilon", &[], Type::Float(64), |b| {
         let result = b.const_float(0.00001);
+        b.ret(Some(result));
+    });
+}
+
+// ---------------------------------------------------------------------------
+// is_nan(x: Float64) -> Bool
+// GML semantics: true iff x is IEEE 754 NaN.
+// JS emit: Number.isNaN(x)
+// ---------------------------------------------------------------------------
+
+fn attach_body_is_nan(module: &mut Module) {
+    attach_runtime_body(module, "is_nan", &[Type::Float(64)], Type::Bool, |b| {
+        let x = b.param(0);
+        let result = b.call_named("is_nan_f64", &[x], Type::Bool);
+        b.ret(Some(result));
+    });
+}
+
+// ---------------------------------------------------------------------------
+// is_infinity(x: Float64) -> Bool
+// GML semantics: true iff x is +Infinity or -Infinity.
+// JS emit: !Number.isFinite(x) && !Number.isNaN(x)
+// ---------------------------------------------------------------------------
+
+fn attach_body_is_infinity(module: &mut Module) {
+    attach_runtime_body(module, "is_infinity", &[Type::Float(64)], Type::Bool, |b| {
+        let x = b.param(0);
+        let result = b.call_named("is_infinite_f64", &[x], Type::Bool);
         b.ret(Some(result));
     });
 }
