@@ -69,14 +69,6 @@ pub enum Op {
     /// Load a compile-time constant.
     Const(Constant),
 
-    // -- Comparison --
-    /// Conditional select: `cond ? on_true : on_false`
-    Select {
-        cond: ValueId,
-        on_true: ValueId,
-        on_false: ValueId,
-    },
-
     // -- Memory / fields --
     /// Allocate a local variable.
     Alloc(Type),
@@ -169,7 +161,6 @@ impl Op {
     pub fn variant_name(&self) -> &'static str {
         match self {
             Op::Const(_) => "Const",
-            Op::Select { .. } => "Select",
             Op::Alloc(_) => "Alloc",
             Op::Load(_) => "Load",
             Op::Store { .. } => "Store",

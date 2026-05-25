@@ -554,16 +554,6 @@ impl<'a> EmitCtx<'a> {
         Some(match op {
             Op::Const(c) => Expr::Literal(c.clone()),
 
-            Op::Select {
-                cond,
-                on_true,
-                on_false,
-            } => Expr::Ternary {
-                cond: Box::new(self.build_val(*cond)),
-                then_val: Box::new(self.build_val(*on_true)),
-                else_val: Box::new(self.build_val(*on_false)),
-            },
-
             Op::Load(ptr) => self.build_val(*ptr),
             Op::GetField { object, field } => Expr::Field {
                 object: Box::new(self.build_val(*object)),
@@ -834,7 +824,7 @@ impl<'a> EmitCtx<'a> {
     /// workaround (cast to Number) that the old Op::BitAnd/BitOr/BitXor arms
     /// applied before the IR variants were removed.
     fn build_builtin_expr(&mut self, op_name: &str, args: &[ValueId]) -> Expr {
-        // Short-circuit boolean ops are control flow, not arithmetic — emit
+        // Short-circuit boolean ops and select are control flow, not arithmetic — emit
         // as dedicated AST variants rather than opaque builtin calls.
         match op_name {
             "and_bool" => {
@@ -847,6 +837,13 @@ impl<'a> EmitCtx<'a> {
                 return Expr::LogicalOr {
                     lhs: Box::new(self.build_val(args[0])),
                     rhs: Box::new(self.build_val(args[1])),
+                };
+            }
+            "select" => {
+                return Expr::Ternary {
+                    cond: Box::new(self.build_val(args[0])),
+                    then_val: Box::new(self.build_val(args[1])),
+                    else_val: Box::new(self.build_val(args[2])),
                 };
             }
             _ => {}

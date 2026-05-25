@@ -546,6 +546,20 @@ impl FunctionBuilder {
         self.call_named(name, &[a, b], Type::Bool)
     }
 
+    /// Emit a conditional select: `cond ? on_true : on_false`.
+    ///
+    /// Lowered via the `"select"` core builtin so the emitter dispatches to
+    /// a native ternary expression rather than an opaque function call.
+    pub fn select(
+        &mut self,
+        cond: ValueId,
+        on_true: ValueId,
+        on_false: ValueId,
+        result_ty: Type,
+    ) -> ValueId {
+        self.call_named("select", &[cond, on_true, on_false], result_ty)
+    }
+
     pub fn not(&mut self, a: ValueId) -> ValueId {
         self.call_named("not_bool", &[a], Type::Bool)
     }

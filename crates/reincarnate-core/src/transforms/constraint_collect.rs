@@ -760,20 +760,6 @@ pub fn collect_function(
                     }
                 }
 
-                // Select — result is compatible with both branches.
-                Op::Select {
-                    on_true, on_false, ..
-                } => {
-                    if let Some(rv) = result_var {
-                        if let Some(t_var) = var_for(*on_true, &value_vars) {
-                            constraints.push(TypeConstraint::Equal(rv.clone(), t_var));
-                        }
-                        if let Some(f_var) = var_for(*on_false, &value_vars) {
-                            constraints.push(TypeConstraint::Equal(rv, f_var));
-                        }
-                    }
-                }
-
                 // GetField — emit HasField on the object type.
                 Op::GetField { object, field } => {
                     if let (Some(obj_var), Some(rv)) = (var_for(*object, &value_vars), result_var) {
@@ -928,12 +914,30 @@ pub fn collect_function(
                         emit_type_rule_constraints(
                             rule,
                             args,
-                            result_var,
+                            result_var.clone(),
                             &const_strings,
                             global_name_vars,
                             &value_vars,
                             &mut constraints,
                         );
+                    }
+                    // select(cond, on_true, on_false) — result matches both branches.
+                    // The signature uses Unknown for args/return, so we emit the
+                    // branch-equality constraints here instead of relying on param types.
+                    if module
+                        .lookup_runtime("select")
+                        .is_some_and(|fid| fid == *callee_fid)
+                    {
+                        if let Some(rv) = result_var {
+                            if args.len() == 3 {
+                                if let Some(t_var) = var_for(args[1], &value_vars) {
+                                    constraints.push(TypeConstraint::Equal(rv.clone(), t_var));
+                                }
+                                if let Some(f_var) = var_for(args[2], &value_vars) {
+                                    constraints.push(TypeConstraint::Equal(rv, f_var));
+                                }
+                            }
+                        }
                     }
                 }
 

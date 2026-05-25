@@ -659,10 +659,11 @@ fn cleanup_unreachable(func: &mut Function) -> bool {
 ///
 /// When a `BrIf` has `then_target == else_target`, replace it with a `Br`.
 /// For argument positions where `then_args[i] != else_args[i]`, insert a
-/// `Select { cond, on_true, on_false }` instruction to merge the values.
+/// `Call { func: select_fid, args: [cond, on_true, on_false] }` instruction
+/// to merge the values.
 ///
 /// Returns true if any changes were made.
-fn collapse_same_target_brif(func: &mut Function) -> bool {
+fn collapse_same_target_brif(func: &mut Function, select_fid: FuncId) -> bool {
     let mut changed = false;
 
     for block_id in func.blocks.keys().collect::<Vec<_>>() {
@@ -701,10 +702,9 @@ fn collapse_same_target_brif(func: &mut Function) -> bool {
                     }
                 }
                 let select_inst = func.insts.push(Inst {
-                    op: Op::Select {
-                        cond,
-                        on_true: *t_arg,
-                        on_false: *e_arg,
+                    op: Op::Call {
+                        func: select_fid,
+                        args: vec![cond, *t_arg, *e_arg],
                     },
                     result: Some(result_val),
                     span: None,
@@ -727,7 +727,7 @@ fn collapse_same_target_brif(func: &mut Function) -> bool {
 
 /// Run CFG simplification on a single function.
 /// Returns true if any changes were made.
-fn simplify_cfg(func: &mut Function) -> bool {
+fn simplify_cfg(func: &mut Function, select_fid: FuncId) -> bool {
     let mut any_changed = false;
     loop {
         let mut changed = false;
@@ -736,9 +736,9 @@ fn simplify_cfg(func: &mut Function) -> bool {
         // Trivial param elimination runs before same-target BrIf collapse so that
         // when all arms pass the same constant (same-constant different-ValueId case),
         // the param is eliminated first.  This avoids inserting an unnecessary
-        // Select(cond, false, false) that would require a second fold to remove.
+        // select(cond, false, false) that would require a second fold to remove.
         changed |= eliminate_trivial_params(func);
-        changed |= collapse_same_target_brif(func);
+        changed |= collapse_same_target_brif(func, select_fid);
         changed |= cleanup_unreachable(func);
         if !changed {
             break;
@@ -762,12 +762,15 @@ impl Transform for CfgSimplify {
         mut module: Module,
         dirty: Option<&HashSet<FuncId>>,
     ) -> Result<TransformResult, CoreError> {
+        let select_fid = module
+            .lookup_runtime("select")
+            .expect("CfgSimplify: 'select' builtin not registered");
         let mut changed_funcs: HashSet<FuncId> = HashSet::new();
         for func_id in module.functions.keys().collect::<Vec<_>>() {
             if dirty.is_some_and(|d| !d.contains(&func_id)) {
                 continue;
             }
-            if simplify_cfg(&mut module.functions[func_id]) {
+            if simplify_cfg(&mut module.functions[func_id], select_fid) {
                 changed_funcs.insert(func_id);
             }
         }
@@ -794,6 +797,19 @@ mod tests {
         let module = mb.build();
         let result = CfgSimplify.apply(module, None).unwrap();
         result.module.functions[fid].clone()
+    }
+
+    fn apply_cfg_simplify_with_module(func: Function) -> (Function, Module) {
+        let mut mb = ModuleBuilder::new("test");
+        let fid = mb.add_function(func);
+        let module = mb.build();
+        let result = CfgSimplify.apply(module, None).unwrap();
+        let func = result.module.functions[fid].clone();
+        (func, result.module)
+    }
+
+    fn is_select_call(op: &Op, select_fid: FuncId) -> bool {
+        matches!(op, Op::Call { func, .. } if *func == select_fid)
     }
 
     /// Empty block forwarded (no params): entry → B → C becomes entry → C,
@@ -1174,16 +1190,17 @@ mod tests {
         fb.switch_to_block(merge);
         fb.ret(Some(merge_params[0]));
 
-        let func = apply_cfg_simplify(fb.build());
+        let (func, module) = apply_cfg_simplify_with_module(fb.build());
+        let select_fid = module.lookup_runtime("select").unwrap();
 
-        // After forwarding + same-target collapse, a Select(cond, val_a, val_b) is
-        // inserted and merge merges into entry. Entry should have Select + Return.
+        // After forwarding + same-target collapse, a select(cond, val_a, val_b) call is
+        // inserted and merge merges into entry. Entry should have select call + Return.
         let entry = func.entry;
         let has_select = func.blocks[entry]
             .insts
             .iter()
-            .any(|&id| matches!(func.insts[id].op, Op::Select { .. }));
-        assert!(has_select, "different args should produce Select");
+            .any(|&id| is_select_call(&func.insts[id].op, select_fid));
+        assert!(has_select, "different args should produce select call");
 
         assert!(
             matches!(func.blocks[entry].terminator, Terminator::Return(Some(_))),
@@ -1191,7 +1208,7 @@ mod tests {
         );
     }
 
-    /// Mixed params: 3 params, 2 trivial + 1 non-trivial → Select for the differing one.
+    /// Mixed params: 3 params, 2 trivial + 1 non-trivial → select call for the differing one.
     #[test]
     fn mixed_trivial_and_non_trivial_params() {
         let sig = FunctionSig {
@@ -1225,16 +1242,17 @@ mod tests {
         fb.switch_to_block(merge);
         fb.ret(Some(merge_params[1]));
 
-        let func = apply_cfg_simplify(fb.build());
+        let (func, module) = apply_cfg_simplify_with_module(fb.build());
+        let select_fid = module.lookup_runtime("select").unwrap();
 
-        // After forwarding + same-target collapse: Select for param 1 (different),
+        // After forwarding + same-target collapse: select call for param 1 (different),
         // shared_a and shared_c passed directly. Then merge merges into entry.
         let entry = func.entry;
         let has_select = func.blocks[entry]
             .insts
             .iter()
-            .any(|&id| matches!(func.insts[id].op, Op::Select { .. }));
-        assert!(has_select, "differing param should produce Select");
+            .any(|&id| is_select_call(&func.insts[id].op, select_fid));
+        assert!(has_select, "differing param should produce select call");
 
         assert!(
             matches!(func.blocks[entry].terminator, Terminator::Return(Some(_))),
@@ -1262,7 +1280,8 @@ mod tests {
         fb.switch_to_block(merge);
         fb.ret(Some(merge_params[0]));
 
-        let func = apply_cfg_simplify(fb.build());
+        let (func, module) = apply_cfg_simplify_with_module(fb.build());
+        let select_fid = module.lookup_runtime("select").unwrap();
 
         // Should collapse to Br + eliminate trivial param.
         let entry = func.entry;
@@ -1271,12 +1290,12 @@ mod tests {
             Terminator::Return(Some(v)) => assert_eq!(*v, val),
             other => panic!("expected Return(Some(val)), got {:?}", other),
         }
-        // No Select should be inserted since args are identical.
+        // No select call should be inserted since args are identical.
         let has_select = func
             .insts
             .values()
-            .any(|i| matches!(i.op, Op::Select { .. }));
-        assert!(!has_select, "identical args should not produce Select");
+            .any(|i| is_select_call(&i.op, select_fid));
+        assert!(!has_select, "identical args should not produce select call");
     }
 
     /// BrIf where both arms target the same block with different args → Select + Br.
@@ -1300,16 +1319,17 @@ mod tests {
         fb.switch_to_block(merge);
         fb.ret(Some(merge_params[0]));
 
-        let func = apply_cfg_simplify(fb.build());
+        let (func, module) = apply_cfg_simplify_with_module(fb.build());
+        let select_fid = module.lookup_runtime("select").unwrap();
 
         // After collapse + merge + trivial param elimination, entry should contain
-        // a Select and a Return that uses the Select's result.
+        // a select call and a Return that uses its result.
         let entry = func.entry;
         let has_select = func.blocks[entry]
             .insts
             .iter()
-            .any(|&id| matches!(func.insts[id].op, Op::Select { .. }));
-        assert!(has_select, "differing args should produce a Select");
+            .any(|&id| is_select_call(&func.insts[id].op, select_fid));
+        assert!(has_select, "differing args should produce a select call");
 
         assert!(
             matches!(func.blocks[entry].terminator, Terminator::Return(Some(_))),

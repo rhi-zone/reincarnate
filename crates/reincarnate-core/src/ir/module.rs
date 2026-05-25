@@ -794,9 +794,10 @@ impl Module {
     /// to `Array.isArray(x)`.  Naming a named builtin for what the IR already
     /// expresses structurally is a Law 2 violation.
     /// Comparison ops = 6 (cmp_eq, cmp_ne, cmp_lt, cmp_le, cmp_ge, cmp_gt) → 83.
+    /// select = 1 (select) → 84.
     /// Polymorphic `_any` stubs are GML-specific and registered by the GML frontend,
     /// not by `register_core_builtins`, so they are not counted here.
-    pub const NUM_CORE_BUILTINS: u32 = 84;
+    pub const NUM_CORE_BUILTINS: u32 = 85;
 
     pub fn new(name: String) -> Self {
         let mut module = Self {
@@ -1124,6 +1125,16 @@ impl Module {
             FunctionSig {
                 params: vec![Type::Unknown],
                 return_ty: Type::Bool,
+                ..Default::default()
+            },
+        );
+        self.core_builtin_fids.insert(fid);
+        // select: (Bool, Unknown, Unknown) -> Unknown  — emit as cond ? on_true : on_false
+        let fid = self.register_runtime(
+            "select",
+            FunctionSig {
+                params: vec![Type::Bool, Type::Unknown, Type::Unknown],
+                return_ty: Type::Unknown,
                 ..Default::default()
             },
         );
