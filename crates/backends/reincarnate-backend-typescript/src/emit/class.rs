@@ -552,16 +552,18 @@ pub(super) fn emit_class(
                 };
                 let _ = writeln!(out, "  {ov}{ident}: {ts} = {val_str};");
             }
-        } else {
+        } else if group.class_def.zero_initialized {
             // AS3 instance fields with no initializer are semantically zero-initialized,
             // but TypeScript's strictPropertyInitialization doesn't know that. Use `!`
             // (definite assignment assertion) to suppress TS2564 for AS3-compiled code.
-            let bang = if group.class_def.zero_initialized {
-                "!"
-            } else {
-                ""
-            };
-            let _ = writeln!(out, "  {ov}{ident}{bang}: {ts};");
+            let _ = writeln!(out, "  {ov}{ident}!: {ts};");
+        } else if engine == EngineKind::GameMaker {
+            // GML fields with no initializer are assigned in the create event, not at
+            // construction time. Use `declare` so TypeScript knows the field exists at
+            // runtime without requiring an initializer (suppresses TS2564).
+            let _ = writeln!(out, "  declare {ov}{ident}: {ts};");
+        } else {
+            let _ = writeln!(out, "  {ov}{ident}: {ts};");
         }
     }
     // Inferred create-event fields (GML only) — emit as `declare` class property
