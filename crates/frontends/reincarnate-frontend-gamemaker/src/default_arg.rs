@@ -173,7 +173,7 @@ fn set_variadic_defaults(func: &mut Function) -> bool {
         let param_value = func.blocks[func.entry].params.get(i).map(|p| p.value);
         if let Some(val) = param_value {
             if let Some(name) = func.value_names.get(&val) {
-                if name == "self" || name == "other" {
+                if name == "self" || name == "other" || name == "_rt" {
                     continue;
                 }
             }
