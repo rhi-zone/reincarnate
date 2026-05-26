@@ -28,56 +28,6 @@ Reincarnate translates games from any source engine into working, type-safe, hig
 
 **Wrong code causes cascading damage.** Wasted time, risky reverts, corrupted `git blame`, misdirected future work.
 
-## Context Is The Only Scarce Resource
-
-Every byte that enters the main session stays in the main session for its entire lifetime. File contents, command output, search results — once read, it lingers and shapes every downstream token. There is no "just looking."
-
-**All exploration runs in subagents.** Investigations, audits, deep dives, surveys — if the purpose is to find out something you don't yet know, it runs in a subagent. The subagent returns a distilled summary; the raw output stays in the subagent. The main context is for coordination: decisions, review, direction.
-
-## Durability
-
-Subagent reports, mid-session realizations, "I'll remember this" — none of these outlast the session. Anything worth keeping goes into CLAUDE.md, code, docs, or a commit. If it isn't written down, it is gone.
-
-## Authenticity
-
-Read before modifying or proposing. Confidence is not a feeling — it is a result of having verified. Claims must correspond to evidence produced this session, not memory or prior summaries. When a request is ambiguous, state your interpretation and wait for confirmation. Reasoning from first principles when the implementation is readable is not a substitute for reading it.
-
-**Something unexpected is a signal.** Surprising output, anomalous numbers, a file containing what it shouldn't — stop and find out why. Do not accept the anomaly and proceed.
-
-## Discipline
-
-Corrections from the user are conversation, not material for new rules. A single correction does not warrant a CLAUDE.md edit. Rules are added when a failure mode is observed repeatedly and the rule names the failure it prevents. Exception: during active design, corrections are the work itself — don't prematurely document a design that hasn't settled yet.
-
-Do not announce actions ("I will now…"). Act.
-
-## Subagent Prompts
-
-A subagent prompt is composed in a "spec-writing" register that subtly changes what feels in-scope. Specific failure modes to name:
-
-**Never tell a subagent "do not commit."** Delegation does not strip the commit step from completed work. If a subagent modifies files and the work is done, either the subagent commits, or the next thing the delegator does after it returns is commit — not summarize, not report. The phrase "do not commit" in your own prompt is the tell that you are about to leave work uncommitted.
-
-**Do not delegate judgment.** Phrases like "if extraction is awkward, just duplicate" or "based on your findings, fix the bug" push synthesis onto the agent. If you are punting a decision into the prompt, you do not yet have enough understanding to delegate. Investigate first; write the prompt with the decision already made.
-
-**Do not ask for a diff summary.** Subagent self-reports describe intent, not effect. After a code-modifying subagent returns, read `git diff` yourself. Skip the "report what you changed" instruction — it produces text you cannot trust and that pollutes main context.
-
-**Do not re-explain CLAUDE.md.** Subagents inherit it. Repeating project layout or repo conventions in the prompt dilutes the actual task instructions and signals half-trust in the inheritance. Trust it or don't read it.
-
-**Line numbers are orientation, not anchors.** Files shift between your read and the subagent's read. When citing locations, tell the subagent to find the lines by content ("the block that does X"), not by number.
-
-**Name files explicitly; do not outsource the grep.** "Wherever it appears" invites scope creep. Grep first, list the exact files in the prompt.
-
-**If the task is smaller than the prompt describing it, do it inline.** A subagent dispatch pays a full system-prompt + CLAUDE.md cache cost. One-shot bash commands and single-line edits should run in the main session with `Bash` or `Edit`.
-
-**Match agent type to deliverable shape.** `Explore` is for lookup and search — finding files, symbols, references — not analytical synthesis. For audits, surveys, and pattern analysis whose deliverable is a report, use `general-purpose` with an explicit Opus model. For tasks whose deliverable is files on disk, use `general-purpose` with the tier matched to the work (Sonnet for mechanical, Opus for architectural).
-
-**On unsatisfying subagent output, change something before retrying.** Same prompt + same model + same agent type = same result. Escalate model tier (Sonnet → Opus), narrow the prompt, or switch agent type. Identical retries are waste.
-
-**Dispatch independent subagents in parallel.** Multiple Agent tool_use blocks in a single assistant message run concurrently. Serial Agent dispatch across sequential turns is the default failure mode and trades wall time for nothing. If two subagents do not depend on each other's output, they belong in the same message.
-
-**Pair `isolation: worktree` with `run_in_background: true`.** A worktree implies meaningful write work. Foregrounding it blocks the main session for the entire run. Background unless the worktree's immediate output is what you need to act on next.
-
-**Always set `subagent_type` and `model` explicitly.** Defaulting either collapses tier choice into an invisible decision. The model and agent type are part of the spec; name them every time, even when the choice is obvious. See the existing `Subagent model tiers` section above for which tier fits which work.
-
 ## Fundamental Laws
 
 Invariant. When a violation appears, adjust the law — don't add a corollary.
@@ -175,3 +125,68 @@ Subcommands: `list-functions`, `disasm`, `stress`, `inspect-runtime [--sig NAME]
 `check` flags: `--filter-code TS2304`, `--filter-file foo.ts`, `--filter-message "..."`, `--examples N` (samples per code; -1 = all). One run is sufficient — use these flags instead of piping to grep.
 
 `emit` flags: `--no-emit` (run pipeline, skip file output; useful with `--dump-function`).
+
+<!-- BEGIN ECOSYSTEM RULES -->
+
+## Delegation
+
+The main session is an orchestrator. Allowed actions: `Agent`/`Task*`/`AskUserQuestion`/plan-mode/`ScheduleWakeup`, and Bash limited to `git commit`, `git push`, `git status`, `git log --oneline`. Everything else delegates to a subagent. The hook is evidence of a prompting failure, not a behavioral guide. If a tool call hits the hook AT ALL, the prompt failed to prevent it. Delegate before the decision point, not after.
+
+### Triggers
+
+Before calling Read, Grep, Glob, or any Bash beyond the four git commands — stop. Dispatch an Agent instead.
+
+Before editing any file — stop. Dispatch an Agent. This includes plan files in `~/.claude/plans/`: in plan mode, dispatch a subagent to write to the plan file; do not Write it yourself. The plan file's content must not enter main context.
+
+When you need git context beyond status/log-oneline (a diff, a blame, a show) — dispatch an Agent.
+
+When a tool call is denied by the hook — do not retry, do not narrate. Dispatch the equivalent Agent and continue.
+
+When a code-modifying subagent returns — `git status`, then `git commit` before any user-facing reply.
+
+Before dispatching an Agent that modifies code — scan your prompt for "do not commit" or "based on your findings". Delete them.
+
+Before dispatching: if your prompt says "if you find", "based on your findings", or "as appropriate" — stop. Investigate first; dispatch with the decision made.
+
+When you can't verify something — do not speculate or guess at file locations, names, or contents. Dispatch a Read subagent or ask. Confabulation is failure.
+
+### Model Tiers
+
+- Sonnet — exploration, lookup, mechanical multi-file edits, implementation, default.
+- Opus — architectural judgment, design, subagents that themselves spawn subagents.
+
+Always set `subagent_type` and `model` explicitly.
+
+### Prompt Rules
+
+- Never tell a subagent "do not commit." Code-modifying subagents commit their own work.
+- Don't ask for a diff summary. After a code-modifying subagent, `git status` in main and dispatch a review Agent if you need to see the diff.
+- Don't re-explain CLAUDE.md. Subagents inherit it.
+- Cite locations by content ("the block that does X"), not line numbers — files shift between reads.
+- Name files explicitly; don't outsource the grep.
+- Match agent type to deliverable: `Explore` for lookup/search, `general-purpose` for reports and file-modifying work.
+- On unsatisfying output, change something before retrying. Same prompt + same tier = same result.
+- Dispatch independent subagents in parallel (multiple Agent blocks in one message).
+- Pair `isolation: worktree` with `run_in_background: true`.
+- Code-modifying subagents must verify their own changes before returning (re-read the diff, run tests, etc.). The orchestrator does not get a second pass with git diff — that's hook-blocked.
+
+## Hard Constraints
+
+- No Edit/Write/NotebookEdit in main. Plan files in `~/.claude/plans/` are written by subagents, not by main.
+- No Read/Grep/Glob/NotebookRead in main. Delegate.
+- No Bash in main beyond `git commit`, `git push`, `git status`, `git log --oneline`.
+- No `--no-verify`. Fix the issue or fix the hook.
+- No path dependencies in `Cargo.toml` — they couple repos and break independent publishing.
+- No interactive git (no `git rebase -i`, no `git add -i`, no `--no-edit` on rebase).
+- No suggesting project names. LLMs are bad at this; refine the conceptual space only.
+- No tracking cross-project issues in conversation — they go in TODO.md in the affected repo.
+- No ecosystem changes without checking all affected repos.
+- No assuming a tool is missing without checking `nix develop`.
+- Commit completed work in the same turn it finishes. Uncommitted work is lost work.
+
+## Meta
+
+- Something unexpected is a signal. Stop and find out why. Do not accept the anomaly and proceed.
+- Corrections from the user are conversation, not material for new rules. Rules are added when a failure mode is observed repeatedly.
+
+<!-- END ECOSYSTEM RULES -->
