@@ -163,7 +163,25 @@ impl Transform for ConstructorStructInfer {
                 }
             }
 
-            let Some(self_param) = entry_block.params.first() else {
+            // param 0 may be `_rt` (runtime handle) if the frontend prepends it.
+            // The self parameter is the first param whose value_names entry is not "_rt".
+            // Fall back to param 0 for functions without an _rt prefix (e.g. tests, non-GML).
+            let self_param_idx = if entry_block
+                .params
+                .first()
+                .map(|p| {
+                    func.value_names
+                        .get(&p.value)
+                        .map(|n| n == "_rt")
+                        .unwrap_or(false)
+                })
+                .unwrap_or(false)
+            {
+                1
+            } else {
+                0
+            };
+            let Some(self_param) = entry_block.params.get(self_param_idx) else {
                 continue;
             };
             let self_value = self_param.value;
@@ -273,17 +291,35 @@ impl Transform for ConstructorStructInfer {
             // the frontend.
             if let Some(constructor_func_id) = inf.constructor_func_id {
                 let func = &mut module.functions[constructor_func_id];
-                let entry_block_param_value = func.blocks[func.entry].params[0].value;
+                // Determine the self-param index: skip param 0 if it is named "_rt".
+                let self_param_idx = if func.blocks[func.entry]
+                    .params
+                    .first()
+                    .map(|p| {
+                        func.value_names
+                            .get(&p.value)
+                            .map(|n| n == "_rt")
+                            .unwrap_or(false)
+                    })
+                    .unwrap_or(false)
+                {
+                    1
+                } else {
+                    0
+                };
 
-                let current_ty = func.value_types[entry_block_param_value].clone();
-                if is_unresolved(&current_ty) {
-                    func.value_types[entry_block_param_value] = Type::Instance(type_id);
-                    func.blocks[func.entry].params[0].ty = Type::Instance(type_id);
+                if let Some(entry_param) = func.blocks[func.entry].params.get(self_param_idx) {
+                    let entry_block_param_value = entry_param.value;
+                    let current_ty = func.value_types[entry_block_param_value].clone();
+                    if is_unresolved(&current_ty) {
+                        func.value_types[entry_block_param_value] = Type::Instance(type_id);
+                        func.blocks[func.entry].params[self_param_idx].ty = Type::Instance(type_id);
+                    }
                 }
 
-                if let Some(param0_ty) = func.sig.params.first_mut() {
-                    if is_unresolved(param0_ty) {
-                        *param0_ty = Type::Instance(type_id);
+                if let Some(sig_param_ty) = func.sig.params.get_mut(self_param_idx) {
+                    if is_unresolved(sig_param_ty) {
+                        *sig_param_ty = Type::Instance(type_id);
                     }
                 }
             }
