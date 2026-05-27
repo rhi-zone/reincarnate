@@ -348,7 +348,7 @@ pub fn print_function(
 pub fn print_class_method(
     js: &JsFunction,
     raw_name: &str,
-    skip_self: bool,
+    skip_count: usize,
     preamble: Option<&str>,
     is_override: bool,
     extra_first_param: Option<&str>,
@@ -356,9 +356,13 @@ pub fn print_class_method(
     out: &mut String,
 ) {
     MODULE_TYPES.with(|cell| cell.set(module_types as *const _));
-    let (params, param_defaults) = if skip_self && !js.params.is_empty() {
-        let defaults_offset = js.param_defaults.len().min(1);
-        (&js.params[1..], &js.param_defaults[defaults_offset..])
+    let skip = skip_count.min(js.params.len());
+    let (params, param_defaults) = if skip > 0 {
+        let defaults_offset = js
+            .param_defaults
+            .len()
+            .saturating_sub(js.params.len() - skip);
+        (&js.params[skip..], &js.param_defaults[defaults_offset..])
     } else {
         (&js.params[..], &js.param_defaults[..])
     };

@@ -1007,7 +1007,7 @@ fn emit_class_method(
         .unwrap_or(func_name)
         .to_string();
 
-    let skip_self = matches!(
+    let has_self = matches!(
         func.method_kind,
         MethodKind::Constructor
             | MethodKind::Instance
@@ -1046,7 +1046,7 @@ fn emit_class_method(
     };
     let self_param_name = if is_cinit {
         ast.params.get(self_param_idx).map(|(n, _)| n.clone())
-    } else if skip_self && ast.params.len() > self_param_idx {
+    } else if has_self && ast.params.len() > self_param_idx {
         Some(ast.params[self_param_idx].0.clone())
     } else {
         None
@@ -1196,13 +1196,38 @@ fn emit_class_method(
     // but TypeScript cannot prove all paths return (e.g. exhaustive switch without default).
     // Silences TS2366 without changing observable behaviour.
     ensure_trailing_unreachable(func, &mut js_func);
+    // Compute how many leading params to skip in the printed signature.
+    // GML IR params are [_rt, self, ...args]; both must be dropped from the signature.
+    // When there is a self param (has_self = true), self_param_idx is 1 (_rt is param 0),
+    // so skip_count = self_param_idx + 1 = 2 (skip _rt and self).
+    // When there is no self param, skip only _rt: skip_count = 1.
+    // For non-GML functions that don't have an _rt param, self_param_idx is 0 and
+    // has_self controls whether to skip param 0 (the self param itself).
+    let skip_count = if has_self {
+        self_param_idx + 1
+    } else if ast.params.first().is_some_and(|(n, _)| n == "_rt") {
+        1
+    } else {
+        0
+    };
+    // GML event handlers (Instance/Constructor methods) don't return meaningful values;
+    // their IR return type is Unknown (inference found no return). Override to void so
+    // the emitted TS signature is `(): void` instead of `(): unknown`, avoiding TS2416
+    // (method override return type mismatch) and TS2345 (`this` not assignable).
+    if matches!(
+        func.method_kind,
+        MethodKind::Instance | MethodKind::Constructor
+    ) && js_func.return_ty == Type::Unknown
+    {
+        js_func.return_ty = Type::Void;
+    }
     // Flash/AS3: null is valid for any reference type. Under strictNullChecks,
     // bare `null` causes TS2322/TS2345. Enable null! assertion for Flash output.
     crate::ast_printer::NULL_ASSERT.set(engine == EngineKind::Flash);
     crate::ast_printer::print_class_method(
         &js_func,
         &raw_name,
-        skip_self,
+        skip_count,
         preamble.as_deref(),
         is_override,
         flash_ctor_extra_param.as_deref(),
