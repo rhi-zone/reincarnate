@@ -506,6 +506,13 @@ pub(super) fn emit_class(
         }
     }
 
+    // Ancestor field type map used to guard `declare override` in Loop 1 below.
+    let ancestor_field_types = if engine == EngineKind::GameMaker {
+        collect_ancestor_field_types(&group.class_def, module)
+    } else {
+        std::collections::HashMap::new()
+    };
+
     // Instance fields from the class's TypeDecl.
     for field in &group.fields {
         let ident = sanitize_ident(&field.name);
@@ -520,6 +527,42 @@ pub(super) fn emit_class(
         } else {
             ""
         };
+        // Guard: skip `declare override` when the emitted TypeScript type for the
+        // child field is identical to (or wider than) the parent's emitted type.
+        //
+        // Two cases:
+        //   - Redundant: child emits the same TS type as parent — TypeScript inherits
+        //     it automatically; emitting would cause TS2416 noise.
+        //   - Inference failure: child emits `any`/`unknown` but parent has a narrower
+        //     concrete TS type — emitting would widen the parent's type and break
+        //     structural subtyping for the whole class (TS2416 → TS2345 cascade).
+        //
+        // If the field is found in an in-module ancestor's TypeDecl, compare emitted
+        // types. If the field is from an external ancestor (not in module.types), an
+        // `any`/`unknown` child type always widens the concrete external declaration.
+        // TODO: emit a proper diagnostic pointing at the source location for `any`.
+        if ov == "override " {
+            if let Some(parent_ty) = ancestor_field_types.get(&field.name) {
+                let parent_ts = if engine == EngineKind::Flash {
+                    flash_ts_type_with_names_and_module(parent_ty, class_names, &module.types)
+                } else {
+                    ts_type_with_names_and_module(parent_ty, class_names, &module.types)
+                };
+                if ts == parent_ts {
+                    // Redundant: same emitted type — TypeScript inherits it automatically.
+                    continue;
+                }
+                if ts == "any" || ts == "unknown" {
+                    // Inference failure: `any`/`unknown` widens the parent's concrete type.
+                    continue;
+                }
+            } else if ts == "any" || ts == "unknown" {
+                // Field not found in any in-module ancestor TypeDecl — it comes from an
+                // external ancestor (e.g. GMLObject from runtime.json), which always has
+                // a concrete type. `any`/`unknown` widens it, so suppress the override.
+                continue;
+            }
+        }
         // GML: if an override field is declared as `"*"` (dynamic, number | boolean)
         // in any external type definition (e.g. GMLObject's `visible`, `persistent`,
         // `solid`), widen the type to `number | boolean`.  Without this, game code
@@ -1236,6 +1279,53 @@ fn emit_class_method(
     );
     crate::ast_printer::NULL_ASSERT.set(false);
     Ok(())
+}
+
+/// Collect the map of field name → type for all fields declared on any ancestor
+/// of `class_def` by walking `ClassDef.super_class` through `module.classes` and
+/// reading each ancestor's `TypeDecl` fields from `module.types`.
+///
+/// Used to guard `declare override` field declarations: skip when the child type
+/// equals the parent's (redundant) or when the child type is Unknown (inference
+/// failure that would widen the parent's concrete type and break structural
+/// subtyping).
+fn collect_ancestor_field_types(
+    class_def: &ClassDef,
+    module: &Module,
+) -> std::collections::HashMap<String, Type> {
+    let mut map = std::collections::HashMap::new();
+    // Build a lookup from short name and qualified name → ClassDef for resolving super_class.
+    let class_by_short: std::collections::HashMap<&str, &ClassDef> = module
+        .classes
+        .iter()
+        .map(|c| (c.name.as_str(), c))
+        .collect();
+    let class_by_qualified: std::collections::HashMap<String, &ClassDef> = module
+        .classes
+        .iter()
+        .map(|c| (qualified_class_name(c), c))
+        .collect();
+    let mut current_def = class_def;
+    while let Some(sc) = current_def.super_class.as_deref() {
+        // Resolve the parent ClassDef (qualified first, then short name).
+        let parent = if let Some(p) = class_by_qualified.get(sc) {
+            *p
+        } else {
+            let short = sc.rsplit("::").next().unwrap_or(sc);
+            match class_by_short.get(short) {
+                Some(p) => *p,
+                None => break, // External parent — no IR TypeDecl to walk.
+            }
+        };
+        // Collect fields from parent's TypeDecl (first occurrence wins — most-derived parent).
+        if let Some(decl) = module.types.get(parent.type_id) {
+            for f in decl.fields() {
+                map.entry(f.name.clone()).or_insert_with(|| f.ty.clone());
+            }
+        }
+        current_def = parent;
+    }
+    map
 }
 
 /// Collect the set of field names declared on any ancestor of `type_id` in the
