@@ -3,12 +3,11 @@ use std::collections::{HashMap, HashSet};
 use datawin::bytecode::decode::{self, Instruction, Operand};
 use datawin::bytecode::opcode::Opcode;
 use datawin::bytecode::types::{ComparisonKind, DataType, InstanceType, VariableRef};
-use reincarnate_core::entity::EntityRef as _;
 use reincarnate_core::ir::block::BlockId;
 use reincarnate_core::ir::builder::FunctionBuilder;
 use reincarnate_core::ir::func::{FuncId, Function, Visibility};
 use reincarnate_core::ir::inst::CmpKind;
-use reincarnate_core::ir::ty::{FunctionSig, Type, TypeId, TypeVarId};
+use reincarnate_core::ir::ty::{FunctionSig, Type, TypeId};
 use reincarnate_core::ir::value::{Constant, ValueId};
 
 mod cfg;
@@ -282,15 +281,10 @@ fn build_signature(ctx: &TranslateCtx) -> FunctionSig {
 }
 
 fn build_signature_with_args(ctx: &TranslateCtx, arg_count: u16) -> FunctionSig {
-    // Pre-builder type variable counter: used before FunctionBuilder is available.
-    // The constraint solver ignores TypeVarId numeric values — only is_concrete()
-    // matters — so per-invocation collisions are safe.
-    let mut tv: u32 = 0;
-    let mut fresh = || {
-        let ty = Type::Var(TypeVarId::new(tv));
-        tv += 1;
-        ty
-    };
+    // Returns Type::Unknown for unresolved parameter types.  The constraint
+    // solver treats Unknown on non-parameter values as a free inference target
+    // and will resolve it from call-site constraints.
+    let fresh = || Type::Unknown;
 
     let mut params = Vec::new();
     let mut defaults = Vec::new();

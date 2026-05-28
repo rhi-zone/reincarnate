@@ -3,6 +3,7 @@ use datawin::bytecode::decode::Instruction;
 use datawin::bytecode::encode::encode;
 use datawin::bytecode::opcode::Opcode;
 use datawin::bytecode::types::{DataType, VariableRef};
+use reincarnate_core::entity::EntityRef as _;
 use reincarnate_core::ir::inst::{Op, Terminator};
 use reincarnate_core::ir::module::Module;
 

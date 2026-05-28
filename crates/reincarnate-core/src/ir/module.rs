@@ -10,9 +10,8 @@ use super::block::{Block, BlockId};
 use super::func::{FuncId, Function, InlineHint, MethodKind, Visibility};
 use super::inst::Terminator;
 use super::name_table::NameTable;
-use super::ty::{FunctionSig, Type, TypeId, TypeVarId};
+use super::ty::{FunctionSig, Type, TypeId};
 use super::value::Constant;
-use crate::entity::EntityRef;
 
 /// Describes how the application is started.
 ///
@@ -595,13 +594,6 @@ pub struct Module {
     /// set instead of hardcoding engine-specific function names.
     #[serde(skip)]
     pub array_like_fids: HashSet<FuncId>,
-    /// Counter for allocating unique [`TypeVarId`]s via [`Module::fresh_var`].
-    ///
-    /// Incremented each call; IDs need only be distinct within a module.
-    /// The constraint collector ignores original IDs and allocates fresh arena
-    /// entries, so these IDs carry no cross-pass meaning.
-    #[serde(default)]
-    pub next_type_var: u32,
     /// Set by frontends that define a GameRuntime type.
     /// Used by backends to identify which function calls are runtime method calls.
     #[serde(skip)]
@@ -897,7 +889,6 @@ impl Module {
             implicit_return_value: false,
             string_indexed_structs: HashSet::new(),
             array_like_fids: HashSet::new(),
-            next_type_var: 0,
             runtime_type_id: None,
         };
         module.register_core_builtins();
@@ -1309,18 +1300,15 @@ impl Module {
         self.runtime_registry.get(name).copied()
     }
 
-    /// Allocate a unique [`Type::Var`] for use by frontends that do not yet
-    /// know a value's type.
+    /// Return [`Type::Unknown`] for use by frontends that do not yet know a
+    /// value's type.
     ///
-    /// Each call returns a fresh [`TypeVarId`] distinct from all others
-    /// allocated by this module.  The IDs are local: the constraint collector
-    /// ignores them and allocates its own arena entries, so they carry no
-    /// cross-pass meaning.  Two "I don't know" values will not accidentally
-    /// alias as long as they each call `fresh_var()`.
+    /// The constraint solver treats `Type::Unknown` on non-parameter values as
+    /// a free inference target, identical to the former `Type::Var` — both
+    /// result in a free TypeVar in the HM arena that constraints can bind to a
+    /// concrete type.
     pub fn fresh_var(&mut self) -> Type {
-        let id = TypeVarId::new(self.next_type_var);
-        self.next_type_var += 1;
-        Type::Var(id)
+        Type::Unknown
     }
 }
 

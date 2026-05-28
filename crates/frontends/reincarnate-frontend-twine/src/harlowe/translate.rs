@@ -3032,8 +3032,9 @@ You're at the **plaza**
             1,
             "find lambda takes only (item) param, no pos"
         );
-        // Elem type is an open type var (inference gap, not genuine opacity).
-        assert!(matches!(cb.sig.params[0], Type::Var(_)));
+        // Elem type is an unresolved inference gap — the solver will infer the
+        // concrete element type from collection constraints.
+        assert_eq!(cb.sig.params[0], Type::Unknown);
         assert_eq!(cb.sig.return_ty, Type::Bool);
         // Main func should have a collection_op("find", ...) call
         let func = &result.func;

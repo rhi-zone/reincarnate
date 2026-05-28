@@ -37,14 +37,6 @@ pub struct FunctionBuilder {
     name: String,
     func: Function,
     current_block: BlockId,
-    /// Per-builder counter for allocating [`Type::Var`] via [`fresh_var`].
-    ///
-    /// The constraint solver ignores the numeric value of [`TypeVarId`] when
-    /// processing a function's `value_types` — it only checks
-    /// [`is_concrete`][crate::transforms::constraint_collect::is_concrete].
-    /// A per-builder counter therefore produces unique markers within one
-    /// `FunctionBuilder` session without requiring a module-level allocation.
-    next_type_var: u32,
     /// Name-to-FuncId registry for string-based call resolution.
     ///
     /// Populated via [`set_registry`] by callers that need to emit named calls.
@@ -101,7 +93,6 @@ impl FunctionBuilder {
             name,
             func,
             current_block: entry,
-            next_type_var: 0,
             registry: HashMap::new(),
         }
     }
@@ -673,15 +664,11 @@ impl FunctionBuilder {
     }
 
     pub fn load(&mut self, ptr: ValueId, ty: Type) -> ValueId {
-        // Unknown on a load result is always an inference gap — the type is
-        // determinable from the alloc cell constraints.  Use a fresh TypeVar
-        // so the solver can propagate the alloc's concrete type to this load.
-        let actual_ty = if matches!(ty, Type::Unknown) {
-            self.fresh_var()
-        } else {
-            ty
-        };
-        self.emit(Op::Load(ptr), actual_ty)
+        // Unknown on a load result is an inference gap — the type is
+        // determinable from the alloc cell constraints.  The constraint solver
+        // treats Type::Unknown as a free variable for non-parameter values and
+        // will propagate the alloc's concrete type to this load result.
+        self.emit(Op::Load(ptr), ty)
     }
 
     pub fn store(&mut self, ptr: ValueId, value: ValueId) {
@@ -878,24 +865,15 @@ impl FunctionBuilder {
         self.emit(Op::Spread(value), ty)
     }
 
-    /// Allocate a unique [`Type::Var`] for a value whose type the frontend
-    /// does not yet know.
+    /// Return [`Type::Unknown`] for a value whose type the frontend does not
+    /// yet know.
     ///
-    /// The constraint solver treats any `Type::Var(_)` as an open inference
-    /// target, regardless of the numeric [`TypeVarId`] value.  This builder
-    /// maintains its own per-instance counter so that two calls within the
-    /// same function do not alias each other in the function signature or
-    /// block params.
-    ///
-    /// Use this instead of `Type::Unknown` when the type is an inference gap
-    /// (the solver may resolve it); use `Type::Unknown` when the source
-    /// language type is genuinely opaque (e.g. AS3 `*`, GML untyped globals).
+    /// The constraint solver treats `Type::Unknown` on non-parameter values as
+    /// an open inference target, identical to the former `Type::Var` — both
+    /// result in a free TypeVar in the HM arena.  Frontends should call this
+    /// wherever a value's concrete type is an inference gap.
     pub fn fresh_var(&mut self) -> Type {
-        use super::ty::TypeVarId;
-        use crate::entity::EntityRef as _;
-        let id = TypeVarId::new(self.next_type_var);
-        self.next_type_var += 1;
-        Type::Var(id)
+        Type::Unknown
     }
 }
 
@@ -1063,11 +1041,10 @@ impl ModuleBuilder {
         self.module.classes.push(class);
     }
 
-    /// Allocate a unique [`Type::Var`] for use when the frontend does not yet
-    /// know a value's type.
+    /// Return [`Type::Unknown`] for use when the frontend does not yet know a
+    /// value's type.
     ///
-    /// Delegates to [`Module::fresh_var`].  Two unknown-type values built via
-    /// separate calls will not alias.
+    /// Delegates to [`Module::fresh_var`].
     pub fn fresh_var(&mut self) -> crate::ir::ty::Type {
         self.module.fresh_var()
     }

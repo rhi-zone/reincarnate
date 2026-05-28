@@ -3,10 +3,9 @@ use std::collections::{HashMap, HashSet};
 use datawin::bytecode::decode::{Instruction, Operand};
 use datawin::bytecode::opcode::Opcode;
 use datawin::bytecode::types::InstanceType;
-use reincarnate_core::entity::EntityRef as _;
 use reincarnate_core::ir::builder::FunctionBuilder;
 use reincarnate_core::ir::func::{CaptureMode, Function, MethodKind, Visibility};
-use reincarnate_core::ir::ty::{FunctionSig, Type, TypeVarId};
+use reincarnate_core::ir::ty::{FunctionSig, Type};
 use reincarnate_core::ir::value::ValueId;
 
 use super::cfg::setup_blocks;
@@ -333,29 +332,20 @@ pub(super) fn translate_with_body(
     outer_rt_val: ValueId,
 ) -> Result<Function, String> {
     // When the with-target is a known OBJT or self-sentinel, type _self as that class.
-    // For unknown targets (variables, `all`, etc.) use a fresh type variable so
-    // inference can resolve the type from field accesses rather than locking it to
-    // GMLObject (which forecloses access to subclass-specific fields).
-    // Pre-builder type variable counter: used for FunctionSig construction before
-    // FunctionBuilder is available. The constraint solver ignores TypeVarId values —
-    // only is_concrete() matters — so counter collisions across functions are safe.
-    let mut pre_tv: u32 = 0;
-    let mut pre_fresh = || {
-        let ty = Type::Var(TypeVarId::new(pre_tv));
-        pre_tv += 1;
-        ty
-    };
+    // For unknown targets (variables, `all`, etc.) use Type::Unknown so the
+    // constraint solver can resolve the type from field accesses rather than
+    // locking it to GMLObject (which forecloses access to subclass-specific fields).
 
     let instance_types = wctx.ctx.instance_types;
     let self_ty = wctx
         .instance_class
         .and_then(|n| instance_types.get(n).copied())
         .map(Type::Instance)
-        .unwrap_or_else(&mut pre_fresh);
-    // Use a fresh type variable for the return type when the body contains
+        .unwrap_or(Type::Unknown);
+    // Use Type::Unknown for the return type when the body contains
     // "return X inside with" (exit PopEnv with sentinel Branch offset).
     let closure_return_ty = if wctx.has_return_in_with {
-        pre_fresh()
+        Type::Unknown
     } else {
         Type::Void
     };
