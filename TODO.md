@@ -4,6 +4,23 @@ Completed items archived in [COMPLETED.md](COMPLETED.md).
 
 Per-engine roadmaps (gaps, runtime coverage, open work) live in [`docs/targets/`](docs/targets/). This file tracks in-flight and near-term work across all active engines.
 
+## Risk 2: Parent-level Unknown fields emit `: unknown` despite `RedundantInheritedFieldPrune`
+
+`RedundantInheritedFieldPrune` prunes child fields that are redundant relative to an ancestor.
+It does NOT fix a field that is `Unknown` on the PARENT itself — those are separate
+inference-completeness gaps and emit `: unknown` on the parent class. Confirmed observed
+on Dead Estate: `declare height: unknown`, `declare maximumHp: unknown`, etc. on `WorldObject`.
+
+These are genuine RC1001/RC1005 inference gaps; do not widen or suppress them.  Fix path:
+improve constraint inference so these fields resolve to concrete types.
+
+Also: `ensure_gml_object_struct` does not include all GMLObject fields present in the
+TypeScript runtime (`z`, among others).  Child-class `z: Unknown` therefore emits as
+`declare z: unknown` even after pruning, because `z` is not in `module.types[GMLObject]`
+and the pass cannot see it.  Fix: add missing fields to `ensure_gml_object_struct` AND to
+`runtime.json`'s `type_definitions.GMLObject.fields`.  Until fixed, any class that sets
+`this.z = ...` will still emit a redundant/unknown `z` field declaration.
+
 ## Phase 3: register stateful runtime functions with explicit `_rt` param 0 — DONE
 
 All ~1,000 stateful GML runtime functions now have `_rt` as param 0 in their registered

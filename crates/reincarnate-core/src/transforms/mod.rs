@@ -10,6 +10,7 @@ pub mod inline;
 pub mod int_to_bool;
 pub mod mem2reg;
 pub mod red_cast_elim;
+pub mod redundant_inherited_field;
 pub mod util;
 pub mod validate_called_stubs;
 
@@ -24,6 +25,7 @@ pub use inline::Inline;
 pub use int_to_bool::IntToBoolPromotion;
 pub use mem2reg::Mem2Reg;
 pub use red_cast_elim::RedundantCastElimination;
+pub use redundant_inherited_field::RedundantInheritedFieldPrune;
 pub use validate_called_stubs::ValidateCalledStubs;
 
 use crate::pipeline::{PassConfig, PassDescriptor, TransformPipeline};
@@ -35,8 +37,9 @@ use crate::pipeline::{PassConfig, PassDescriptor, TransformPipeline};
 /// declarations plus invalidation expansion. Registration order is used only
 /// as a tie-breaker when multiple passes have in-degree zero simultaneously.
 ///
-/// Note: `IntToBoolPromotion` is frontend-injected via
-/// `FrontendOutput::frontend_passes` and is NOT included here.
+/// Note: `IntToBoolPromotion` and `RedundantInheritedFieldPrune` are
+/// frontend-injected via `FrontendOutput::frontend_passes` and are NOT
+/// included here.
 pub fn all_passes() -> Vec<PassDescriptor> {
     vec![
         PassDescriptor {

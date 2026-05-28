@@ -95,7 +95,10 @@ impl Frontend for FlashFrontend {
             modules,
             assets,
             runtime_variant: None,
-            frontend_passes: vec![Box::new(bool_coerce::FlashBoolCoerce)],
+            frontend_passes: vec![
+                Box::new(bool_coerce::FlashBoolCoerce),
+                Box::new(reincarnate_core::transforms::RedundantInheritedFieldPrune),
+            ],
         })
     }
 }

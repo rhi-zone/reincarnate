@@ -528,6 +528,7 @@ impl Frontend for GameMakerFrontend {
                 }),
                 Box::new(classref_resolve::GmlClassRefResolve),
                 Box::new(gml_constructor_parent::GmlConstructorParent),
+                Box::new(reincarnate_core::transforms::RedundantInheritedFieldPrune),
             ],
         })
     }
@@ -538,10 +539,12 @@ impl Frontend for GameMakerFrontend {
 /// Called after every `mb.intern_type("GMLObject")` site.  The guard prevents
 /// duplicate entries when the same `mb` is reused across multiple translation
 /// functions (`translate_scripts`, `translate_global_inits`, `translate_room_creation`).
+///
+/// Note: `mb.has_struct("GMLObject")` would return `true` even when the TypeDecl
+/// is empty (name is registered by `intern_type` before fields are written).
+/// `ModuleBuilder::add_struct` already handles idempotency by checking `fields.is_empty()`,
+/// so calling it unconditionally is safe and ensures fields are always populated.
 fn ensure_gml_object_struct(mb: &mut ModuleBuilder) {
-    if mb.has_struct("GMLObject") {
-        return;
-    }
     mb.add_struct(StructDef {
         name: "GMLObject".to_string(),
         namespace: Vec::new(),
