@@ -21,7 +21,7 @@
 //!    resolved.
 //! 5. **Write-back**: resolve every value's TypeVar and write the result back
 //!    into `func.value_types`. Unresolved vars are left unchanged in the IR;
-//!    only the emit step converts residual `Type::Var` to `unknown`.
+//!    only the emit step converts residual `Type::InferVar` to `unknown`.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
@@ -193,7 +193,7 @@ fn process_constraint(
                     }
                     // Unknown field — skip; don't invent a type.
                 }
-                Type::Var(_) => {
+                Type::InferVar(_) => {
                     // Part 1: if exactly one struct has this field in its own fields,
                     // unify immediately.  Use own_fields — inherited fields are not
                     // discriminants; every child would match and produce multiple candidates.
@@ -243,7 +243,7 @@ fn process_constraint(
                     deferred.push(TypeConstraint::Equal(arg_ty, param_ty));
                 }
                 deferred.push(TypeConstraint::Equal(ret, sig.return_ty.clone()));
-            } else if matches!(resolved_ty, Type::Var(_)) {
+            } else if matches!(resolved_ty, Type::InferVar(_)) {
                 // Callee type not yet resolved — re-defer.
                 deferred.push(TypeConstraint::Callable {
                     ty: resolved_ty,
@@ -267,7 +267,7 @@ fn process_constraint(
                     // Int width should be assumed in core).
                     let _ = index_ty;
                 }
-                Type::Var(_) => {
+                Type::InferVar(_) => {
                     // Container type not yet resolved — re-defer.
                     deferred.push(TypeConstraint::HasIndex {
                         container: resolved,
@@ -320,7 +320,7 @@ fn param_used_as_collection(
 }
 
 /// Returns true only when `ty` is a known primitive scalar that can never be a struct instance.
-/// Returns false for `Type::Var`, `Type::Unknown`, and any compound or reference type so that
+/// Returns false for `Type::InferVar`, `Type::Unknown`, and any compound or reference type so that
 /// unresolved type variables are not incorrectly excluded from inter-procedural constraints.
 fn is_definitely_scalar(ty: &crate::ir::Type) -> bool {
     matches!(
@@ -656,8 +656,8 @@ impl Transform for ConstraintSolveHM {
                                                         .push(arg_ty.clone());
                                                 } else {
                                                     all_constraints.push(TypeConstraint::Equal(
-                                                        Type::Var(arg_var),
-                                                        Type::Var(param_var),
+                                                        Type::InferVar(arg_var),
+                                                        Type::InferVar(param_var),
                                                     ));
                                                 }
                                             }
@@ -680,8 +680,8 @@ impl Transform for ConstraintSolveHM {
                                                 caller_data.value_vars.get(&result)
                                             {
                                                 all_constraints.push(TypeConstraint::Equal(
-                                                    Type::Var(result_var),
-                                                    Type::Var(callee_data.return_var),
+                                                    Type::InferVar(result_var),
+                                                    Type::InferVar(callee_data.return_var),
                                                 ));
                                                 // If the callee's return type is already
                                                 // concrete (e.g. a runtime builtin), emit a
@@ -690,7 +690,7 @@ impl Transform for ConstraintSolveHM {
                                                 // bound through transitive constraints.
                                                 if is_concrete(&callee_func.sig.return_ty) {
                                                     all_constraints.push(TypeConstraint::Equal(
-                                                        Type::Var(result_var),
+                                                        Type::InferVar(result_var),
                                                         callee_func.sig.return_ty.clone(),
                                                     ));
                                                 }
@@ -739,8 +739,8 @@ impl Transform for ConstraintSolveHM {
                                                         .push(recv_ty.clone());
                                                 } else {
                                                     all_constraints.push(TypeConstraint::Equal(
-                                                        Type::Var(recv_var),
-                                                        Type::Var(param_var),
+                                                        Type::InferVar(recv_var),
+                                                        Type::InferVar(param_var),
                                                     ));
                                                 }
                                             }
@@ -783,8 +783,8 @@ impl Transform for ConstraintSolveHM {
                                                         .push(arg_ty.clone());
                                                 } else {
                                                     all_constraints.push(TypeConstraint::Equal(
-                                                        Type::Var(arg_var),
-                                                        Type::Var(param_var),
+                                                        Type::InferVar(arg_var),
+                                                        Type::InferVar(param_var),
                                                     ));
                                                 }
                                             }
@@ -805,8 +805,8 @@ impl Transform for ConstraintSolveHM {
                                                 caller_data.value_vars.get(&result)
                                             {
                                                 all_constraints.push(TypeConstraint::Equal(
-                                                    Type::Var(result_var),
-                                                    Type::Var(callee_data.return_var),
+                                                    Type::InferVar(result_var),
+                                                    Type::InferVar(callee_data.return_var),
                                                 ));
                                                 // If the callee's return type is already
                                                 // concrete (e.g. a runtime builtin), emit a
@@ -815,7 +815,7 @@ impl Transform for ConstraintSolveHM {
                                                 // bound through transitive constraints.
                                                 if is_concrete(&callee_func.sig.return_ty) {
                                                     all_constraints.push(TypeConstraint::Equal(
-                                                        Type::Var(result_var),
+                                                        Type::InferVar(result_var),
                                                         callee_func.sig.return_ty.clone(),
                                                     ));
                                                 }
@@ -876,8 +876,8 @@ impl Transform for ConstraintSolveHM {
                                                         .push(capture_ty.clone());
                                                 } else {
                                                     all_constraints.push(TypeConstraint::Equal(
-                                                        Type::Var(capture_var),
-                                                        Type::Var(param_var),
+                                                        Type::InferVar(capture_var),
+                                                        Type::InferVar(param_var),
                                                     ));
                                                 }
                                             }
@@ -944,7 +944,10 @@ impl Transform for ConstraintSolveHM {
             } else {
                 Type::Union(deduped)
             };
-            union_constraints.push(TypeConstraint::Equal(constraint_ty, Type::Var(param_var)));
+            union_constraints.push(TypeConstraint::Equal(
+                constraint_ty,
+                Type::InferVar(param_var),
+            ));
         }
 
         // -----------------------------------------------------------------------
@@ -1002,7 +1005,7 @@ impl Transform for ConstraintSolveHM {
             let mut var_fields: BTreeMap<TypeVarId, BTreeSet<String>> = BTreeMap::new();
             for c in &stalled_deferred {
                 if let TypeConstraint::HasField {
-                    ty: Type::Var(var_id),
+                    ty: Type::InferVar(var_id),
                     field,
                     ..
                 } = c
@@ -1034,14 +1037,14 @@ impl Transform for ConstraintSolveHM {
                 });
                 if candidates.len() == 1 && !any_field_in_non_leaf {
                     let type_id = candidates[0];
-                    let _ = unify(Type::Var(*var_id), Type::Instance(type_id), &mut arena);
+                    let _ = unify(Type::InferVar(*var_id), Type::Instance(type_id), &mut arena);
                     // Emit field-type constraints for all HasField constraints on this var.
                     // Use all_fields so inherited fields resolve correctly.
                     if let Some(name) = type_id_to_name.get(&type_id) {
                         if let Some(sf) = all_fields.get(name) {
                             for c in &stalled_deferred {
                                 if let TypeConstraint::HasField {
-                                    ty: Type::Var(vid),
+                                    ty: Type::InferVar(vid),
                                     field,
                                     field_ty,
                                 } = c
@@ -1105,12 +1108,12 @@ impl Transform for ConstraintSolveHM {
                 .collect();
 
             for (var, lb) in &all_lower_bounds {
-                let resolved = resolve(Type::Var(*var), &arena);
-                let is_free = matches!(resolved, Type::Var(_));
+                let resolved = resolve(Type::InferVar(*var), &arena);
+                let is_free = matches!(resolved, Type::InferVar(_));
                 if is_free {
-                    // resolved is Type::Var(free_id) — bind the terminal free var,
+                    // resolved is Type::InferVar(free_id) — bind the terminal free var,
                     // not the original var (which may already be bound to free_id).
-                    if let Type::Var(free_id) = resolved {
+                    if let Type::InferVar(free_id) = resolved {
                         if arena.binding_of(free_id).is_none() {
                             arena.bind(free_id, lb.clone());
                         }
@@ -1140,15 +1143,15 @@ impl Transform for ConstraintSolveHM {
                 for (vid, var_id) in &data.value_vars {
                     let old_ty = &func.value_types[*vid];
                     // Only update values that were inference targets.
-                    if !matches!(old_ty, Type::Unknown | Type::Var(_)) {
+                    if !matches!(old_ty, Type::Unknown | Type::InferVar(_)) {
                         continue;
                     }
-                    let resolved = resolve(Type::Var(*var_id), &arena);
+                    let resolved = resolve(Type::InferVar(*var_id), &arena);
                     // If still unresolved, leave the existing type in place.
                     // Do not write Type::Unknown — that would conflate
                     // "unconstrained" with "genuinely unknown" and block
                     // re-inference on subsequent HM passes.
-                    if matches!(&resolved, Type::Var(_)) {
+                    if matches!(&resolved, Type::InferVar(_)) {
                         continue;
                     }
                     if resolved != *old_ty {
@@ -1204,7 +1207,7 @@ impl Transform for ConstraintSolveHM {
             for i in 0..entry_param_count {
                 let p_value = func.blocks[entry].params[i].value;
                 let vty = func.value_types[p_value].clone();
-                if !matches!(vty, Type::Var(_)) {
+                if !matches!(vty, Type::InferVar(_)) {
                     if func.blocks[entry].params[i].ty != vty {
                         func.blocks[entry].params[i].ty = vty.clone();
                         changed_funcs_set.insert(func_id);
@@ -1218,8 +1221,8 @@ impl Transform for ConstraintSolveHM {
 
             // Sync sig.return_ty ← resolved return_var.
             // Skip only if still Var (solver never constrained the return).
-            let resolved_ret = resolve(Type::Var(data.return_var), &arena);
-            if !matches!(resolved_ret, Type::Var(_)) && func.sig.return_ty != resolved_ret {
+            let resolved_ret = resolve(Type::InferVar(data.return_var), &arena);
+            if !matches!(resolved_ret, Type::InferVar(_)) && func.sig.return_ty != resolved_ret {
                 func.sig.return_ty = resolved_ret;
                 changed_funcs_set.insert(func_id);
             }
@@ -1235,8 +1238,8 @@ impl Transform for ConstraintSolveHM {
         let mut globals_changed = false;
         for g in &mut module.globals {
             if let Some(&var_id) = global_name_vars.get(&g.name) {
-                let resolved = resolve(Type::Var(var_id), &arena);
-                if !matches!(resolved, Type::Var(_)) && g.ty != resolved {
+                let resolved = resolve(Type::InferVar(var_id), &arena);
+                if !matches!(resolved, Type::InferVar(_)) && g.ty != resolved {
                     g.ty = resolved;
                     globals_changed = true;
                 }
@@ -1247,7 +1250,7 @@ impl Transform for ConstraintSolveHM {
         // Step 6.5: resolve stale TypeVars in struct field types.
         //
         // ConstructorStructInfer commits field types before HM runs, so any
-        // field whose type was Type::Var(v) at CSI time still holds that Var
+        // field whose type was Type::InferVar(v) at CSI time still holds that InferVar
         // after HM write-back.  Walk module.types here and resolve every field
         // type.  Unions have Unknown stripped when a concrete alternative exists
         // — matching CSI's merge_field_type rule.
@@ -1261,7 +1264,7 @@ impl Transform for ConstraintSolveHM {
                             variants.into_iter().map(|v| resolve(v, arena)).collect();
                         let has_concrete = resolved_variants
                             .iter()
-                            .any(|v| !matches!(v, Type::Unknown | Type::Var(_)));
+                            .any(|v| !matches!(v, Type::Unknown | Type::InferVar(_)));
                         let filtered: Vec<Type> = resolved_variants
                             .into_iter()
                             .filter(|v| {
@@ -1294,7 +1297,7 @@ impl Transform for ConstraintSolveHM {
             for decl in module.types.values_mut() {
                 if let TypeDecl::Object { ref mut fields, .. } = decl {
                     for field in fields.iter_mut() {
-                        if matches!(field.ty, Type::Var(_) | Type::Union(_)) {
+                        if matches!(field.ty, Type::InferVar(_) | Type::Union(_)) {
                             let new_ty = resolve_field_ty(field.ty.clone(), &arena);
                             if new_ty != field.ty {
                                 field.ty = new_ty;

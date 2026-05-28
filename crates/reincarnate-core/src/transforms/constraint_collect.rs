@@ -132,14 +132,14 @@ impl TypeVarArena {
 // resolve
 // ---------------------------------------------------------------------------
 
-/// Walk `ty`, substituting any bound [`Type::Var`] with its binding (recursively).
+/// Walk `ty`, substituting any bound [`Type::InferVar`] with its binding (recursively).
 ///
-/// Unbound variables remain as [`Type::Var`].
+/// Unbound variables remain as [`Type::InferVar`].
 pub fn resolve(ty: Type, arena: &TypeVarArena) -> Type {
     match ty {
-        Type::Var(id) => match arena.binding_of(id) {
+        Type::InferVar(id) => match arena.binding_of(id) {
             Some(bound) => resolve(bound.clone(), arena),
-            None => Type::Var(id),
+            None => Type::InferVar(id),
         },
         Type::Array(elem) => Type::Array(Box::new(resolve(*elem, arena))),
         Type::Map(k, v) => Type::Map(Box::new(resolve(*k, arena)), Box::new(resolve(*v, arena))),
@@ -193,7 +193,7 @@ pub fn occurs(id: TypeVarId, ty: &Type, arena: &TypeVarArena) -> bool {
 
 fn occurs_resolved(id: TypeVarId, ty: &Type, arena: &TypeVarArena) -> bool {
     match ty {
-        Type::Var(other) => *other == id,
+        Type::InferVar(other) => *other == id,
         Type::Array(elem) => occurs(id, elem, arena),
         Type::Map(k, v) => occurs(id, k, arena) || occurs(id, v, arena),
         Type::Option(inner) => occurs(id, inner, arena),
@@ -224,7 +224,7 @@ fn occurs_resolved(id: TypeVarId, ty: &Type, arena: &TypeVarArena) -> bool {
 
 fn collect_free_vars(ty: &Type, arena: &TypeVarArena, out: &mut Vec<TypeVarId>) {
     match ty {
-        Type::Var(id) => match arena.binding_of(*id) {
+        Type::InferVar(id) => match arena.binding_of(*id) {
             Some(bound) => collect_free_vars(&bound.clone(), arena, out),
             None => {
                 if !out.contains(id) {
@@ -299,14 +299,14 @@ pub enum UnifyError {
 pub fn bind_var(id: TypeVarId, ty: Type, arena: &mut TypeVarArena) -> Result<(), UnifyError> {
     let ty = resolve(ty, arena);
 
-    if let Type::Var(other) = ty {
+    if let Type::InferVar(other) = ty {
         if other == id {
             return Ok(());
         }
         // Bind to other var — level adjustment only (no occurs check needed for Var→Var).
         let target_level = arena.level_of(id);
         arena.lower_level(other, target_level);
-        arena.bind(id, Type::Var(other));
+        arena.bind(id, Type::InferVar(other));
         return Ok(());
     }
 
@@ -341,12 +341,12 @@ pub fn bind_var(id: TypeVarId, ty: Type, arena: &mut TypeVarArena) -> Result<(),
 /// that later reads of the same TypeVar see `Unknown` rather than the stale
 /// first-bound concrete type.
 pub fn unify(a: Type, b: Type, arena: &mut TypeVarArena) -> Result<Type, UnifyError> {
-    let a_var = if let Type::Var(id) = &a {
+    let a_var = if let Type::InferVar(id) = &a {
         Some(*id)
     } else {
         None
     };
-    let b_var = if let Type::Var(id) = &b {
+    let b_var = if let Type::InferVar(id) = &b {
         Some(*id)
     } else {
         None
@@ -360,11 +360,11 @@ pub fn unify(a: Type, b: Type, arena: &mut TypeVarArena) -> Result<Type, UnifyEr
         (Type::Unknown, _) | (_, Type::Unknown) => Ok(Type::Unknown),
         (Type::Union(_), _) | (_, Type::Union(_)) => Ok(Type::Unknown),
 
-        (Type::Var(id), b) => {
+        (Type::InferVar(id), b) => {
             bind_var(id, b.clone(), arena)?;
             Ok(arena.binding_of(id).cloned().unwrap_or(b))
         }
-        (a, Type::Var(id)) => {
+        (a, Type::InferVar(id)) => {
             bind_var(id, a.clone(), arena)?;
             Ok(arena.binding_of(id).cloned().unwrap_or(a))
         }
@@ -455,7 +455,7 @@ pub struct ConstraintSet {
     /// - Concrete ground types (including [`Type::Unknown`]) get a fresh var
     ///   that is immediately bound to that type — prior knowledge the solver
     ///   can only confirm, never weaken.
-    /// - [`Type::Var`] values get fresh, unbound vars (open inference targets).
+    /// - [`Type::InferVar`] values get fresh, unbound vars (open inference targets).
     pub value_vars: HashMap<ValueId, TypeVarId>,
     /// TypeVarId allocated for the function's return type.
     ///
@@ -484,7 +484,10 @@ pub struct ConstraintSet {
 pub(crate) fn is_concrete(ty: &Type) -> bool {
     match ty {
         Type::Unknown => true, // decided: inference exhausted, not a free variable
-        Type::Var(_) => false,
+        // HAZARD: InferVar must return false — leave the arena var unbound.
+        // Do NOT call arena.bind here; the unifier owns all bindings.
+        // Unknown also leaves inference open — do not collapse it to a ground type.
+        Type::InferVar(_) => false,
         Type::Array(elem) => is_concrete(elem),
         Type::Map(k, v) => is_concrete(k) && is_concrete(v),
         Type::Option(inner) => is_concrete(inner),
@@ -525,8 +528,8 @@ fn emit_type_rule_constraints(
     value_vars: &HashMap<ValueId, TypeVarId>,
     constraints: &mut Vec<TypeConstraint>,
 ) {
-    // Inline var_for: map a ValueId to its TypeVar as a Type::Var.
-    let var_for = |v: ValueId| -> Option<Type> { value_vars.get(&v).copied().map(Type::Var) };
+    // Inline var_for: map a ValueId to its TypeVar as a Type::InferVar.
+    let var_for = |v: ValueId| -> Option<Type> { value_vars.get(&v).copied().map(Type::InferVar) };
     match rule {
         SystemCallTypeRule::GlobalStore {
             name_arg,
@@ -538,7 +541,7 @@ fn emit_type_rule_constraints(
             {
                 if let Some(&gvar) = global_name_vars.get(name) {
                     if let Some(val_var) = args.get(*value_arg).and_then(|&v| var_for(v)) {
-                        constraints.push(TypeConstraint::Equal(val_var, Type::Var(gvar)));
+                        constraints.push(TypeConstraint::Equal(val_var, Type::InferVar(gvar)));
                     }
                 }
             }
@@ -550,7 +553,7 @@ fn emit_type_rule_constraints(
                 result_var,
             ) {
                 if let Some(&gvar) = global_name_vars.get(name) {
-                    constraints.push(TypeConstraint::Equal(rv, Type::Var(gvar)));
+                    constraints.push(TypeConstraint::Equal(rv, Type::InferVar(gvar)));
                 }
             }
         }
@@ -660,7 +663,7 @@ pub fn collect_function(
     // Helper: emit a constraint only when both values have registered vars.
     // -----------------------------------------------------------------------
     let var_for = |value: ValueId, vv: &HashMap<ValueId, TypeVarId>| -> Option<Type> {
-        vv.get(&value).copied().map(Type::Var)
+        vv.get(&value).copied().map(Type::InferVar)
     };
 
     // -----------------------------------------------------------------------
@@ -755,7 +758,7 @@ pub fn collect_function(
                 Op::GlobalRef(name) => {
                     if let Some(rv) = result_var {
                         if let Some(&gvar) = global_name_vars.get(name.as_str()) {
-                            constraints.push(TypeConstraint::Equal(rv, Type::Var(gvar)));
+                            constraints.push(TypeConstraint::Equal(rv, Type::InferVar(gvar)));
                         }
                     }
                 }
@@ -893,7 +896,7 @@ pub fn collect_function(
                         for (i, &arg) in args.iter().enumerate() {
                             if i < sig.params.len() {
                                 let param_ty = &sig.params[i];
-                                if let Type::Var(_) = param_ty {
+                                if let Type::InferVar(_) = param_ty {
                                     if let Some(arg_var) = var_for(arg, &value_vars) {
                                         constraints
                                             .push(TypeConstraint::Equal(arg_var, param_ty.clone()));
@@ -977,7 +980,7 @@ pub fn collect_function(
                             let param_idx = i + 1;
                             if param_idx < sig.params.len() {
                                 let param_ty = &sig.params[param_idx];
-                                if let Type::Var(_) = param_ty {
+                                if let Type::InferVar(_) = param_ty {
                                     if let Some(arg_var) = var_for(arg, &value_vars) {
                                         constraints
                                             .push(TypeConstraint::Equal(arg_var, param_ty.clone()));
@@ -1037,8 +1040,10 @@ pub fn collect_function(
                     if let Some(alloc_result) = inst.result {
                         let cell_var = *value_vars.get(&alloc_result).unwrap();
                         if is_concrete(inner_ty) && !matches!(inner_ty, Type::Unknown) {
-                            constraints
-                                .push(TypeConstraint::Equal(Type::Var(cell_var), inner_ty.clone()));
+                            constraints.push(TypeConstraint::Equal(
+                                Type::InferVar(cell_var),
+                                inner_ty.clone(),
+                            ));
                         }
                         alloc_cell_vars.insert(alloc_result, cell_var);
                     }
@@ -1048,7 +1053,8 @@ pub fn collect_function(
                 Op::Store { ptr, value } => {
                     if let Some(&cell_var) = alloc_cell_vars.get(ptr) {
                         if let Some(val_var) = var_for(*value, &value_vars) {
-                            constraints.push(TypeConstraint::Equal(Type::Var(cell_var), val_var));
+                            constraints
+                                .push(TypeConstraint::Equal(Type::InferVar(cell_var), val_var));
                         }
                     }
                 }
@@ -1056,7 +1062,7 @@ pub fn collect_function(
                 // Load — unify the result type with the cell type.
                 Op::Load(ptr) => {
                     if let (Some(rv), Some(&cell_var)) = (result_var, alloc_cell_vars.get(ptr)) {
-                        constraints.push(TypeConstraint::Equal(rv, Type::Var(cell_var)));
+                        constraints.push(TypeConstraint::Equal(rv, Type::InferVar(cell_var)));
                     }
                 }
 
@@ -1071,7 +1077,7 @@ pub fn collect_function(
     for (_, block) in func.blocks.iter() {
         if let Terminator::Return(Some(value)) = &block.terminator {
             if let Some(val_var) = var_for(*value, &value_vars) {
-                constraints.push(TypeConstraint::Equal(val_var, Type::Var(return_var)));
+                constraints.push(TypeConstraint::Equal(val_var, Type::InferVar(return_var)));
             }
         }
     }
@@ -1307,7 +1313,7 @@ mod tests {
     }
 
     /// Type::Unknown is concrete — inference exhausted, not a free variable.
-    /// Type::Var is the pre-inference placeholder and is NOT concrete.
+    /// Type::InferVar is the pre-inference placeholder and is NOT concrete.
     /// This invariant must never regress: code that treats Unknown as solvable
     /// or Var as concrete will produce wrong types throughout the pipeline.
     #[test]
@@ -1318,11 +1324,11 @@ mod tests {
             "Type::Unknown must be concrete"
         );
         assert!(
-            !is_concrete(&Type::Var(TypeVarId::new(0))),
-            "Type::Var must not be concrete"
+            !is_concrete(&Type::InferVar(TypeVarId::new(0))),
+            "Type::InferVar must not be concrete"
         );
         assert!(
-            !is_concrete(&Type::Array(Box::new(Type::Var(TypeVarId::new(0))))),
+            !is_concrete(&Type::Array(Box::new(Type::InferVar(TypeVarId::new(0))))),
             "Array(Var) must not be concrete"
         );
         assert!(

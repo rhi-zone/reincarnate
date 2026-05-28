@@ -32,7 +32,7 @@ pub struct ConstructorStructInfer;
 
 /// Determine whether a type should be replaced by an inferred struct type.
 fn is_unresolved(ty: &Type) -> bool {
-    matches!(ty, Type::Unknown | Type::Var(_))
+    matches!(ty, Type::Unknown | Type::InferVar(_))
 }
 
 /// Merge two field types seen at different `SetField` sites.
@@ -45,8 +45,8 @@ fn merge_field_type(existing: Type, new_ty: Type) -> Type {
         return existing;
     }
     match (&existing, &new_ty) {
-        (Type::Unknown | Type::Var(_), _) => new_ty,
-        (_, Type::Unknown | Type::Var(_)) => existing,
+        (Type::Unknown | Type::InferVar(_), _) => new_ty,
+        (_, Type::Unknown | Type::InferVar(_)) => existing,
         _ => {
             // Both concrete but different — produce a Union.
             match existing {

@@ -67,7 +67,7 @@ fn fmt_type(ty: &Type, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             fmt_type(return_ty, f)?;
             write!(f, ">")
         }
-        Type::Var(id) => write!(f, "tvar{}", id.index()),
+        Type::InferVar(id) => write!(f, "tvar{}", id.index()),
         Type::Union(types) => {
             for (i, t) in types.iter().enumerate() {
                 if i > 0 {

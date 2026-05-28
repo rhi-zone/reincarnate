@@ -153,7 +153,7 @@ pub fn ts_type(ty: &Type) -> String {
             }
             parts.join(" | ")
         }
-        Type::Var(_) => "unknown".into(),
+        Type::InferVar(_) => "unknown".into(),
         Type::Unknown => "unknown".into(),
     }
 }

@@ -1299,7 +1299,7 @@ pub(super) fn collect_type_ref(
         | Type::UInt(_)
         | Type::Float(_)
         | Type::String
-        | Type::Var(_)
+        | Type::InferVar(_)
         | Type::Unknown => {}
     }
 }
@@ -1362,7 +1362,7 @@ pub(super) fn collect_global_type_imports(
         | Type::UInt(_)
         | Type::Float(_)
         | Type::String
-        | Type::Var(_)
+        | Type::InferVar(_)
         | Type::Unknown => {}
     }
 }
@@ -1415,7 +1415,7 @@ pub(super) fn collect_all_struct_names(
         | Type::UInt(_)
         | Type::Float(_)
         | Type::String
-        | Type::Var(_)
+        | Type::InferVar(_)
         | Type::Unknown => {}
     }
 }

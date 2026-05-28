@@ -869,7 +869,7 @@ impl FunctionBuilder {
     /// yet know.
     ///
     /// The constraint solver treats `Type::Unknown` on non-parameter values as
-    /// an open inference target, identical to the former `Type::Var` — both
+    /// an open inference target, identical to the former `Type::InferVar` — both
     /// result in a free TypeVar in the HM arena.  Frontends should call this
     /// wherever a value's concrete type is an inference gap.
     pub fn fresh_var(&mut self) -> Type {

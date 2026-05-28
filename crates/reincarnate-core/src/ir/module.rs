@@ -1304,7 +1304,7 @@ impl Module {
     /// value's type.
     ///
     /// The constraint solver treats `Type::Unknown` on non-parameter values as
-    /// a free inference target, identical to the former `Type::Var` — both
+    /// a free inference target, identical to the former `Type::InferVar` — both
     /// result in a free TypeVar in the HM arena that constraints can bind to a
     /// concrete type.
     pub fn fresh_var(&mut self) -> Type {

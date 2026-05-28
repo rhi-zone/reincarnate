@@ -45,8 +45,13 @@ pub enum Type {
         yield_ty: Box<Type>,
         return_ty: Box<Type>,
     },
-    /// Unresolved type variable (pre-inference).
-    Var(TypeVarId),
+    /// Inference-internal unification variable, owned by the HM solver's `TypeVarArena`.
+    ///
+    /// INVARIANT: never persisted. This must not appear in `module.types`, nor in
+    /// `func.value_types` after inference completes. "Unresolved inference target" in
+    /// persisted IR is spelled `Type::Unknown`, not `InferVar`. The arena is the sole
+    /// allocator (`TypeVarArena::fresh`); frontends emit `Unknown` for unknown-typed values.
+    InferVar(TypeVarId),
     /// Union of distinct concrete types.
     Union(Vec<Type>),
     /// Unknown — type-safe top type representing an inference gap.
