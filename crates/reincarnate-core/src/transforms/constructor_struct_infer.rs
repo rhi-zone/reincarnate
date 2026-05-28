@@ -45,8 +45,8 @@ fn merge_field_type(existing: Type, new_ty: Type) -> Type {
         return existing;
     }
     match (&existing, &new_ty) {
-        (Type::Unknown, _) => new_ty,
-        (_, Type::Unknown) => existing,
+        (Type::Unknown | Type::Var(_), _) => new_ty,
+        (_, Type::Unknown | Type::Var(_)) => existing,
         _ => {
             // Both concrete but different — produce a Union.
             match existing {
