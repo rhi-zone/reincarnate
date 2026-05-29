@@ -560,6 +560,11 @@ fn ensure_gml_object_struct(mb: &mut ModuleBuilder) {
                 default: None,
             },
             FieldDef {
+                name: "z".to_string(),
+                ty: Type::Float(64),
+                default: None,
+            },
+            FieldDef {
                 name: "xprevious".to_string(),
                 ty: Type::Float(64),
                 default: None,

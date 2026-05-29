@@ -86,6 +86,7 @@
       "fields": {
         "x": "number",
         "y": "number",
+        "z": "number",
         "sprite_index": "number",
         "depth": "number",
         "image_index": "number",

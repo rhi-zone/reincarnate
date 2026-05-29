@@ -21,6 +21,19 @@ and the pass cannot see it.  Fix: add missing fields to `ensure_gml_object_struc
 `runtime.json`'s `type_definitions.GMLObject.fields`.  Until fixed, any class that sets
 `this.z = ...` will still emit a redundant/unknown `z` field declaration.
 
+**`z` was fixed in `fix(frontend-gamemaker,...)`** — added to both `ensure_gml_object_struct`
+and `runtime.json type_definitions.GMLObject.fields`.
+
+**Deferred debt — `visible`, `persistent`, `alarm`, `solid` type disagreement:**
+`runtime/gamemaker/ts/runtime.json` declares `visible`, `persistent`, `alarm`, `solid` as
+`"unknown"` (Law-4 suppressions masking real types).  The handwritten GMLObject class types
+`visible`/`persistent` as `number | boolean` and `alarm` as `number[]`, while the IR
+(`ensure_gml_object_struct`) types visible/persistent as `Bool` and alarm as
+`Float(64)[]`.  Three sources disagree.  Honest type for visible/persistent (Bool vs
+number|boolean vs numeric) is a modeling decision; fixing the runtime.json `unknown`s may
+surface currently-masked errors.  Needs a deliberate pass with before/after error
+measurement, not a blind edit.
+
 ## Phase 3: register stateful runtime functions with explicit `_rt` param 0 — DONE
 
 All ~1,000 stateful GML runtime functions now have `_rt` as param 0 in their registered
