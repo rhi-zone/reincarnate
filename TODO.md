@@ -4075,3 +4075,15 @@ Dead Estate still has ~1877 TS2345 and ~31 TS2416 errors (as of session 31 close
 ### Possible future API tightening (low priority, noted, not urgent)
 
 The runtime instance-handle APIs (`instance_exists`, `instance_destroy`, `getInstanceField`, `withInstances`, `collision_*`) accept a `number` arm for the object-index (class-as-integer) case. With instance `id` now `GMLObject`, that `number` arm could potentially be narrowed to only the object-index type for stronger static verification. Uncertain whether worth it; flagged because the `id`-as-`GMLObject` direction makes it conceivable. No action warranted until the `unknown`-inference gap is substantially closed.
+
+---
+
+## Ad-hoc dispatch findings (2026-05-29)
+
+From an ecosystem-wide investigation of ad-hoc dispatch architecture (2026-05-29). The recurring anti-pattern: N parallel dispatch tables keyed on a closed name/enum set where one registry/trait/visitor belongs — strongest tell is DRIFT (parallel tables disagreeing). Each finding names the general mechanism it should have been.
+
+- **I1 — `EngineOrigin`→string match duplicates trait identity.** `reincarnate-cli/src/main.rs:509-514` (`resolve_runtime`) maps `EngineOrigin::{Flash,GameMaker,Twine}` to dir-name strings; the `Frontend` trait has no `runtime_name()`/`name()` method (the `Backend` half correctly uses `backend.name()`). SHOULD BE: a display/dir-name method on `Frontend`/`EngineOrigin`.
+
+- **I2 — `disasm` bypasses the Frontend→IR→Backend pipeline.** `main.rs:1876` guards `if manifest.engine != EngineOrigin::GameMaker` then calls `datawin::DataWin::parse` directly; no `disassemble()`/`bytecode_reader()` on `Frontend`. Judgment note: disasm operates on pre-IR binary, so whether it belongs on the trait is a design call — but the manual `EngineOrigin` guard in CLI is the structural signal.
+
+- **NOT a smell (do not "fix" this):** `find_frontend`/`find_backend`/`find_checker` (`main.rs` ~462, 553, 1033) are feature-gated registry constructors — the correct place for per-type match arms.
