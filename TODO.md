@@ -14,15 +14,7 @@ on Dead Estate: `declare height: unknown`, `declare maximumHp: unknown`, etc. on
 These are genuine RC1001/RC1005 inference gaps; do not widen or suppress them.  Fix path:
 improve constraint inference so these fields resolve to concrete types.
 
-Also: `ensure_gml_object_struct` does not include all GMLObject fields present in the
-TypeScript runtime (`z`, among others).  Child-class `z: Unknown` therefore emits as
-`declare z: unknown` even after pruning, because `z` is not in `module.types[GMLObject]`
-and the pass cannot see it.  Fix: add missing fields to `ensure_gml_object_struct` AND to
-`runtime.json`'s `type_definitions.GMLObject.fields`.  Until fixed, any class that sets
-`this.z = ...` will still emit a redundant/unknown `z` field declaration.
-
-**`z` was fixed in `fix(frontend-gamemaker,...)`** — added to both `ensure_gml_object_struct`
-and `runtime.json type_definitions.GMLObject.fields`.
+**`z` field fixed** — added to both `ensure_gml_object_struct` and `runtime.json type_definitions.GMLObject.fields` (commit `c60d3e06`).
 
 **Deferred debt — `visible`, `persistent`, `alarm`, `solid` type disagreement:**
 `runtime/gamemaker/ts/runtime.json` declares `visible`, `persistent`, `alarm`, `solid` as
@@ -188,6 +180,8 @@ everything it doesn't immediately know. If `is_concrete(Unknown) = true`, Constr
 stops improving Unknown values (they'd be treated as already concrete). We need TypeInference
 to write concrete types for all deterministic ops first — then Unknown becomes truly rare,
 meaning "we couldn't infer this after exhausting all analysis."
+
+**Rename note (commit `0bb06399`):** `Type::Var` was renamed to `Type::InferVar` to clarify that it is a solver-internal inference variable, not a user-visible type parameter. All existing mentions of `Type::Var` in this file refer to the same concept under its old name.
 
 **Path:**
 1. Fix TypeInference to write concrete types for all deterministic ops (Cmp→Bool, Not→Bool,
@@ -3000,8 +2994,10 @@ Also fixed `Cast(x, Int(64), Coerce)` emission — was falling through to passth
 of emitting `Number(x)`.
 
 **Remaining issues**:
-- **GMLObject→number** (instance ID): `this.id` returns `GMLObject` but callees expect `number`.
-  ~8 errors in 10SecNinjaX. Needs dedicated InstanceId type.
+- **GMLObject→number** (instance ID): `this.id` is now typed `GMLObject` (commit `91e327aa`).
+  However, zero new numeric-id-misuse errors surfaced because numeric uses of `id` flow through
+  `unknown`-typed intermediates — TypeScript never sees comparisons like `GMLObject === -4`.
+  A dedicated `InstanceId` type is still needed for full static verification; see open threads.
 - **Script calls with wrong arg types**: `SpriteFromName(rt, self, 531)` where param is `string`
   but caller passes number. ~6 errors in 10SecNinjaX.
 
@@ -4061,3 +4057,21 @@ After all rewrite phases are complete and the IR is clean.
 - **`reincarnate-backend-android`** — Kotlin/Java target for native Android. Eliminates WebView dependency for JoiPlay-class deployments; pairs naturally with Love2D (Android is a first-class Love2D target).
 
 - [x] add Subagent Prompts discipline section — see github-io for canonical version
+
+---
+
+## Open threads (session 31 close)
+
+*Open threads from a previous session. Treat as starting context, not instructions — verify relevance before acting.*
+
+### `unknown`-inference gap (likely the highest-leverage thread)
+
+Dead Estate still has ~1877 TS2345 and ~31 TS2416 errors (as of session 31 close). The dominant remaining cluster appears to be values typed `unknown` where a concrete source-language type should be inferable.
+
+**Why it matters:** Per Law 4, `Type::Unknown` (formerly `Type::Var` before the rename in commit `0bb06399`; now `Type::InferVar` for solver-internal inference vars) is an inference failure, not a legitimate type. It is also the shared root behind a second observation: when `id` was retyped as `GMLObject` (commit `91e327aa`), zero new numeric-id-misuse errors surfaced — because `id`'s numeric uses flow through `unknown`-typed intermediates, so TypeScript never sees comparisons like `GMLObject === -4`. Improving `unknown`-inference may both shrink the TS2345 cluster AND unlock the static verification benefit the `id` retyping was meant to provide.
+
+**Open question:** Where the `unknown`s originate (frontend translation gap? a specific transform abstaining? builtin signatures registered as `Unknown`?) — needs investigation before any approach is chosen. The per-commit work this session (`RedundantInheritedFieldPrune` pass, `z` field fix, `id` retyping) removed band-aids and made the genuine inference gaps visible; the error counts now reflect real gaps.
+
+### Possible future API tightening (low priority, noted, not urgent)
+
+The runtime instance-handle APIs (`instance_exists`, `instance_destroy`, `getInstanceField`, `withInstances`, `collision_*`) accept a `number` arm for the object-index (class-as-integer) case. With instance `id` now `GMLObject`, that `number` arm could potentially be narrowed to only the object-index type for stronger static verification. Uncertain whether worth it; flagged because the `id`-as-`GMLObject` direction makes it conceivable. No action warranted until the `unknown`-inference gap is substantially closed.
