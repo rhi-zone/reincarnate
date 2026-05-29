@@ -122,7 +122,7 @@
         "path_orientation": "number",
         "path_endaction": "number",
         "object_index": "number",
-        "id": "number",
+        "id": "GMLObject",
         "image_number": "number",
         "xstart": "number",
         "ystart": "number",

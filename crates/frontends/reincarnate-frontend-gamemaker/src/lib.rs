@@ -545,6 +545,7 @@ impl Frontend for GameMakerFrontend {
 /// `ModuleBuilder::add_struct` already handles idempotency by checking `fields.is_empty()`,
 /// so calling it unconditionally is safe and ensures fields are always populated.
 fn ensure_gml_object_struct(mb: &mut ModuleBuilder) {
+    let gml_object_id = mb.intern_type("GMLObject");
     mb.add_struct(StructDef {
         name: "GMLObject".to_string(),
         namespace: Vec::new(),
@@ -696,7 +697,7 @@ fn ensure_gml_object_struct(mb: &mut ModuleBuilder) {
             },
             FieldDef {
                 name: "id".to_string(),
-                ty: Type::Float(64),
+                ty: Type::Instance(gml_object_id),
                 default: None,
             },
             FieldDef {

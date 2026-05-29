@@ -57,12 +57,7 @@ export class GMLObject {
     this.#alarm = val;
   }
 
-  // In GML, `id` is the numeric instance ID.  In the TypeScript runtime the
-  // GMLObject itself serves as its own ID (field access and identity checks work
-  // directly on the object).  Typing as `GMLObject & number` lets TypeScript
-  // accept `this.id` in both object-field and numeric-argument contexts without
-  // casting — which matches GML semantics where `id` is both.
-  get id(): GMLObject & number { return this as unknown as GMLObject & number; }
+  get id(): GMLObject { return this; }
 
   /** GML built-in global `room` — current room index from the runtime. */
   get room(): number { return this._rt.room; }
