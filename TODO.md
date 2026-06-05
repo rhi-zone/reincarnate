@@ -26,6 +26,25 @@ Do NOT suppress these diagnostics, disable the pass, or widen a type to silence 
 Each fired diagnostic is a defect report: investigate the inference bug that allowed the
 `InferVar` to escape, and fix the upstream solve or write-back.
 
+## `Type::Template` variant — deferred pending parametric-builtins feature
+
+The `Type::Template(u32)` encoding is locked in [ADR 004](docs/adr/004-type-template-encoding.md).
+The variant itself is NOT yet added to the `Type` enum — it has no producer until the
+parametric-builtins feature is implemented.
+
+**Prerequisite for landing the variant:**
+
+- Add `Type::Template(u32)` to the `Type` enum.
+- Add `FunctionSig.type_param_count: u32` (default 0, `#[serde(skip_serializing_if = "is_zero")]`).
+- Extend `ValidateNoEscapedTypeVars` with one match arm for `Template` (the pass is arm-ready).
+- Implement constraint-collector per-call-site instantiation: allocate `type_param_count` fresh
+  `TypeVarId`s, emit `Equal(arg_var, T_i)` / `Equal(result_var, T_i)` constraints.
+
+This entry supersedes/refines the parametric-FunctionSig design notes in the entry below
+("Parametric FunctionSig `(T, T) → T` for `_any` builtins") — that entry records the
+*motivation and constraint-collector mechanics*; ADR 004 records the locked *encoding decision*.
+Do not delete that entry; the two are complementary.
+
 ## Risk 2: Parent-level Unknown fields emit `: unknown` despite `RedundantInheritedFieldPrune`
 
 `RedundantInheritedFieldPrune` prunes child fields that are redundant relative to an ancestor.
