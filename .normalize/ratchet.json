@@ -89,7 +89,7 @@
       "path": "crates/reincarnate-core/src/transforms/mod.rs",
       "metric": "complexity",
       "aggregate": "sum",
-      "value": 14.0
+      "value": 15.0
     },
     {
       "path": "crates/reincarnate-core/src/transforms/red_cast_elim.rs",
@@ -120,6 +120,12 @@
       "metric": "complexity",
       "aggregate": "mean",
       "value": 3.7
+    },
+    {
+      "path": "crates/reincarnate-core/src/transforms/validate_no_escaped_type_vars.rs",
+      "metric": "complexity",
+      "aggregate": "mean",
+      "value": 6.333333333333333
     }
   ]
 }

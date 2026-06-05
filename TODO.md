@@ -4,6 +4,28 @@ Completed items archived in [COMPLETED.md](COMPLETED.md).
 
 Per-engine roadmaps (gaps, runtime coverage, open work) live in [`docs/targets/`](docs/targets/). This file tracks in-flight and near-term work across all active engines.
 
+## `ValidateNoEscapedTypeVars` — source-location granularity (follow-up)
+
+`ValidateNoEscapedTypeVars` (pass `validate-no-escaped-type-vars`) emits `EscapedTypeVar`
+diagnostics with `line: 0, col: 0` and the function or type name as the file.  Improving
+granularity to a specific `ValueId` or block location requires mapping from `ValueId` back
+to a source span — work that is separate from the pass itself and not yet done.
+
+When the IR gains stable value-to-source-span tracking, revisit this pass to emit precise
+locations.  Until then, the function/type name is sufficient to identify the inference bug's
+location.
+
+## Adjacent finding: `ValidateNoEscapedTypeVars` closes a previously-unenforced invariant
+
+The `InferVar` invariant (no `Type::InferVar` after inference) was true-by-construction
+but never actively enforced until `ValidateNoEscapedTypeVars` was added.  If this pass
+surfaces actual `EscapedTypeVar` diagnostics on real game input, each one is a signal of a
+**real inference bug** — a value that the solver failed to resolve.
+
+Do NOT suppress these diagnostics, disable the pass, or widen a type to silence them.
+Each fired diagnostic is a defect report: investigate the inference bug that allowed the
+`InferVar` to escape, and fix the upstream solve or write-back.
+
 ## Risk 2: Parent-level Unknown fields emit `: unknown` despite `RedundantInheritedFieldPrune`
 
 `RedundantInheritedFieldPrune` prunes child fields that are redundant relative to an ancestor.

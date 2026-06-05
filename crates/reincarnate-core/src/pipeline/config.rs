@@ -108,6 +108,11 @@ pub struct PassConfig {
     /// Emit diagnostics for calls to unresolved `_any` stubs that survived
     /// all transforms (argument types could not be inferred).
     pub validate_called_stubs: bool,
+    /// Emit hard-error diagnostics for any `Type::InferVar` that survived
+    /// inference and appears in `func.value_types`, `func.sig`, or
+    /// `module.types` after the pipeline completes. Such a value indicates
+    /// an inference bug — the solver failed to resolve a type variable.
+    pub validate_no_escaped_type_vars: bool,
     /// When enabled, the pipeline repeats all passes until none report changes.
     pub fixpoint: bool,
 }
@@ -126,6 +131,7 @@ impl Default for PassConfig {
             mem2reg: true,
             dead_code_elimination: true,
             validate_called_stubs: true,
+            validate_no_escaped_type_vars: true,
             fixpoint: false,
         }
     }
@@ -146,6 +152,7 @@ impl PassConfig {
     /// - `"mem2reg"`
     /// - `"dead-code-elimination"`
     /// - `"validate-called-stubs"`
+    /// - `"validate-no-escaped-type-vars"`
     /// - `"fixpoint"` — toggles pipeline fixpoint iteration
     ///
     /// Note: `"int-to-bool-promotion"` is an engine-specific pass injected
@@ -174,6 +181,7 @@ impl PassConfig {
             "mem2reg" => self.mem2reg = false,
             "dead-code-elimination" => self.dead_code_elimination = false,
             "validate-called-stubs" => self.validate_called_stubs = false,
+            "validate-no-escaped-type-vars" => self.validate_no_escaped_type_vars = false,
             "fixpoint" => self.fixpoint = false,
             _ => return false,
         }
@@ -415,6 +423,7 @@ pub fn resolve_preset(name: &str, skip_passes: &[&str]) -> Option<(PassConfig, L
                 redundant_cast_elimination: true,
                 dead_code_elimination: false,
                 validate_called_stubs: true,
+                validate_no_escaped_type_vars: true,
                 fixpoint: false,
             },
             LoweringConfig::literal(),

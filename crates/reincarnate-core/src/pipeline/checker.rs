@@ -64,6 +64,13 @@ pub enum RcDiagnostic {
     /// A call to a stub function survived all transforms — the stub's argument
     /// types could not be inferred, so overload selection could not replace it.
     CalledStub,
+
+    /// A `Type::InferVar` (HM solver unification variable) was found in
+    /// `func.value_types`, `func.sig`, or `module.types` after inference
+    /// completed. InferVars must never persist past the inference phase —
+    /// their presence indicates an inference bug (a value was not resolved
+    /// to a concrete type or `Unknown`).
+    EscapedTypeVar,
 }
 
 impl std::fmt::Display for RcDiagnostic {
@@ -79,6 +86,7 @@ impl std::fmt::Display for RcDiagnostic {
             RcDiagnostic::InferenceNoCallers => "RC1004",
             RcDiagnostic::InferenceInheritedUnknown => "RC1005",
             RcDiagnostic::CalledStub => "RC0005",
+            RcDiagnostic::EscapedTypeVar => "RC0006",
         };
         write!(f, "{code}")
     }

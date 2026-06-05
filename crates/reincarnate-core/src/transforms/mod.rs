@@ -13,6 +13,7 @@ pub mod red_cast_elim;
 pub mod redundant_inherited_field;
 pub mod util;
 pub mod validate_called_stubs;
+pub mod validate_no_escaped_type_vars;
 
 pub use builtin_overload_select::BuiltinOverloadSelect;
 pub use cfg_simplify::CfgSimplify;
@@ -27,6 +28,7 @@ pub use mem2reg::Mem2Reg;
 pub use red_cast_elim::RedundantCastElimination;
 pub use redundant_inherited_field::RedundantInheritedFieldPrune;
 pub use validate_called_stubs::ValidateCalledStubs;
+pub use validate_no_escaped_type_vars::ValidateNoEscapedTypeVars;
 
 use crate::pipeline::{PassConfig, PassDescriptor, TransformPipeline};
 
@@ -96,6 +98,11 @@ pub fn all_passes() -> Vec<PassDescriptor> {
             name: "validate-called-stubs",
             factory: || Box::new(ValidateCalledStubs),
             config_enabled: |c| c.validate_called_stubs,
+        },
+        PassDescriptor {
+            name: "validate-no-escaped-type-vars",
+            factory: || Box::new(ValidateNoEscapedTypeVars),
+            config_enabled: |c| c.validate_no_escaped_type_vars,
         },
     ]
 }
@@ -209,26 +216,40 @@ mod pipeline_order_tests {
             "rce must be after last constant-folding"
         );
 
-        // DeadCodeElimination must be second-to-last.
+        // DeadCodeElimination must appear before both validation passes.
         let pos_dce = names
             .iter()
             .position(|&n| n == "dead-code-elimination")
             .expect("dead-code-elimination missing");
-        assert_eq!(
-            pos_dce,
-            names.len() - 2,
-            "dead-code-elimination must be second-to-last"
-        );
 
-        // ValidateCalledStubs must be last.
+        // ValidateCalledStubs must appear after DCE.
         let pos_vcs = names
             .iter()
             .position(|&n| n == "validate-called-stubs")
             .expect("validate-called-stubs missing");
-        assert_eq!(
-            pos_vcs,
-            names.len() - 1,
-            "validate-called-stubs must be last"
+        assert!(
+            pos_vcs > pos_dce,
+            "validate-called-stubs must be after dead-code-elimination"
+        );
+
+        // ValidateNoEscapedTypeVars must appear after DCE.
+        let pos_vnetv = names
+            .iter()
+            .position(|&n| n == "validate-no-escaped-type-vars")
+            .expect("validate-no-escaped-type-vars missing");
+        assert!(
+            pos_vnetv > pos_dce,
+            "validate-no-escaped-type-vars must be after dead-code-elimination"
+        );
+
+        // Both validation passes must appear at the end (after the last HM run).
+        assert!(
+            pos_vcs > pos_hm[1],
+            "validate-called-stubs must be after last constraint-solve-hm"
+        );
+        assert!(
+            pos_vnetv > pos_hm[1],
+            "validate-no-escaped-type-vars must be after last constraint-solve-hm"
         );
 
         // Inline must appear after builtin-overload-select and before dce (run_once).
