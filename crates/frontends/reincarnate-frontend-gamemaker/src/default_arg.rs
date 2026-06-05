@@ -98,18 +98,10 @@ fn recover_defaults(func: &mut Function, cmp_eq_fid: Option<FuncId>) -> bool {
     }
 
     for m in &matches {
+        // Preserve only the default VALUE — the param's type is a fresh inference
+        // Var that the HM solver narrows from call sites. Overwriting it here would
+        // install a default-derived type floor that blocks call-site narrowing.
         func.sig.defaults[m.param_idx] = Some(m.constant.clone());
-        // Also narrow the param type when it's currently Unknown.  TypeInference
-        // runs after this pass and will propagate the concrete type into the body.
-        if matches!(func.sig.params[m.param_idx], Type::Unknown) {
-            let ty = type_of_constant(&m.constant);
-            func.sig.params[m.param_idx] = ty.clone();
-            // Update the entry block param as well.
-            if let Some(bp) = func.blocks[func.entry].params.get_mut(m.param_idx) {
-                func.value_types[bp.value] = ty.clone();
-                bp.ty = ty;
-            }
-        }
     }
 
     // DCE the undefined-check blocks: replace each BrIf with an unconditional
@@ -178,47 +170,14 @@ fn set_variadic_defaults(func: &mut Function) -> bool {
                 }
             }
         }
-        // Use the narrowed type from value_types (set by type inference) for scalar types
-        // (Bool/Int/UInt/Float/String) so their defaults are type-appropriate (false, 0, "").
-        // For non-scalar types (Struct, Array, Unknown, etc.), fall back to the GML missing-arg
-        // sentinel (0.0 / Float(0.0)).  A Struct-typed parameter that accepts the 0.0 sentinel
-        // is effectively `any` at the call site — using the narrowed type would produce
-        // `argument0: GMLObject = 0.0` which TypeScript rejects.
-        let narrowed = func.blocks[func.entry]
-            .params
-            .get(i)
-            .map(|p| &func.value_types[p.value])
-            .unwrap_or(&func.sig.params[i]);
-        let is_scalar = matches!(
-            narrowed,
-            Type::Bool | Type::Int(_) | Type::UInt(_) | Type::Float(_) | Type::String
-        );
-        let ty = if is_scalar { narrowed } else { &Type::Unknown };
-        func.sig.defaults[i] = Some(zero_for_type(ty));
-        // Widen the param's value_type back to Unknown for non-scalar types so the
-        // TypeScript annotation (`any = 0.0`) is consistent with the variadic sentinel.
-        // The narrowed type (e.g. GMLObject) is correct for callers that DO pass a value;
-        // the variadic sentinel 0.0 means the type annotation must accommodate both.
-        if !is_scalar {
-            if let Some(pv) = param_value {
-                func.value_types[pv] = Type::Unknown;
-            }
-        }
+        // Set only the default VALUE sentinel — the GML missing-arg value (0.0).
+        // The param's type stays a fresh inference Var that the HM solver narrows
+        // from call sites; deriving the default's type from a narrowed/param type
+        // would install a type floor that blocks call-site narrowing.
+        func.sig.defaults[i] = Some(zero_for_type(&Type::Unknown));
         changed = true;
     }
     changed
-}
-
-/// Return the concrete IR type for a constant value.
-fn type_of_constant(c: &Constant) -> Type {
-    match c {
-        Constant::Bool(_) => Type::Bool,
-        Constant::Int(_) => Type::Int(64),
-        Constant::UInt(_) => Type::UInt(64),
-        Constant::Float(_) => Type::Float(64),
-        Constant::String(_) => Type::String,
-        Constant::Null => Type::Unknown,
-    }
 }
 
 /// Return the type-appropriate zero/default constant for a given IR type.
@@ -482,8 +441,11 @@ mod tests {
         assert_eq!(func.sig.defaults.len(), 2); // self + arg0
         assert_eq!(func.sig.defaults[0], None); // self
         assert_eq!(func.sig.defaults[1], Some(Constant::Float(0.0))); // arg0
-                                                                      // Param type should be narrowed from Unknown to Float(64).
-        assert_eq!(func.sig.params[1], Type::Float(64));
+                                                                      // The param type is NOT floored from the default literal. A default value
+                                                                      // does not constrain the param's type (callers may pass any type when they
+                                                                      // do pass an arg); the HM solver narrows it from call sites in a later phase.
+                                                                      // It stays whatever it was pre-pass — here, the Unknown it was built with.
+        assert_eq!(func.sig.params[1], Type::Unknown);
     }
 
     #[test]
