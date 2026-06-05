@@ -744,13 +744,13 @@ fn cmd_emit(
     let emit_key = if debug_active || no_emit {
         None
     } else {
-        Some(cache::emit_cache_key(
+        cache::emit_cache_key(
             manifest_path,
             &manifest.source,
             preset,
             skip_passes,
             fixpoint,
-        ))
+        )
     };
 
     if let Some(ref key) = emit_key {

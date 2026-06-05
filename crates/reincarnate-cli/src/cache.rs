@@ -90,10 +90,34 @@ fn collect_files(dir: &Path, out: &mut Vec<PathBuf>) -> anyhow::Result<()> {
 
 // ── Cache keys ────────────────────────────────────────────────────────────────
 
+/// Return a hash string encoding the running binary's modification time.
+///
+/// Uses mtime rather than file contents because `cargo build` always relinks
+/// the binary (updating mtime) even when the resulting bytes are identical to
+/// the previous build (deterministic linking).  File-content hashing would
+/// miss those relinks and serve stale cached output after a rebuild.
+///
+/// Returns `None` if `current_exe()` or its metadata cannot be read; callers
+/// treat `None` as a cache miss so we degrade to always-recompute rather than
+/// serving a spurious hit.
+fn binary_mtime_hash() -> Option<String> {
+    let exe = std::env::current_exe().ok()?;
+    let mtime = std::fs::metadata(&exe).ok()?.modified().ok()?;
+    // Encode as nanos-since-epoch for a stable, unambiguous representation.
+    let nanos = mtime
+        .duration_since(std::time::SystemTime::UNIX_EPOCH)
+        .ok()?
+        .as_nanos();
+    let mut h = Sha256::new();
+    h.update(nanos.to_le_bytes());
+    Some(format!("{:x}", h.finalize()))
+}
+
 /// Compute the emit cache key for a given manifest.
 ///
-/// Key components (each individually sha256'd, then concatenated as 192-char hex):
-/// - Binary: `std::env::current_exe()` sha256, or sentinel `"dev"` on failure.
+/// Key components (each individually sha256'd, then combined):
+/// - Binary mtime: `std::env::current_exe()` modification time, or cache miss
+///   on failure (never a spurious hit).
 /// - Manifest file sha256.
 /// - Source file sha256.
 /// - Pipeline config string (preset + sorted skip-passes + fixpoint flag).
@@ -103,11 +127,9 @@ pub fn emit_cache_key(
     preset: &str,
     skip_passes: &[String],
     fixpoint: bool,
-) -> String {
-    let binary_hash = std::env::current_exe()
-        .ok()
-        .and_then(|p| sha256_file(&p))
-        .unwrap_or_else(|| "dev".repeat(16)); // 48 chars, never matches a real hash
+) -> Option<String> {
+    // If we can't determine the binary's identity, always treat as a miss.
+    let binary_hash = binary_mtime_hash()?;
 
     let manifest_hash = sha256_file(manifest_path).unwrap_or_else(|| "dev".repeat(16));
 
@@ -128,7 +150,7 @@ pub fn emit_cache_key(
     h.update(manifest_hash.as_bytes());
     h.update(source_hash.as_bytes());
     h.update(config_hash.as_bytes());
-    format!("{:x}", h.finalize())
+    Some(format!("{:x}", h.finalize()))
 }
 
 /// Compute the check cache key from the output directory contents.
