@@ -14481,7 +14481,7 @@
     {
       "name": "file_find_close",
       "params": [],
-      "return_type": "Unknown",
+      "return_type": "Void",
       "variadic": false,
       "aliases": []
     },
@@ -33865,7 +33865,7 @@
           "optional": false
         }
       ],
-      "return_type": "Unknown",
+      "return_type": "Void",
       "variadic": false,
       "aliases": []
     },
@@ -33918,7 +33918,7 @@
           "optional": false
         }
       ],
-      "return_type": "Unknown",
+      "return_type": "Void",
       "variadic": false,
       "aliases": [
         "bboxkind_precise",
@@ -33977,7 +33977,7 @@
           "optional": false
         }
       ],
-      "return_type": "Unknown",
+      "return_type": "Asset",
       "variadic": false,
       "aliases": []
     },
@@ -33990,7 +33990,7 @@
           "optional": false
         }
       ],
-      "return_type": "Unknown",
+      "return_type": "Bool",
       "variadic": false,
       "aliases": []
     },
@@ -34003,7 +34003,7 @@
           "optional": false
         }
       ],
-      "return_type": "Unknown",
+      "return_type": "Asset",
       "variadic": false,
       "aliases": []
     },
@@ -34016,7 +34016,7 @@
           "optional": false
         }
       ],
-      "return_type": "Unknown",
+      "return_type": "Bool",
       "variadic": false,
       "aliases": []
     },
@@ -34055,7 +34055,7 @@
           "optional": false
         }
       ],
-      "return_type": "Unknown",
+      "return_type": "Real",
       "variadic": false,
       "aliases": []
     },
@@ -34068,7 +34068,7 @@
           "optional": false
         }
       ],
-      "return_type": "Unknown",
+      "return_type": "Real",
       "variadic": false,
       "aliases": []
     },
@@ -34081,7 +34081,7 @@
           "optional": false
         }
       ],
-      "return_type": "Unknown",
+      "return_type": "Constant",
       "variadic": false,
       "aliases": [
         "bboxmode_automatic",
@@ -34098,7 +34098,7 @@
           "optional": false
         }
       ],
-      "return_type": "Unknown",
+      "return_type": "Real",
       "variadic": false,
       "aliases": []
     },
@@ -34111,7 +34111,7 @@
           "optional": false
         }
       ],
-      "return_type": "Unknown",
+      "return_type": "Real",
       "variadic": false,
       "aliases": []
     },
@@ -34147,7 +34147,7 @@
           "optional": false
         }
       ],
-      "return_type": "Unknown",
+      "return_type": "Real",
       "variadic": false,
       "aliases": []
     },
@@ -34173,7 +34173,7 @@
           "optional": false
         }
       ],
-      "return_type": "Unknown",
+      "return_type": "String",
       "variadic": false,
       "aliases": []
     },
@@ -34199,7 +34199,7 @@
           "optional": false
         }
       ],
-      "return_type": "Unknown",
+      "return_type": "Real",
       "variadic": false,
       "aliases": []
     },
@@ -34282,7 +34282,7 @@
           "optional": false
         }
       ],
-      "return_type": "Unknown",
+      "return_type": "Array",
       "variadic": false,
       "aliases": []
     },
@@ -34295,7 +34295,7 @@
           "optional": false
         }
       ],
-      "return_type": "Unknown",
+      "return_type": "Real",
       "variadic": false,
       "aliases": []
     },
@@ -34308,7 +34308,7 @@
           "optional": false
         }
       ],
-      "return_type": "Unknown",
+      "return_type": "Real",
       "variadic": false,
       "aliases": []
     },
@@ -34321,7 +34321,7 @@
           "optional": false
         }
       ],
-      "return_type": "Unknown",
+      "return_type": "Real",
       "variadic": false,
       "aliases": []
     },
@@ -34353,7 +34353,7 @@
           "optional": false
         }
       ],
-      "return_type": "Unknown",
+      "return_type": "Void",
       "variadic": false,
       "aliases": []
     },
@@ -34429,7 +34429,7 @@
           "optional": false
         }
       ],
-      "return_type": "Unknown",
+      "return_type": "Void",
       "variadic": false,
       "aliases": []
     },
@@ -34452,7 +34452,7 @@
           "optional": false
         }
       ],
-      "return_type": "Unknown",
+      "return_type": "Void",
       "variadic": false,
       "aliases": []
     },
@@ -34470,7 +34470,7 @@
           "optional": false
         }
       ],
-      "return_type": "Unknown",
+      "return_type": "Void",
       "variadic": false,
       "aliases": []
     },
@@ -34488,7 +34488,7 @@
           "optional": false
         }
       ],
-      "return_type": "Unknown",
+      "return_type": "Void",
       "variadic": false,
       "aliases": []
     },
@@ -34521,7 +34521,7 @@
           "optional": false
         }
       ],
-      "return_type": "Unknown",
+      "return_type": "Void",
       "variadic": false,
       "aliases": []
     },
@@ -34539,7 +34539,7 @@
           "optional": false
         }
       ],
-      "return_type": "Unknown",
+      "return_type": "Void",
       "variadic": false,
       "aliases": []
     },
@@ -34557,7 +34557,7 @@
           "optional": false
         }
       ],
-      "return_type": "Unknown",
+      "return_type": "Void",
       "variadic": false,
       "aliases": []
     },
@@ -34580,7 +34580,7 @@
           "optional": false
         }
       ],
-      "return_type": "Unknown",
+      "return_type": "Void",
       "variadic": false,
       "aliases": []
     },
@@ -34621,7 +34621,7 @@
           "optional": false
         }
       ],
-      "return_type": "Unknown",
+      "return_type": "Void",
       "variadic": false,
       "aliases": []
     },
@@ -37195,7 +37195,7 @@
           "optional": false
         }
       ],
-      "return_type": "Unknown",
+      "return_type": "String",
       "variadic": false,
       "aliases": []
     },
@@ -37221,7 +37221,7 @@
           "optional": false
         }
       ],
-      "return_type": "Unknown",
+      "return_type": "Array",
       "variadic": false,
       "aliases": []
     },

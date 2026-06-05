@@ -339,13 +339,18 @@ fn parse_arg_table(doc: &Html) -> Result<Vec<GmlParam>> {
 }
 
 /// Extract the return type from the page, looking for the `Returns:` heading.
-/// Handles both `<h4>Returns:</h4>` and `<h4><b>Returns:</b></h4>`.
+/// Handles `<h4>Returns:</h4>`, `<h4><b>Returns:</b></h4>`, and the
+/// no-colon variants `<h4>Returns</h4>` and `<h4><b>Returns</b></h4>`.
 fn parse_return_type(content: &str) -> String {
-    // Try both heading variants.
+    // Try all heading variants (colon and no-colon, plain and bold).
     let after = if let Some(i) = content.find("<h4>Returns:</h4>") {
         &content[i + "<h4>Returns:</h4>".len()..]
     } else if let Some(i) = content.find("<h4><b>Returns:</b></h4>") {
         &content[i + "<h4><b>Returns:</b></h4>".len()..]
+    } else if let Some(i) = content.find("<h4>Returns</h4>") {
+        &content[i + "<h4>Returns</h4>".len()..]
+    } else if let Some(i) = content.find("<h4><b>Returns</b></h4>") {
+        &content[i + "<h4><b>Returns</b></h4>".len()..]
     } else {
         return "Unknown".to_owned();
     };
@@ -528,6 +533,9 @@ fn generate_rust(functions: &[GmlFunction]) -> String {
 
         // has_rest_param
         writeln!(out, "            has_rest_param: {},", func.variadic).unwrap();
+
+        // param_lower_bounds — always empty for parsed builtins; callers set them programmatically
+        writeln!(out, "            param_lower_bounds: vec![],").unwrap();
 
         // aliases slice
         if func.aliases.is_empty() {
