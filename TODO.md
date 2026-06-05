@@ -4128,3 +4128,36 @@ From an ecosystem-wide investigation of ad-hoc dispatch architecture (2026-05-29
 - **I2 — `disasm` bypasses the Frontend→IR→Backend pipeline.** `main.rs:1876` guards `if manifest.engine != EngineOrigin::GameMaker` then calls `datawin::DataWin::parse` directly; no `disassemble()`/`bytecode_reader()` on `Frontend`. Judgment note: disasm operates on pre-IR binary, so whether it belongs on the trait is a design call — but the manual `EngineOrigin` guard in CLI is the structural signal.
 
 - **NOT a smell (do not "fix" this):** `find_frontend`/`find_backend`/`find_checker` (`main.rs` ~462, 553, 1033) are feature-gated registry constructors — the correct place for per-type match arms.
+
+---
+
+## Dead Estate inference work — corrected baseline & measurement hygiene (2026-06-05)
+
+1. **Authoritative Dead Estate error baseline: TS2345 = 2101, total = 25446 errors** (0 warnings). Reproduced 3× — with a clean `cargo build`, a forced emit cache MISS, and two independent ways of obtaining the total (the `--filter-code TS2345` run header "Showing 2101 of 25446 diagnostics", and an unfiltered `check --examples=0` → "Total: 25446"). This SUPERSEDES other figures used earlier this session: the "~1,877 TS2345" and a transient "763 / 87,279" measurement were both contaminated (stale binary / broken-emit state). Use 2101 / 25446 as ground truth.
+
+2. **Measurement hygiene (the cause of this session's wasted effort):** numbers were repeatedly contaminated by running a STALE BINARY — hand-copied binaries, or `cargo build` no-op'ing while an old binary got run. Durable rules:
+   - (a) Always invoke via `cargo run -p reincarnate-cli -- …` so it rebuilds-then-runs; never hand-copy/run `target/debug/reincarnate-cli`.
+   - (b) Use `--examples=-1` (the space form `--examples -1` fails clap parsing — `-1` is read as a flag — and exits with empty stdout, which can be misread as "zero errors").
+   - (c) `emit` cleans `output_dir` (`fs::remove_dir_all`) only on a cache MISS; a cache HIT returns early and skips cleanup, so leftover/foreign files in `out/` survive a cached emit.
+   - (d) `check --no-emit` type-checks whatever is on disk and does no cleanup — sharpest footgun for reading stale/foreign files.
+
+3. **Emit cache change (commit `0376151c`):** `emit_cache_key` now incorporates the running binary's mtime instead of a content hash. NOTE: this is a conservative policy (any relink invalidates the cache) but does NOT address the real contamination vector — running a stale binary — since any cache key derived from `current_exe()` describes whichever binary is actually executing. The procedural rules in (2) are the real safeguard. The cache-hit-skips-cleanup hazard in (2c) also remains.
+
+4. **Diagnosis of the `unknown → number` flood** (against the true 2101 baseline; approximate proportions — RE-MEASURE before relying):
+   - Dominant sources are unknown-typed script params (`argumentN: unknown = 0.0`, TODO U4) and a smaller slice of genuinely-Unknown builtin returns.
+   - A separate large bucket — `this → SpecificType` receiver mismatches (~26% of TS2345) — is a distinct method-dispatch problem, not an Unknown gap.
+   - ADR-004's Template/parametric-builtins feature addresses only a small slice (~5–10%); it is NOT the top lever.
+
+5. **Phase 1 done (committed, `fe19f330`):** fixed the gen-gml-builtins HTML parser to match `<h4>Returns</h4>` (no colon); 31 builtins flipped Unknown→concrete; also fixed generator drift (missing `param_lower_bounds` emission). NET Dead Estate impact: ~zero (none of the affected builtins are exercised in ways that surfaced the Unknown on this corpus). Correct fix regardless; helps other corpora.
+
+6. **Phase 2 (U4 param inference) — NEEDS REDESIGN, do not retry as-specified.** The approved plan's "removal of special-casing" (stop freezing Unknown params at the `should_bind` site in `constraint_collect.rs`; admit Unknown params at the two seeding guards in `constraint_solve_hm.rs`) REGRESSES — it narrowed ~758 params but introduced more errors than it fixed. Two holes in the design:
+   - (a) **Partial-evidence narrowing** — both seeding loops skip call-site args whose own type is `Unknown` (`if matches!(arg_ty, Unknown) { continue }`), so a param narrows on the SUBSET of resolved call sites and then rejects the skipped ones (e.g. a param narrowed to `string` but also called with a number → `number not assignable to string`).
+   - (b) **Default-value unsoundness** — `argument0 = 0.0` does NOT constrain the param's type; the default is the value used when no arg is passed, and callers may pass any type when they DO pass an arg. So seeding a param type from its default literal is unsound on its own.
+
+   The correct fix needs an evidence-completeness model: a freed param narrows only when ALL its call-site args for that position are concrete AND consistent, treating any Unknown-typed call-site arg as forcing the param to stay `unknown`; the default literal is at most one piece of evidence, not a floor.
+
+   CONFIRMED facts to reuse:
+   - Intentional-any params (select, `_any` builtins, runtime-library sigs) are STRUCTURALLY EXEMPT because `Module::register_runtime` builds them with EMPTY entry-block params, so the seeding loops (which key off entry-block param ValueIds) never reach them.
+   - The multiple-call-site union path emits `Equal(Union([...]), param_var)` but the `unify` `(Union,_) => Unknown` arm fires before the `InferVar` arm, so conflicting call sites fall back to `unknown` (safe) rather than forming a union.
+
+   Nothing from Phase 2 was committed — the working tree was reverted clean.
