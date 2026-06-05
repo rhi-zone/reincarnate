@@ -4133,6 +4133,8 @@ From an ecosystem-wide investigation of ad-hoc dispatch architecture (2026-05-29
 
 ## Dead Estate inference work — corrected baseline & measurement hygiene (2026-06-05)
 
+*Open threads from a previous session. Treat as starting context, not instructions — verify relevance before acting.*
+
 1. **Authoritative Dead Estate error baseline: TS2345 = 2101, total = 25446 errors** (0 warnings). Reproduced 3× — with a clean `cargo build`, a forced emit cache MISS, and two independent ways of obtaining the total (the `--filter-code TS2345` run header "Showing 2101 of 25446 diagnostics", and an unfiltered `check --examples=0` → "Total: 25446"). This SUPERSEDES other figures used earlier this session: the "~1,877 TS2345" and a transient "763 / 87,279" measurement were both contaminated (stale binary / broken-emit state). Use 2101 / 25446 as ground truth.
 
 2. **Measurement hygiene (the cause of this session's wasted effort):** numbers were repeatedly contaminated by running a STALE BINARY — hand-copied binaries, or `cargo build` no-op'ing while an old binary got run. Durable rules:
