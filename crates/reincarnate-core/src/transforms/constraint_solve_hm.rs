@@ -364,6 +364,71 @@ fn param_used_with_field_access(
     param_used_as_collection(func, param_val, array_like_fids)
 }
 
+/// Per-parameter inference evidence accumulated across call sites.
+///
+/// `call_site` holds concrete argument types observed at call sites; `default`
+/// holds the type of the param's default argument (if any). `saw_unknown` is set
+/// when any contributing call site supplied an `Unknown` argument — i.e. the
+/// evidence is incomplete and the param must be left free rather than narrowed on
+/// a subset of call sites.
+#[derive(Default)]
+struct ParamEvidence {
+    call_site: Vec<Type>,
+    default: Option<Type>,
+    saw_unknown: bool,
+}
+
+/// Seed a callee param's inference evidence from one caller argument.
+///
+/// Shared body of the Call / MethodCall / MakeClosure arg-seeding loops:
+///  - already-concrete params need no narrowing (return),
+///  - an `Unknown` argument marks the evidence incomplete (`saw_unknown`),
+///  - a body-usage abstention (`usage_suppressed`) declines to contribute,
+///  - a concrete argument is recorded as call-site evidence, while a non-concrete
+///    argument is linked directly via an `Equal` constraint between the two vars.
+#[allow(clippy::too_many_arguments)]
+fn seed_param_from_arg(
+    param_concrete_types: &mut BTreeMap<TypeVarId, ParamEvidence>,
+    all_constraints: &mut Vec<TypeConstraint>,
+    arg_ty: &Type,
+    param_ty: &Type,
+    arg_var: Option<TypeVarId>,
+    param_var: Option<TypeVarId>,
+    usage_suppressed: bool,
+) {
+    // Already-concrete callee params are resolved; no narrowing needed.
+    if is_concrete(param_ty) {
+        return;
+    }
+    let Some(param_var) = param_var else {
+        return;
+    };
+    // An Unknown argument means call-site evidence is incomplete: record it so the
+    // drain site leaves the param free rather than narrowing on a subset.
+    if matches!(arg_ty, Type::Unknown) {
+        param_concrete_types
+            .entry(param_var)
+            .or_default()
+            .saw_unknown = true;
+        return;
+    }
+    if usage_suppressed {
+        return;
+    }
+    if is_concrete(arg_ty) {
+        param_concrete_types
+            .entry(param_var)
+            .or_default()
+            .call_site
+            .push(arg_ty.clone());
+    } else if let Some(arg_var) = arg_var {
+        all_constraints.push(TypeConstraint::Equal(
+            Type::InferVar(arg_var),
+            Type::InferVar(param_var),
+        ));
+    }
+}
+
 impl Transform for ConstraintSolveHM {
     fn name(&self) -> &str {
         "constraint-solve-hm"
@@ -557,7 +622,7 @@ impl Transform for ConstraintSolveHM {
         // -----------------------------------------------------------------------
         // Accumulates concrete types flowing into each param var from multiple call sites.
         // Drained after the interprocedural loop to emit union constraints.
-        let mut param_concrete_types: BTreeMap<TypeVarId, Vec<Type>> = BTreeMap::new();
+        let mut param_concrete_types: BTreeMap<TypeVarId, ParamEvidence> = BTreeMap::new();
 
         // Step 3: emit interprocedural call-site constraints.
         //
@@ -610,65 +675,35 @@ impl Transform for ConstraintSolveHM {
                                         if i >= entry_params.len() {
                                             break;
                                         }
-                                        // Skip Unknown args — abstentions should not
-                                        // pull the callee param toward Unknown.
                                         let arg_ty = &func.value_types[arg];
-                                        if matches!(arg_ty, Type::Unknown) {
-                                            continue;
-                                        }
                                         let param_val = entry_params[i].value;
-                                        // Skip already-concrete callee params.
                                         let param_ty = &callee_func.value_types[param_val];
-                                        if is_concrete(param_ty) {
-                                            continue;
-                                        }
                                         let is_struct_arg =
                                             matches!(arg_ty, Type::Instance(_) | Type::ClassRef(_));
-                                        let is_self_param = i == 0;
-                                        if is_self_param {
-                                            if !is_struct_arg
+                                        let usage_suppressed = if i == 0 {
+                                            !is_struct_arg
                                                 && param_used_as_collection(
                                                     callee_func,
                                                     param_val,
                                                     &module.array_like_fids,
                                                 )
-                                            {
-                                                continue;
-                                            }
-                                        } else if is_definitely_scalar(arg_ty)
-                                            && param_used_with_field_access(
-                                                callee_func,
-                                                param_val,
-                                                &module.array_like_fids,
-                                            )
-                                        {
-                                            continue;
-                                        }
-                                        match (
+                                        } else {
+                                            is_definitely_scalar(arg_ty)
+                                                && param_used_with_field_access(
+                                                    callee_func,
+                                                    param_val,
+                                                    &module.array_like_fids,
+                                                )
+                                        };
+                                        seed_param_from_arg(
+                                            &mut param_concrete_types,
+                                            &mut all_constraints,
+                                            arg_ty,
+                                            param_ty,
                                             caller_data.value_vars.get(&arg).copied(),
                                             callee_data.value_vars.get(&param_val).copied(),
-                                        ) {
-                                            (Some(arg_var), Some(param_var)) => {
-                                                if is_concrete(arg_ty) {
-                                                    param_concrete_types
-                                                        .entry(param_var)
-                                                        .or_default()
-                                                        .push(arg_ty.clone());
-                                                } else {
-                                                    all_constraints.push(TypeConstraint::Equal(
-                                                        Type::InferVar(arg_var),
-                                                        Type::InferVar(param_var),
-                                                    ));
-                                                }
-                                            }
-                                            (None, Some(param_var)) => {
-                                                param_concrete_types
-                                                    .entry(param_var)
-                                                    .or_default()
-                                                    .push(arg_ty.clone());
-                                            }
-                                            _ => {}
-                                        }
+                                            usage_suppressed,
+                                        );
                                     }
 
                                     // Link caller result ← callee return_var.
@@ -720,31 +755,20 @@ impl Transform for ConstraintSolveHM {
                                         let recv_ty = &func.value_types[*receiver];
                                         let param_val = entry_params[0].value;
                                         let param_ty = &callee_func.value_types[param_val];
-                                        if !matches!(recv_ty, Type::Unknown)
-                                            && !is_concrete(param_ty)
-                                            && !param_used_as_collection(
-                                                callee_func,
-                                                param_val,
-                                                &module.array_like_fids,
-                                            )
-                                        {
-                                            if let (Some(&recv_var), Some(&param_var)) = (
-                                                caller_data.value_vars.get(receiver),
-                                                callee_data.value_vars.get(&param_val),
-                                            ) {
-                                                if is_concrete(recv_ty) {
-                                                    param_concrete_types
-                                                        .entry(param_var)
-                                                        .or_default()
-                                                        .push(recv_ty.clone());
-                                                } else {
-                                                    all_constraints.push(TypeConstraint::Equal(
-                                                        Type::InferVar(recv_var),
-                                                        Type::InferVar(param_var),
-                                                    ));
-                                                }
-                                            }
-                                        }
+                                        let usage_suppressed = param_used_as_collection(
+                                            callee_func,
+                                            param_val,
+                                            &module.array_like_fids,
+                                        );
+                                        seed_param_from_arg(
+                                            &mut param_concrete_types,
+                                            &mut all_constraints,
+                                            recv_ty,
+                                            param_ty,
+                                            caller_data.value_vars.get(receiver).copied(),
+                                            callee_data.value_vars.get(&param_val).copied(),
+                                            usage_suppressed,
+                                        );
                                     }
 
                                     // Link args to params[1..] (skip self).
@@ -754,48 +778,23 @@ impl Transform for ConstraintSolveHM {
                                             break;
                                         }
                                         let arg_ty = &func.value_types[arg];
-                                        if matches!(arg_ty, Type::Unknown) {
-                                            continue;
-                                        }
                                         let param_val = entry_params[param_idx].value;
                                         let param_ty = &callee_func.value_types[param_val];
-                                        if is_concrete(param_ty) {
-                                            continue;
-                                        }
-                                        if is_definitely_scalar(arg_ty)
+                                        let usage_suppressed = is_definitely_scalar(arg_ty)
                                             && param_used_with_field_access(
                                                 callee_func,
                                                 param_val,
                                                 &module.array_like_fids,
-                                            )
-                                        {
-                                            continue;
-                                        }
-                                        match (
+                                            );
+                                        seed_param_from_arg(
+                                            &mut param_concrete_types,
+                                            &mut all_constraints,
+                                            arg_ty,
+                                            param_ty,
                                             caller_data.value_vars.get(&arg).copied(),
                                             callee_data.value_vars.get(&param_val).copied(),
-                                        ) {
-                                            (Some(arg_var), Some(param_var)) => {
-                                                if is_concrete(arg_ty) {
-                                                    param_concrete_types
-                                                        .entry(param_var)
-                                                        .or_default()
-                                                        .push(arg_ty.clone());
-                                                } else {
-                                                    all_constraints.push(TypeConstraint::Equal(
-                                                        Type::InferVar(arg_var),
-                                                        Type::InferVar(param_var),
-                                                    ));
-                                                }
-                                            }
-                                            (None, Some(param_var)) => {
-                                                param_concrete_types
-                                                    .entry(param_var)
-                                                    .or_default()
-                                                    .push(arg_ty.clone());
-                                            }
-                                            _ => {}
-                                        }
+                                            usage_suppressed,
+                                        );
                                     }
 
                                     // Link caller result ← callee return_var.
@@ -843,52 +842,27 @@ impl Transform for ConstraintSolveHM {
                                             break;
                                         }
                                         let capture_ty = &func.value_types[capture];
-                                        if matches!(capture_ty, Type::Unknown) {
-                                            continue;
-                                        }
                                         let param_val = entry_params[param_idx].value;
                                         let param_ty = &callee_func.value_types[param_val];
-                                        if is_concrete(param_ty) {
-                                            continue;
-                                        }
                                         let is_struct_arg = matches!(
                                             capture_ty,
                                             Type::Instance(_) | Type::ClassRef(_)
                                         );
-                                        if !is_struct_arg
+                                        let usage_suppressed = !is_struct_arg
                                             && param_used_with_field_access(
                                                 callee_func,
                                                 param_val,
                                                 &module.array_like_fids,
-                                            )
-                                        {
-                                            continue;
-                                        }
-                                        match (
+                                            );
+                                        seed_param_from_arg(
+                                            &mut param_concrete_types,
+                                            &mut all_constraints,
+                                            capture_ty,
+                                            param_ty,
                                             caller_data.value_vars.get(&capture).copied(),
                                             callee_data.value_vars.get(&param_val).copied(),
-                                        ) {
-                                            (Some(capture_var), Some(param_var)) => {
-                                                if is_concrete(capture_ty) {
-                                                    param_concrete_types
-                                                        .entry(param_var)
-                                                        .or_default()
-                                                        .push(capture_ty.clone());
-                                                } else {
-                                                    all_constraints.push(TypeConstraint::Equal(
-                                                        Type::InferVar(capture_var),
-                                                        Type::InferVar(param_var),
-                                                    ));
-                                                }
-                                            }
-                                            (None, Some(param_var)) => {
-                                                param_concrete_types
-                                                    .entry(param_var)
-                                                    .or_default()
-                                                    .push(capture_ty.clone());
-                                            }
-                                            _ => {}
-                                        }
+                                            usage_suppressed,
+                                        );
                                     }
                                 }
                             }
@@ -920,10 +894,7 @@ impl Transform for ConstraintSolveHM {
                     continue;
                 };
                 let default_ty = constant.ty();
-                param_concrete_types
-                    .entry(param_var)
-                    .or_default()
-                    .push(default_ty);
+                param_concrete_types.entry(param_var).or_default().default = Some(default_ty);
             }
         }
 
@@ -932,9 +903,17 @@ impl Transform for ConstraintSolveHM {
         // call-site types must bind param vars before HasField narrowing fires, so
         // that HasField sees the concrete union type rather than preempting it.
         let mut union_constraints: Vec<TypeConstraint> = Vec::new();
-        for (param_var, types) in param_concrete_types {
+        for (param_var, evidence) in param_concrete_types {
+            // Evidence-completeness gate: narrow only when every contributing call
+            // site supplied a concrete type. Incomplete evidence (`saw_unknown`) or
+            // no call-site evidence at all (a default alone never narrows) leaves the
+            // param free — it resolves via the post-fixpoint lower-bound fallback or
+            // emits as `unknown`, the honest inference-failure outcome.
+            if evidence.saw_unknown || evidence.call_site.is_empty() {
+                continue;
+            }
             let mut deduped: Vec<Type> = Vec::new();
-            for ty in types {
+            for ty in evidence.call_site.into_iter().chain(evidence.default) {
                 if !deduped.contains(&ty) {
                     deduped.push(ty);
                 }
@@ -942,6 +921,8 @@ impl Transform for ConstraintSolveHM {
             let constraint_ty = if deduped.len() == 1 {
                 deduped.into_iter().next().unwrap()
             } else {
+                // Multi-type unions are deferred to a later phase: the unifier
+                // collapses Union(...) to Unknown, the safe current behavior.
                 Type::Union(deduped)
             };
             union_constraints.push(TypeConstraint::Equal(
