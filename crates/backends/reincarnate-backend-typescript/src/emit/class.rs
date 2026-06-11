@@ -559,9 +559,16 @@ pub(super) fn emit_class(
             let _ = writeln!(out, "  {ov}{ident}!: {ts};");
         } else if engine == EngineKind::GameMaker {
             // GML fields with no initializer are assigned in the create event, not at
-            // construction time. Use `declare` so TypeScript knows the field exists at
-            // runtime without requiring an initializer (suppresses TS2564).
-            let _ = writeln!(out, "  declare {ov}{ident}: {ts};");
+            // construction time.
+            // - Non-override: `declare x: T` tells TypeScript the field exists at runtime
+            //   without requiring an initializer (suppresses TS2564).
+            // - Override: `declare override` is illegal (TS1243). Use `override x!: T`
+            //   (definite-assignment assertion) instead.
+            if ov == "override " {
+                let _ = writeln!(out, "  override {ident}!: {ts};");
+            } else {
+                let _ = writeln!(out, "  declare {ident}: {ts};");
+            }
         } else {
             let _ = writeln!(out, "  {ov}{ident}: {ts};");
         }
