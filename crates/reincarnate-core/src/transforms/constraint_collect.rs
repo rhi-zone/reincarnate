@@ -483,10 +483,13 @@ pub struct ConstraintSet {
 /// considered concrete.
 pub(crate) fn is_concrete(ty: &Type) -> bool {
     match ty {
-        Type::Value => true, // decided: inference exhausted, not a free variable
-        // HAZARD: InferVar must return false — leave the arena var unbound.
-        // Do NOT call arena.bind here; the unifier owns all bindings.
-        // Unknown also leaves inference open — do not collapse it to a ground type.
+        // Value is the honest type of a genuinely-dynamic value — a real,
+        // terminal dynamic type, so it is concrete and pre-binds.
+        Type::Value => true,
+        // HAZARD: InferVar must return false — it is the J0 solvable placeholder
+        // (an open inference target). Leave the arena var unbound so constraints
+        // can infer its type. Do NOT call arena.bind here; the unifier owns all
+        // bindings.
         Type::InferVar(_) => false,
         Type::Array(elem) => is_concrete(elem),
         Type::Map(k, v) => is_concrete(k) && is_concrete(v),
@@ -598,53 +601,18 @@ pub fn collect_function(
     let mut value_vars: HashMap<ValueId, TypeVarId> = HashMap::new();
 
     // -----------------------------------------------------------------------
-    // Phase 1 — allocate a TypeVarId for every value in value_types.
+    // Allocate a TypeVarId for every value in value_types.
     //
-    // Rule: pre-bind a value to its declared type only when the type is
-    // concrete AND either:
-    //   a) the type is not Unknown, OR
-    //   b) the value is a function parameter (entry block param).
-    //
-    // In other words: Unknown is pre-bound ONLY for function parameters.
-    // All other Unknown values are left as free TypeVars so constraints can
-    // infer their actual types.
-    //
-    // Why function params get special treatment:
-    //   Entry block params carry a declared parameter type.  Pre-binding them
-    //   prevents interprocedural constraints from changing that declaration.
-    //   An Unknown parameter type means "accepts any type at call sites" —
-    //   that is a declared contract, not an inference gap.
-    //
-    // Why all other Unknown values are freed:
-    //   - Alloc results: their cell TypeVar must be free to bind to the
-    //     stored type via Store constraints.
-    //   - Non-entry block params (phi values from mem2reg): their type must
-    //     be inferred from phi-merge Equal constraints, not fixed at Unknown.
-    //   - Phi feed values (args to non-entry branch targets): must be free so
-    //     the phi-merge constraint can propagate the phi param's type back.
-    //   - Other Unknown instruction results (e.g. results poisoned by an
-    //     earlier HM pass): must be free so a later pass can infer them from
-    //     callee return types, field types, etc.
-    //   Pre-binding any of these to Unknown blocks the `(Unknown, _)` arm of
-    //   unify from ever binding that TypeVar to a useful type.
+    // Pre-bind a value to its declared type exactly when that type is concrete.
+    //   - `Type::Value` (a genuinely-dynamic value) is concrete → pre-binds,
+    //     pinning the declared dynamic type the solver can only confirm.
+    //   - `Type::InferVar` (a J0 solvable placeholder from `fresh_var()`:
+    //     alloc cells, struct-init results, phi values, builtin-gap params) is
+    //     not concrete → stays a free arena var so constraints infer its type.
     // -----------------------------------------------------------------------
-    let entry_param_pos: HashMap<ValueId, usize> = func.blocks[func.entry]
-        .params
-        .iter()
-        .enumerate()
-        .map(|(i, p)| (p.value, i))
-        .collect();
-
     for (vid, ty) in func.value_types.iter() {
         let var = arena.fresh();
-        let param_pos = entry_param_pos.get(&vid).copied();
-        let has_lower_bound = param_pos
-            .and_then(|i| func.sig.param_lower_bounds.get(i))
-            .and_then(|b| b.as_ref())
-            .is_some();
-        let should_bind = is_concrete(ty)
-            && (!matches!(ty, Type::Value) || (param_pos.is_some() && !has_lower_bound));
-        if should_bind {
+        if is_concrete(ty) {
             arena.bind(var, ty.clone());
         }
         value_vars.insert(vid, var);
@@ -1308,10 +1276,11 @@ mod tests {
         assert!(!result.changed, "expected changed=false for empty module");
     }
 
-    /// Type::Value is concrete — inference exhausted, not a free variable.
-    /// Type::InferVar is the pre-inference placeholder and is NOT concrete.
-    /// This invariant must never regress: code that treats Unknown as solvable
-    /// or Var as concrete will produce wrong types throughout the pipeline.
+    /// Type::Value is concrete — the honest type of a genuinely-dynamic value,
+    /// a real terminal type, not a free variable. Type::InferVar is the J0
+    /// pre-inference solvable placeholder and is NOT concrete. This invariant
+    /// must never regress: code that treats Value as solvable or InferVar as
+    /// concrete will produce wrong types throughout the pipeline.
     #[test]
     fn unknown_is_concrete_var_is_not() {
         use crate::ir::ty::TypeVarId;

@@ -26,8 +26,9 @@ use super::inst::{CastKind, CmpKind, Inst, Op, Terminator};
 use super::module::{
     ClassDef, EntryPoint, EnumDef, ExternalImport, Global, Import, Module, StructDef, TypeDecl,
 };
-use super::ty::{FunctionSig, Type, TypeId};
+use super::ty::{FunctionSig, Type, TypeId, TypeVarId};
 use super::value::{Constant, ValueId};
+use crate::entity::EntityRef;
 
 /// Builder for constructing a single [`Function`].
 ///
@@ -660,14 +661,17 @@ impl FunctionBuilder {
     // ========================================================================
 
     pub fn alloc(&mut self, ty: Type) -> ValueId {
-        self.emit(Op::Alloc(ty), Type::Value)
+        // The alloc cell's value type is an inference gap, not a dynamic value:
+        // emit a solvable placeholder the collector frees into an arena var.
+        let result_ty = self.fresh_var();
+        self.emit(Op::Alloc(ty), result_ty)
     }
 
     pub fn load(&mut self, ptr: ValueId, ty: Type) -> ValueId {
-        // Unknown on a load result is an inference gap — the type is
-        // determinable from the alloc cell constraints.  The constraint solver
-        // treats Type::Value as a free variable for non-parameter values and
-        // will propagate the alloc's concrete type to this load result.
+        // A placeholder (`fresh_var()`) load result is an inference gap — the
+        // type is determinable from the alloc cell constraints. The constraint
+        // solver frees the placeholder into an arena var and propagates the
+        // alloc's concrete type to this load result.
         self.emit(Op::Load(ptr), ty)
     }
 
@@ -805,9 +809,10 @@ impl FunctionBuilder {
     ) -> ValueId {
         let name = name.into();
         // Type inference (TypeInfer pass, Op::StructInit arm) will resolve the
-        // correct Instance(TypeId) for this op. Use Unknown here since TypeId
-        // is not available during IR construction.
-        self.emit(Op::StructInit { name, fields }, Type::Value)
+        // correct Instance(TypeId) for this op. Emit a solvable placeholder
+        // since the TypeId is not available during IR construction.
+        let result_ty = self.fresh_var();
+        self.emit(Op::StructInit { name, fields }, result_ty)
     }
 
     pub fn array_init(&mut self, elements: &[ValueId], elem_ty: Type) -> ValueId {
@@ -865,15 +870,20 @@ impl FunctionBuilder {
         self.emit(Op::Spread(value), ty)
     }
 
-    /// Return [`Type::Value`] for a value whose type the frontend does not
-    /// yet know.
+    /// Return a solvable placeholder for a value whose type the frontend does
+    /// not yet know — an open inference target the constraint collector will
+    /// free into a real arena variable.
     ///
-    /// The constraint solver treats `Type::Value` on non-parameter values as
-    /// an open inference target, identical to the former `Type::InferVar` — both
-    /// result in a free TypeVar in the HM arena.  Frontends should call this
-    /// wherever a value's concrete type is an inference gap.
+    /// The builder has no arena, so it cannot allocate a real [`TypeVarId`];
+    /// it emits [`Type::InferVar`] with a fixed placeholder id. The id is never
+    /// dereferenced: the collector pattern-matches the *variant* to decide it
+    /// must stay free (`is_concrete(InferVar) == false`), then allocates a fresh
+    /// arena var keyed by `ValueId`. This is distinct from [`Type::Value`], the
+    /// honest type of a genuinely-dynamic value, which is concrete and pre-binds.
+    /// Frontends should call this wherever a value's concrete type is an
+    /// inference gap (not where it is genuinely dynamic).
     pub fn fresh_var(&mut self) -> Type {
-        Type::Value
+        Type::InferVar(TypeVarId::new(0))
     }
 }
 

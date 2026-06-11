@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
-use crate::entity::PrimaryMap;
+use crate::entity::{EntityRef, PrimaryMap};
 use crate::pipeline::Diagnostic;
 use crate::project::{ExternalMethodSig, ExternalTypeDef};
 
@@ -10,7 +10,7 @@ use super::block::{Block, BlockId};
 use super::func::{FuncId, Function, InlineHint, MethodKind, Visibility};
 use super::inst::Terminator;
 use super::name_table::NameTable;
-use super::ty::{FunctionSig, Type, TypeId};
+use super::ty::{FunctionSig, Type, TypeId, TypeVarId};
 use super::value::Constant;
 
 /// Describes how the application is started.
@@ -1300,15 +1300,17 @@ impl Module {
         self.runtime_registry.get(name).copied()
     }
 
-    /// Return [`Type::Value`] for use by frontends that do not yet know a
-    /// value's type.
+    /// Return a solvable placeholder for use by frontends that do not yet know
+    /// a value's type — an open inference target the constraint collector frees
+    /// into a real arena variable.
     ///
-    /// The constraint solver treats `Type::Value` on non-parameter values as
-    /// a free inference target, identical to the former `Type::InferVar` — both
-    /// result in a free TypeVar in the HM arena that constraints can bind to a
-    /// concrete type.
+    /// Emits [`Type::InferVar`] with a fixed placeholder id (the builder has no
+    /// arena to allocate a real one). The id is never dereferenced: the
+    /// collector matches the *variant* to keep it free, then allocates a fresh
+    /// arena var keyed by `ValueId`. Distinct from [`Type::Value`], the honest
+    /// type of a genuinely-dynamic value, which is concrete and pre-binds.
     pub fn fresh_var(&mut self) -> Type {
-        Type::Value
+        Type::InferVar(TypeVarId::new(0))
     }
 }
 

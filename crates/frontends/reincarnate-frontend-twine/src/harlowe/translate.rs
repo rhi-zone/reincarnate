@@ -3032,9 +3032,15 @@ You're at the **plaza**
             1,
             "find lambda takes only (item) param, no pos"
         );
-        // Elem type is an unresolved inference gap — the solver will infer the
-        // concrete element type from collection constraints.
-        assert_eq!(cb.sig.params[0], Type::Value);
+        // Elem type is an unresolved inference gap — a J0 solvable placeholder
+        // (`fresh_var()` → `InferVar`), not a genuinely-dynamic `Value`. The
+        // constraint collector frees it into an arena var and the solver infers
+        // the concrete element type from collection constraints.
+        assert!(
+            matches!(cb.sig.params[0], Type::InferVar(_)),
+            "find lambda elem type should be a solvable InferVar placeholder, got {:?}",
+            cb.sig.params[0]
+        );
         assert_eq!(cb.sig.return_ty, Type::Bool);
         // Main func should have a collection_op("find", ...) call
         let func = &result.func;
