@@ -498,15 +498,12 @@ fn print_params(
             } else if is_rest {
                 // Rest parameters must be array types: `...args: T[]`.
                 // Wrap the effective type in `[]` unless it is already an array.
+                // TS/JS forbid a default value on a rest parameter — suppress it.
                 let rest_ty = match effective_ty {
                     Type::Array(_) => print_type(effective_ty),
                     other => format!("{}[]", print_type(other)),
                 };
-                format!(
-                    "{prefix}{}: {}{default_suffix}",
-                    sanitize_ident(name),
-                    rest_ty
-                )
+                format!("{prefix}{}: {}", sanitize_ident(name), rest_ty)
             } else {
                 format!(
                     "{prefix}{}: {}{default_suffix}",
