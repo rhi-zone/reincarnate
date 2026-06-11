@@ -367,22 +367,22 @@ fn param_used_with_field_access(
 /// Per-parameter inference evidence accumulated across call sites.
 ///
 /// `call_site` holds concrete argument types observed at call sites; `default`
-/// holds the type of the param's default argument (if any). `saw_unknown` is set
-/// when any contributing call site supplied an `Unknown` argument — i.e. the
-/// evidence is incomplete and the param must be left free rather than narrowed on
-/// a subset of call sites.
+/// holds the type of the param's default argument (if any). `saw_value` is set
+/// when a call site supplied a genuinely-dynamic (`Type::Value`) argument, so
+/// evidence is incomplete and the param must not be narrowed — it must be left
+/// free rather than narrowed on a subset of call sites.
 #[derive(Default)]
 struct ParamEvidence {
     call_site: Vec<Type>,
     default: Option<Type>,
-    saw_unknown: bool,
+    saw_value: bool,
 }
 
 /// Seed a callee param's inference evidence from one caller argument.
 ///
 /// Shared body of the Call / MethodCall / MakeClosure arg-seeding loops:
 ///  - already-concrete params need no narrowing (return),
-///  - an `Unknown` argument marks the evidence incomplete (`saw_unknown`),
+///  - a `Value` argument marks the evidence incomplete (`saw_value`),
 ///  - a body-usage abstention (`usage_suppressed`) declines to contribute,
 ///  - a concrete argument is recorded as call-site evidence, while a non-concrete
 ///    argument is linked directly via an `Equal` constraint between the two vars.
@@ -403,13 +403,11 @@ fn seed_param_from_arg(
     let Some(param_var) = param_var else {
         return;
     };
-    // An Unknown argument means call-site evidence is incomplete: record it so the
-    // drain site leaves the param free rather than narrowing on a subset.
+    // A genuinely-dynamic (`Value`) argument means call-site evidence is
+    // incomplete: record it so the drain site leaves the param free rather than
+    // narrowing on a subset.
     if matches!(arg_ty, Type::Value) {
-        param_concrete_types
-            .entry(param_var)
-            .or_default()
-            .saw_unknown = true;
+        param_concrete_types.entry(param_var).or_default().saw_value = true;
         return;
     }
     if usage_suppressed {
@@ -905,11 +903,11 @@ impl Transform for ConstraintSolveHM {
         let mut union_constraints: Vec<TypeConstraint> = Vec::new();
         for (param_var, evidence) in param_concrete_types {
             // Evidence-completeness gate: narrow only when every contributing call
-            // site supplied a concrete type. Incomplete evidence (`saw_unknown`) or
+            // site supplied a concrete type. Incomplete evidence (`saw_value`) or
             // no call-site evidence at all (a default alone never narrows) leaves the
             // param free — it resolves via the post-fixpoint lower-bound fallback or
             // emits as `unknown`, the honest inference-failure outcome.
-            if evidence.saw_unknown || evidence.call_site.is_empty() {
+            if evidence.saw_value || evidence.call_site.is_empty() {
                 continue;
             }
             let mut deduped: Vec<Type> = Vec::new();
@@ -1128,10 +1126,13 @@ impl Transform for ConstraintSolveHM {
                         continue;
                     }
                     let resolved = resolve(Type::InferVar(*var_id), &arena);
-                    // If still unresolved, leave the existing type in place.
-                    // Do not write Type::Value — that would conflate
-                    // "unconstrained" with "genuinely unknown" and block
-                    // re-inference on subsequent HM passes.
+                    // If still unresolved, leave the existing `InferVar` in place
+                    // — do NOT lower it to `Type::Value`. This is load-bearing for
+                    // the loud posture: an unresolved inference variable must
+                    // surface as a hard escaped-typevar error (RC0006) via
+                    // `ValidateNoEscapedTypeVars`, not silently become a dynamic
+                    // `Value`/`unknown`. Leaving it in place also preserves
+                    // re-inference across subsequent HM passes.
                     if matches!(&resolved, Type::InferVar(_)) {
                         continue;
                     }
