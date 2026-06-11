@@ -149,11 +149,11 @@ mod tests {
         let func_name = format!("{op_name}_any");
         let any_sig = FunctionSig {
             params: if is_binary {
-                vec![Type::Unknown, Type::Unknown]
+                vec![Type::Value, Type::Value]
             } else {
-                vec![Type::Unknown]
+                vec![Type::Value]
             },
-            return_ty: Type::Unknown,
+            return_ty: Type::Value,
             ..Default::default()
         };
         let mut any_fb = FunctionBuilder::new(&func_name, any_sig.clone(), Visibility::Public);
@@ -175,12 +175,12 @@ mod tests {
 
         let sig = FunctionSig {
             params: arg_types.to_vec(),
-            return_ty: Type::Unknown,
+            return_ty: Type::Value,
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Private);
         let args: Vec<_> = (0..arg_types.len()).map(|i| fb.param(i)).collect();
-        let call_result = fb.call(any_fid, &args, Type::Unknown);
+        let call_result = fb.call(any_fid, &args, Type::Value);
         fb.ret(Some(call_result));
         let func = fb.build();
 
@@ -192,8 +192,8 @@ mod tests {
     /// and a function that calls that stub.
     fn make_module_with_manual_stub() -> Module {
         let sig = FunctionSig {
-            params: vec![Type::Unknown],
-            return_ty: Type::Unknown,
+            params: vec![Type::Value],
+            return_ty: Type::Value,
             ..Default::default()
         };
 
@@ -202,8 +202,8 @@ mod tests {
         let stub_id = mb.register_runtime(
             "test.stub_func",
             FunctionSig {
-                params: vec![Type::Unknown],
-                return_ty: Type::Unknown,
+                params: vec![Type::Value],
+                return_ty: Type::Value,
                 ..Default::default()
             },
         );
@@ -211,7 +211,7 @@ mod tests {
         // Create a caller that invokes the stub.
         let mut fb = FunctionBuilder::new("test_fn", sig.clone(), Visibility::Private);
         let a = fb.param(0);
-        let v = fb.call(stub_id, &[a], Type::Unknown);
+        let v = fb.call(stub_id, &[a], Type::Value);
         fb.ret(Some(v));
         let func = fb.build();
 
@@ -248,7 +248,7 @@ mod tests {
     fn test_any_builtins_with_real_bodies_no_diagnostic() {
         // add_any now has a real dispatch body, so it should NOT be
         // detected as a stub even when called with Unknown args.
-        let module = make_module_with_func("add", &[Type::Unknown, Type::Unknown]);
+        let module = make_module_with_func("add", &[Type::Value, Type::Value]);
         let result = ValidateCalledStubs.apply(module, None).unwrap();
 
         let called_stub_diags: Vec<_> = result

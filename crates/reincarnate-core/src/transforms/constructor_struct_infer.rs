@@ -32,7 +32,7 @@ pub struct ConstructorStructInfer;
 
 /// Determine whether a type should be replaced by an inferred struct type.
 fn is_unresolved(ty: &Type) -> bool {
-    matches!(ty, Type::Unknown | Type::InferVar(_))
+    matches!(ty, Type::Value | Type::InferVar(_))
 }
 
 /// Merge two field types seen at different `SetField` sites.
@@ -45,8 +45,8 @@ fn merge_field_type(existing: Type, new_ty: Type) -> Type {
         return existing;
     }
     match (&existing, &new_ty) {
-        (Type::Unknown | Type::InferVar(_), _) => new_ty,
-        (_, Type::Unknown | Type::InferVar(_)) => existing,
+        (Type::Value | Type::InferVar(_), _) => new_ty,
+        (_, Type::Value | Type::InferVar(_)) => existing,
         _ => {
             // Both concrete but different — produce a Union.
             match existing {
@@ -351,7 +351,7 @@ mod tests {
 
     fn make_constructor_with_fields(fields: &[(&str, Type)]) -> (Module, FuncId) {
         let sig = FunctionSig {
-            params: vec![Type::Unknown], // self param
+            params: vec![Type::Value], // self param
             return_ty: Type::Void,
             ..Default::default()
         };
@@ -447,7 +447,7 @@ mod tests {
     #[test]
     fn no_setfield_no_struct() {
         let sig = FunctionSig {
-            params: vec![Type::Unknown],
+            params: vec![Type::Value],
             return_ty: Type::Void,
             ..Default::default()
         };
@@ -473,7 +473,7 @@ mod tests {
     fn skips_non_self_setfield() {
         // SetField on a non-self value should not be collected.
         let sig = FunctionSig {
-            params: vec![Type::Unknown, Type::Unknown],
+            params: vec![Type::Value, Type::Value],
             return_ty: Type::Void,
             ..Default::default()
         };
@@ -504,7 +504,7 @@ mod tests {
     fn infers_struct_from_named_constructor() {
         // Constructor method named "Enemy::create" — should be treated as init fn.
         let sig = FunctionSig {
-            params: vec![Type::Unknown],
+            params: vec![Type::Value],
             return_ty: Type::Void,
             ..Default::default()
         };

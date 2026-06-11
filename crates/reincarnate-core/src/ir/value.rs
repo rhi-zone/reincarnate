@@ -41,7 +41,7 @@ impl Constant {
     /// Infer the type of this constant.
     pub fn ty(&self) -> Type {
         match self {
-            Constant::Null => Type::Option(Box::new(Type::Unknown)),
+            Constant::Null => Type::Option(Box::new(Type::Value)),
             Constant::Bool(_) => Type::Bool,
             Constant::Int(_) => Type::Int(64),
             Constant::UInt(_) => Type::UInt(64),

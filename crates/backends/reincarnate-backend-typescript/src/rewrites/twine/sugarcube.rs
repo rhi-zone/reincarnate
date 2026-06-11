@@ -75,7 +75,7 @@ pub(super) fn try_rewrite(
                     let cap_params: Vec<(String, reincarnate_core::ir::Type)> = all_params
                         .split_off(n_reg)
                         .into_iter()
-                        .map(|(name, _)| (name, reincarnate_core::ir::Type::Unknown))
+                        .map(|(name, _)| (name, reincarnate_core::ir::Type::Value))
                         .collect();
                     let reg_params = all_params; // regular params
 
@@ -92,7 +92,7 @@ pub(super) fn try_rewrite(
                     // Outer arrow: takes capture params, returns inner arrow.
                     let outer = JsExpr::ArrowFunction {
                         params: cap_params,
-                        return_ty: reincarnate_core::ir::Type::Unknown,
+                        return_ty: reincarnate_core::ir::Type::Value,
                         body: vec![crate::js_ast::JsStmt::Return(Some(inner))],
                         has_rest_param: false,
                         cast_as: None,
@@ -463,9 +463,9 @@ mod tests {
             "test_arrow_0".to_string(),
             JsFunction {
                 name: "test_arrow_0".into(),
-                params: vec![("x".into(), Type::Unknown)],
+                params: vec![("x".into(), Type::Value)],
                 param_defaults: vec![],
-                return_ty: Type::Unknown,
+                return_ty: Type::Value,
                 body: vec![JsStmt::Return(Some(JsExpr::Var("x".into())))],
                 is_generator: false,
                 visibility: Visibility::Private,

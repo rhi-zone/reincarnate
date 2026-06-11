@@ -690,7 +690,7 @@ fn collapse_same_target_brif(func: &mut Function, select_fid: FuncId) -> bool {
                 let param_ty = if unified_args.len() < func.blocks[target].params.len() {
                     func.blocks[target].params[unified_args.len()].ty.clone()
                 } else {
-                    Type::Unknown
+                    Type::Value
                 };
                 let result_val = func.value_types.push(param_ty);
                 // Transfer the block param's name to the Select result.

@@ -143,7 +143,7 @@ fn resolve_function(
         .insts
         .iter()
         .filter_map(|(_, inst)| {
-            if let Op::Cast(inner, Type::Unknown, CastKind::Coerce) = &inst.op {
+            if let Op::Cast(inner, Type::Value, CastKind::Coerce) = &inst.op {
                 let n = const_ints.get(inner).copied()?;
                 inst.result.map(|v| (v, n))
             } else {
@@ -205,7 +205,7 @@ fn resolve_function(
             .get(obj_idx)
             .and_then(|opt| *opt)
             .map(Type::ClassRef)
-            .unwrap_or(Type::Unknown);
+            .unwrap_or(Type::Value);
         let new_vid = func.value_types.push(classref_ty);
         let new_inst_id = func.insts.push(Inst {
             op: Op::GlobalRef(obj_name),

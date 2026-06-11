@@ -55,7 +55,7 @@ pub fn translate_passage(name: &str, ast: &PassageAst, source: &str) -> Translat
     // The h param is the Harlowe renderer — type defined by the TypeScript
     // runtime, not inferable from passage source.  Genuine opacity → Unknown.
     let sig = FunctionSig {
-        params: vec![Type::Unknown],
+        params: vec![Type::Value],
         return_ty: Type::Void,
         defaults: vec![],
         has_rest_param: false,
@@ -2158,7 +2158,7 @@ impl TranslateCtx {
         // --- 2. Build the closure FunctionBuilder ---
         // h param is the Harlowe renderer — type defined by TS runtime, opaque.
         let sig = FunctionSig {
-            params: vec![Type::Unknown],
+            params: vec![Type::Value],
             return_ty: Type::Void,
             defaults: vec![],
             has_rest_param: false,
@@ -2813,7 +2813,7 @@ mod tests {
         assert_eq!(result.func.name, "passage_test");
         // Passage takes h param (Unknown), returns void
         assert_eq!(result.func.sig.params.len(), 1);
-        assert_eq!(result.func.sig.params[0], Type::Unknown);
+        assert_eq!(result.func.sig.params[0], Type::Value);
         assert_eq!(result.func.sig.return_ty, Type::Void);
     }
 
@@ -2869,7 +2869,7 @@ mod tests {
         assert_eq!(result.callbacks.len(), 1);
         // Callback takes h param (Unknown), returns void
         assert_eq!(result.callbacks[0].sig.params.len(), 1);
-        assert_eq!(result.callbacks[0].sig.params[0], Type::Unknown);
+        assert_eq!(result.callbacks[0].sig.params[0], Type::Value);
         assert_eq!(result.callbacks[0].sig.return_ty, Type::Void);
     }
 
@@ -2919,7 +2919,7 @@ You're at the **plaza**
         assert_eq!(result.callbacks.len(), 1);
         // Callback takes h param (Unknown)
         assert_eq!(result.callbacks[0].sig.params.len(), 1);
-        assert_eq!(result.callbacks[0].sig.params[0], Type::Unknown);
+        assert_eq!(result.callbacks[0].sig.params[0], Type::Value);
     }
 
     #[test]
@@ -3034,7 +3034,7 @@ You're at the **plaza**
         );
         // Elem type is an unresolved inference gap — the solver will infer the
         // concrete element type from collection constraints.
-        assert_eq!(cb.sig.params[0], Type::Unknown);
+        assert_eq!(cb.sig.params[0], Type::Value);
         assert_eq!(cb.sig.return_ty, Type::Bool);
         // Main func should have a collection_op("find", ...) call
         let func = &result.func;

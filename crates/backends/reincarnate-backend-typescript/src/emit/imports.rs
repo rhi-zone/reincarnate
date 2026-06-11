@@ -713,7 +713,7 @@ pub(super) fn collect_type_refs_from_function(
     // the integer value lives on the source ValueId one step earlier.
     let mut const_ints = direct_const_ints.clone();
     for (_id, inst) in func.insts.iter() {
-        if let Op::Cast(src, Type::Unknown, CastKind::Coerce) = &inst.op {
+        if let Op::Cast(src, Type::Value, CastKind::Coerce) = &inst.op {
             if let (Some(result), Some(&n)) = (inst.result, direct_const_ints.get(src)) {
                 const_ints.insert(result, n);
             }
@@ -1188,7 +1188,7 @@ pub(super) fn collect_type_ref(
         Type::Map(k, v) => {
             // AS3 Dictionary (Map<Unknown, _>) → Flash-specific `Dictionary` class.
             // Register the import so flash_ts_type()'s "Dictionary" emission resolves.
-            if matches!(k.as_ref(), Type::Unknown)
+            if matches!(k.as_ref(), Type::Value)
                 && external_imports.contains_key("flash.utils::Dictionary")
             {
                 ext_refs.insert("flash.utils::Dictionary".to_string());
@@ -1300,7 +1300,7 @@ pub(super) fn collect_type_ref(
         | Type::Float(_)
         | Type::String
         | Type::InferVar(_)
-        | Type::Unknown => {}
+        | Type::Value => {}
     }
 }
 
@@ -1363,7 +1363,7 @@ pub(super) fn collect_global_type_imports(
         | Type::Float(_)
         | Type::String
         | Type::InferVar(_)
-        | Type::Unknown => {}
+        | Type::Value => {}
     }
 }
 
@@ -1416,7 +1416,7 @@ pub(super) fn collect_all_struct_names(
         | Type::Float(_)
         | Type::String
         | Type::InferVar(_)
-        | Type::Unknown => {}
+        | Type::Value => {}
     }
 }
 

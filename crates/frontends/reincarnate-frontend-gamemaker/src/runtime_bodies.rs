@@ -1849,7 +1849,7 @@ fn attach_body_string_trim(module: &mut Module) {
     attach_runtime_body(
         module,
         "string_trim",
-        &[Type::String, Type::Unknown],
+        &[Type::String, Type::Value],
         Type::String,
         |b| {
             let s = b.param(0);
@@ -1869,7 +1869,7 @@ fn attach_body_array_length(module: &mut Module) {
     attach_runtime_body(
         module,
         "array_length",
-        &[Type::Array(Box::new(Type::Unknown))],
+        &[Type::Array(Box::new(Type::Value))],
         Type::Float(64),
         |b| {
             let arr = b.param(0);
@@ -1889,7 +1889,7 @@ fn attach_body_array_length_1d(module: &mut Module) {
     attach_runtime_body(
         module,
         "array_length_1d",
-        &[Type::Array(Box::new(Type::Unknown))],
+        &[Type::Array(Box::new(Type::Value))],
         Type::Float(64),
         |b| {
             let arr = b.param(0);
@@ -1909,7 +1909,7 @@ fn attach_body_array_contains(module: &mut Module) {
     attach_runtime_body(
         module,
         "array_contains",
-        &[Type::Array(Box::new(Type::Unknown)), Type::Unknown],
+        &[Type::Array(Box::new(Type::Value)), Type::Value],
         Type::Bool,
         |b| {
             let arr = b.param(0);
@@ -2165,7 +2165,7 @@ fn attach_body_is_infinity(module: &mut Module) {
 // ---------------------------------------------------------------------------
 
 fn attach_body_is_bool(module: &mut Module) {
-    attach_runtime_body(module, "is_bool", &[Type::Unknown], Type::Bool, |b| {
+    attach_runtime_body(module, "is_bool", &[Type::Value], Type::Bool, |b| {
         let x = b.param(0);
         let result = b.type_check(x, Type::Bool);
         b.ret(Some(result));
@@ -2178,7 +2178,7 @@ fn attach_body_is_bool(module: &mut Module) {
 // ---------------------------------------------------------------------------
 
 fn attach_body_is_real(module: &mut Module) {
-    attach_runtime_body(module, "is_real", &[Type::Unknown], Type::Bool, |b| {
+    attach_runtime_body(module, "is_real", &[Type::Value], Type::Bool, |b| {
         let x = b.param(0);
         let result = b.type_check(x, Type::Float(64));
         b.ret(Some(result));
@@ -2191,7 +2191,7 @@ fn attach_body_is_real(module: &mut Module) {
 // ---------------------------------------------------------------------------
 
 fn attach_body_is_string(module: &mut Module) {
-    attach_runtime_body(module, "is_string", &[Type::Unknown], Type::Bool, |b| {
+    attach_runtime_body(module, "is_string", &[Type::Value], Type::Bool, |b| {
         let x = b.param(0);
         let result = b.type_check(x, Type::String);
         b.ret(Some(result));
@@ -2204,7 +2204,7 @@ fn attach_body_is_string(module: &mut Module) {
 // ---------------------------------------------------------------------------
 
 fn attach_body_is_undefined(module: &mut Module) {
-    attach_runtime_body(module, "is_undefined", &[Type::Unknown], Type::Bool, |b| {
+    attach_runtime_body(module, "is_undefined", &[Type::Value], Type::Bool, |b| {
         let x = b.param(0);
         let result = b.type_check(x, Type::Void);
         b.ret(Some(result));
@@ -2217,9 +2217,9 @@ fn attach_body_is_undefined(module: &mut Module) {
 // ---------------------------------------------------------------------------
 
 fn attach_body_is_array(module: &mut Module) {
-    attach_runtime_body(module, "is_array", &[Type::Unknown], Type::Bool, |b| {
+    attach_runtime_body(module, "is_array", &[Type::Value], Type::Bool, |b| {
         let x = b.param(0);
-        let result = b.type_check(x, Type::Array(Box::new(Type::Unknown)));
+        let result = b.type_check(x, Type::Array(Box::new(Type::Value)));
         b.ret(Some(result));
     });
 }
@@ -2230,13 +2230,13 @@ fn attach_body_is_array(module: &mut Module) {
 // ---------------------------------------------------------------------------
 
 fn attach_body_is_method(module: &mut Module) {
-    attach_runtime_body(module, "is_method", &[Type::Unknown], Type::Bool, |b| {
+    attach_runtime_body(module, "is_method", &[Type::Value], Type::Bool, |b| {
         let x = b.param(0);
         // Use a zero-param function type as the representative function type.
         // The backend dispatches on `Type::Function(_)` and emits `typeof x === "function"`.
         let fn_ty = Type::Function(Box::new(FunctionSig {
             params: vec![],
-            return_ty: Type::Unknown,
+            return_ty: Type::Value,
             defaults: vec![],
             has_rest_param: false,
             param_lower_bounds: vec![],
@@ -2252,7 +2252,7 @@ fn attach_body_is_method(module: &mut Module) {
 // ---------------------------------------------------------------------------
 
 fn attach_body_is_struct(module: &mut Module) {
-    attach_runtime_body(module, "is_struct", &[Type::Unknown], Type::Bool, |b| {
+    attach_runtime_body(module, "is_struct", &[Type::Value], Type::Bool, |b| {
         let x = b.param(0);
         let result = b.call_named("is_struct_unknown", &[x], Type::Bool);
         b.ret(Some(result));
@@ -2265,7 +2265,7 @@ fn attach_body_is_struct(module: &mut Module) {
 // ---------------------------------------------------------------------------
 
 fn attach_body_is_numeric(module: &mut Module) {
-    attach_runtime_body(module, "is_numeric", &[Type::Unknown], Type::Bool, |b| {
+    attach_runtime_body(module, "is_numeric", &[Type::Value], Type::Bool, |b| {
         let x = b.param(0);
         let result = b.call_named("is_numeric_unknown", &[x], Type::Bool);
         b.ret(Some(result));
@@ -2278,7 +2278,7 @@ fn attach_body_is_numeric(module: &mut Module) {
 // ---------------------------------------------------------------------------
 
 fn attach_body_typeof(module: &mut Module) {
-    attach_runtime_body(module, "_typeof", &[Type::Unknown], Type::String, |b| {
+    attach_runtime_body(module, "_typeof", &[Type::Value], Type::String, |b| {
         let x = b.param(0);
         let result = b.call_named("typeof_gml", &[x], Type::String);
         b.ret(Some(result));
@@ -2588,9 +2588,9 @@ fn attach_body_array_copy(module: &mut Module) {
         module,
         "array_copy",
         &[
-            Type::Array(Box::new(Type::Unknown)),
+            Type::Array(Box::new(Type::Value)),
             Type::Float(64),
-            Type::Array(Box::new(Type::Unknown)),
+            Type::Array(Box::new(Type::Value)),
             Type::Float(64),
             Type::Float(64),
         ],
@@ -2621,7 +2621,7 @@ fn attach_body_array_copy(module: &mut Module) {
             b.switch_to_block(body_block);
             let di = b.add(dest_index, i);
             let si = b.add(src_index, i);
-            let val = b.get_index(src, si, Type::Unknown);
+            let val = b.get_index(src, si, Type::Value);
             b.set_index(dest, di, val);
             let next_i = b.add(i, one);
             b.br(header_block, &[next_i]);
@@ -2644,8 +2644,8 @@ fn attach_body_array_equals(module: &mut Module) {
         module,
         "array_equals",
         &[
-            Type::Array(Box::new(Type::Unknown)),
-            Type::Array(Box::new(Type::Unknown)),
+            Type::Array(Box::new(Type::Value)),
+            Type::Array(Box::new(Type::Value)),
         ],
         Type::Bool,
         |b| {
@@ -2679,8 +2679,8 @@ fn attach_body_array_equals(module: &mut Module) {
 
             // body: if a[i] != b[i] → false; else i += 1 → header
             b.switch_to_block(body_block);
-            let ai = b.get_index(a, i, Type::Unknown);
-            let bi = b.get_index(bv, i, Type::Unknown);
+            let ai = b.get_index(a, i, Type::Value);
+            let bi = b.get_index(bv, i, Type::Value);
             let ne = b.cmp(CmpKind::Ne, ai, bi);
             let next_i = b.add(i, one);
             b.br_if(ne, ret_false_block, &[], header_block, &[next_i]);
@@ -2702,12 +2702,12 @@ fn attach_body_array_get(module: &mut Module) {
     attach_runtime_body(
         module,
         "array_get",
-        &[Type::Array(Box::new(Type::Unknown)), Type::Float(64)],
-        Type::Unknown,
+        &[Type::Array(Box::new(Type::Value)), Type::Float(64)],
+        Type::Value,
         |b| {
             let arr = b.param(0);
             let index = b.param(1);
-            let result = b.get_index(arr, index, Type::Unknown);
+            let result = b.get_index(arr, index, Type::Value);
             b.ret(Some(result));
         },
     );
@@ -2724,9 +2724,9 @@ fn attach_body_array_set(module: &mut Module) {
         module,
         "array_set",
         &[
-            Type::Array(Box::new(Type::Unknown)),
+            Type::Array(Box::new(Type::Value)),
             Type::Float(64),
-            Type::Unknown,
+            Type::Value,
         ],
         Type::Void,
         |b| {
@@ -2749,7 +2749,7 @@ fn attach_body_array_height_2d(module: &mut Module) {
     attach_runtime_body(
         module,
         "array_height_2d",
-        &[Type::Array(Box::new(Type::Unknown))],
+        &[Type::Array(Box::new(Type::Value))],
         Type::Float(64),
         |b| {
             let arr = b.param(0);
@@ -2769,11 +2769,11 @@ fn attach_body_array_pop(module: &mut Module) {
     attach_runtime_body(
         module,
         "array_pop",
-        &[Type::Array(Box::new(Type::Unknown))],
-        Type::Unknown,
+        &[Type::Array(Box::new(Type::Value))],
+        Type::Value,
         |b| {
             let arr = b.param(0);
-            let result = b.call_named("array_pop_arr", &[arr], Type::Unknown);
+            let result = b.call_named("array_pop_arr", &[arr], Type::Value);
             b.ret(Some(result));
         },
     );
@@ -2790,7 +2790,7 @@ fn attach_body_array_delete(module: &mut Module) {
         module,
         "array_delete",
         &[
-            Type::Array(Box::new(Type::Unknown)),
+            Type::Array(Box::new(Type::Value)),
             Type::Float(64),
             Type::Float(64),
         ],
@@ -2816,9 +2816,9 @@ fn attach_body_array_insert(module: &mut Module) {
         module,
         "array_insert",
         &[
-            Type::Array(Box::new(Type::Unknown)),
+            Type::Array(Box::new(Type::Value)),
             Type::Float(64),
-            Type::Unknown,
+            Type::Value,
         ],
         Type::Void,
         |b| {
@@ -2841,7 +2841,7 @@ fn attach_body_array_resize(module: &mut Module) {
     attach_runtime_body(
         module,
         "array_resize",
-        &[Type::Array(Box::new(Type::Unknown)), Type::Float(64)],
+        &[Type::Array(Box::new(Type::Value)), Type::Float(64)],
         Type::Void,
         |b| {
             let arr = b.param(0);
@@ -2862,7 +2862,7 @@ fn attach_body_array_get_index(module: &mut Module) {
     attach_runtime_body(
         module,
         "array_get_index",
-        &[Type::Array(Box::new(Type::Unknown)), Type::Unknown],
+        &[Type::Array(Box::new(Type::Value)), Type::Value],
         Type::Float(64),
         |b| {
             let arr = b.param(0);
@@ -2973,7 +2973,7 @@ fn attach_body_variable_struct_exists(module: &mut Module) {
     attach_runtime_body(
         module,
         "variable_struct_exists",
-        &[Type::Unknown, Type::String],
+        &[Type::Value, Type::String],
         Type::Bool,
         |b| {
             let s = b.param(0);
@@ -2993,12 +2993,12 @@ fn attach_body_variable_struct_get(module: &mut Module) {
     attach_runtime_body(
         module,
         "variable_struct_get",
-        &[Type::Unknown, Type::String],
-        Type::Unknown,
+        &[Type::Value, Type::String],
+        Type::Value,
         |b| {
             let s = b.param(0);
             let name = b.param(1);
-            let result = b.call_named("variable_struct_get_rt", &[s, name], Type::Unknown);
+            let result = b.call_named("variable_struct_get_rt", &[s, name], Type::Value);
             b.ret(Some(result));
         },
     );
@@ -3013,7 +3013,7 @@ fn attach_body_variable_struct_names_count(module: &mut Module) {
     attach_runtime_body(
         module,
         "variable_struct_names_count",
-        &[Type::Unknown],
+        &[Type::Value],
         Type::Float(64),
         |b| {
             let s = b.param(0);
@@ -3033,7 +3033,7 @@ fn attach_body_array_sort(module: &mut Module) {
     attach_runtime_body(
         module,
         "array_sort",
-        &[Type::Array(Box::new(Type::Unknown)), Type::Bool],
+        &[Type::Array(Box::new(Type::Value)), Type::Bool],
         Type::Void,
         |b| {
             let arr = b.param(0);
@@ -3055,11 +3055,11 @@ fn attach_body_array_unique(module: &mut Module) {
         module,
         "array_unique",
         &[
-            Type::Array(Box::new(Type::Unknown)),
+            Type::Array(Box::new(Type::Value)),
             Type::Float(64),
             Type::Float(64),
         ],
-        Type::Array(Box::new(Type::Unknown)),
+        Type::Array(Box::new(Type::Value)),
         |b| {
             let arr = b.param(0);
             // params 1 (offset) and 2 (length) are ignored —
@@ -3067,7 +3067,7 @@ fn attach_body_array_unique(module: &mut Module) {
             let result = b.call_named(
                 "array_unique_arr",
                 &[arr],
-                Type::Array(Box::new(Type::Unknown)),
+                Type::Array(Box::new(Type::Value)),
             );
             b.ret(Some(result));
         },
@@ -3083,7 +3083,7 @@ fn attach_body_variable_struct_get_names(module: &mut Module) {
     attach_runtime_body(
         module,
         "variable_struct_get_names",
-        &[Type::Unknown],
+        &[Type::Value],
         Type::Array(Box::new(Type::String)),
         |b| {
             let s = b.param(0);
@@ -3106,7 +3106,7 @@ fn attach_body_variable_struct_set(module: &mut Module) {
     attach_runtime_body(
         module,
         "variable_struct_set",
-        &[Type::Unknown, Type::String, Type::Unknown],
+        &[Type::Value, Type::String, Type::Value],
         Type::Void,
         |b| {
             let s = b.param(0);

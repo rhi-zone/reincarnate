@@ -257,16 +257,16 @@ pub fn type_from_name(name: &str) -> reincarnate_core::ir::Type {
         "Boolean" => Type::Bool,
         "String" => Type::String,
         "void" => Type::Void,
-        "*" | "Object" | "Function" => Type::Unknown,
-        "Array" => Type::Array(Box::new(Type::Unknown)),
+        "*" | "Object" | "Function" => Type::Value,
+        "Array" => Type::Array(Box::new(Type::Value)),
         "flash.utils::Dictionary" | "Dictionary" => {
-            Type::Map(Box::new(Type::Unknown), Box::new(Type::Unknown))
+            Type::Map(Box::new(Type::Value), Box::new(Type::Value))
         }
         // Named class/interface types: return Unknown here. TypeId is unavailable
         // without module access. The Flash frontend pre-interns class TypeIds in
         // build_module_from_abc and passes them for self-param typing. Other named
         // type references (field types, cast targets, etc.) remain Unknown.
-        _ => Type::Unknown,
+        _ => Type::Value,
     }
 }
 
@@ -275,7 +275,7 @@ pub fn resolve_type(pool: &ConstantPool, index: &Index<Multiname>) -> reincarnat
     use reincarnate_core::ir::Type;
 
     if index.0 == 0 {
-        return Type::Unknown;
+        return Type::Value;
     }
 
     // Inspect the raw multiname for generic types (Vector.<T>) before
@@ -290,7 +290,7 @@ pub fn resolve_type(pool: &ConstantPool, index: &Index<Multiname>) -> reincarnat
             let elem = parameters
                 .first()
                 .map(|p| resolve_type(pool, p))
-                .unwrap_or(Type::Unknown);
+                .unwrap_or(Type::Value);
             return Type::Array(Box::new(elem));
         }
     }
@@ -407,13 +407,13 @@ mod tests {
             name: Index::new(6),
         }); // mn 6 = MyClass
 
-        assert_eq!(resolve_type(&pool, &Index::new(0)), Type::Unknown); // index 0 = *
+        assert_eq!(resolve_type(&pool, &Index::new(0)), Type::Value); // index 0 = *
         assert_eq!(resolve_type(&pool, &Index::new(1)), Type::Int(32));
         assert_eq!(resolve_type(&pool, &Index::new(2)), Type::Float(64));
         assert_eq!(resolve_type(&pool, &Index::new(3)), Type::Bool);
         assert_eq!(resolve_type(&pool, &Index::new(4)), Type::String);
         assert_eq!(resolve_type(&pool, &Index::new(5)), Type::Void);
         // Named class types resolve to Unknown — TypeId is unavailable without module access.
-        assert_eq!(resolve_type(&pool, &Index::new(6)), Type::Unknown);
+        assert_eq!(resolve_type(&pool, &Index::new(6)), Type::Value);
     }
 }

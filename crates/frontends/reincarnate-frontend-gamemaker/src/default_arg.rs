@@ -174,7 +174,7 @@ fn set_variadic_defaults(func: &mut Function) -> bool {
         // The param's type stays a fresh inference Var that the HM solver narrows
         // from call sites; deriving the default's type from a narrowed/param type
         // would install a type floor that blocks call-site narrowing.
-        func.sig.defaults[i] = Some(zero_for_type(&Type::Unknown));
+        func.sig.defaults[i] = Some(zero_for_type(&Type::Value));
         changed = true;
     }
     changed
@@ -375,16 +375,16 @@ mod tests {
     fn build_test_function(defaults: &[Constant]) -> (Module, reincarnate_core::ir::func::FuncId) {
         // sig: (self, arg0, arg1, ...)
         let n_args = defaults.len();
-        let mut params = vec![Type::Unknown]; // self
+        let mut params = vec![Type::Value]; // self
         let mut sig_defaults = vec![None]; // self has no default
         for _ in 0..n_args {
-            params.push(Type::Unknown);
+            params.push(Type::Value);
             sig_defaults.push(None);
         }
         let sig = FunctionSig {
             params,
             defaults: sig_defaults,
-            return_ty: Type::Unknown,
+            return_ty: Type::Value,
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test_func", sig, Visibility::Public);
@@ -405,7 +405,7 @@ mod tests {
 
             // Create default block and continue block
             let default_block = fb.create_block();
-            let (continue_block, continue_vals) = fb.create_block_with_params(&[Type::Unknown]);
+            let (continue_block, continue_vals) = fb.create_block_with_params(&[Type::Value]);
 
             // br_if cmp, default_block, continue_block(arg_param)
             fb.br_if(cmp, default_block, &[], continue_block, &[arg_param]);
@@ -445,7 +445,7 @@ mod tests {
                                                                       // does not constrain the param's type (callers may pass any type when they
                                                                       // do pass an arg); the HM solver narrows it from call sites in a later phase.
                                                                       // It stays whatever it was pre-pass — here, the Unknown it was built with.
-        assert_eq!(func.sig.params[1], Type::Unknown);
+        assert_eq!(func.sig.params[1], Type::Value);
     }
 
     #[test]
@@ -475,9 +475,9 @@ mod tests {
         // Function with no explicit `=== undefined` pattern.
         // set_variadic_defaults still fills arg params with zero defaults.
         let sig = FunctionSig {
-            params: vec![Type::Unknown, Type::Unknown],
+            params: vec![Type::Value, Type::Value],
             defaults: vec![None, None],
-            return_ty: Type::Unknown,
+            return_ty: Type::Value,
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("plain_func", sig, Visibility::Public);

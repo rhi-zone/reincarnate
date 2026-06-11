@@ -103,7 +103,7 @@ pub fn ts_type(ty: &Type) -> String {
         Type::Map(k, v) => {
             // Map keys should be `unknown` rather than `any` — `any` disables
             // type checking on lookups while `unknown` forces explicit narrowing.
-            let key = if matches!(k.as_ref(), Type::Unknown) {
+            let key = if matches!(k.as_ref(), Type::Value) {
                 "unknown".to_string()
             } else {
                 ts_type(k)
@@ -154,7 +154,7 @@ pub fn ts_type(ty: &Type) -> String {
             parts.join(" | ")
         }
         Type::InferVar(_) => "unknown".into(),
-        Type::Unknown => "unknown".into(),
+        Type::Value => "unknown".into(),
     }
 }
 
@@ -168,7 +168,7 @@ pub fn flash_ts_type(ty: &Type) -> String {
         // AS3 Dictionary is Map(Unknown, Unknown) in the IR but should be emitted
         // as `Dictionary` (the runtime class with index signatures) so that bracket
         // access `dict[key]` type-checks without TS7052.
-        Type::Map(k, _) if matches!(k.as_ref(), Type::Unknown) => "Dictionary".into(),
+        Type::Map(k, _) if matches!(k.as_ref(), Type::Value) => "Dictionary".into(),
         // AS3 Array allows both numeric and string indexing (it's a hash-array hybrid).
         // TypeScript's `any[]` only allows numeric indexing, causing TS7015 on string
         // keys. Emit `any` to allow all indexing patterns faithfully.
@@ -186,7 +186,7 @@ pub fn flash_ts_type(ty: &Type) -> String {
 /// where `module_types` is available to resolve [`Type::Instance`].
 pub fn flash_ts_type_with_module(ty: &Type, module_types: &PrimaryMap<TypeId, TypeDecl>) -> String {
     match ty {
-        Type::Map(k, _) if matches!(k.as_ref(), Type::Unknown) => "Dictionary".into(),
+        Type::Map(k, _) if matches!(k.as_ref(), Type::Value) => "Dictionary".into(),
         Type::Array(_) => "any".into(),
         Type::Instance(id) => {
             if let Some(named) = module_types.get(*id) {
@@ -257,7 +257,7 @@ pub fn flash_ts_type_with_names_and_module(
     module_types: &PrimaryMap<TypeId, TypeDecl>,
 ) -> String {
     match ty {
-        Type::Map(k, _) if matches!(k.as_ref(), Type::Unknown) => "Dictionary".into(),
+        Type::Map(k, _) if matches!(k.as_ref(), Type::Value) => "Dictionary".into(),
         Type::Array(_) => "any".into(),
         Type::Instance(id) => {
             if let Some(named) = module_types.get(*id) {
@@ -287,7 +287,7 @@ pub fn flash_ts_type_with_names_and_module(
 /// Like [`flash_ts_type`] but resolves disambiguated class names from `class_names`.
 pub fn flash_ts_type_with_names(ty: &Type, class_names: &HashMap<String, String>) -> String {
     match ty {
-        Type::Map(k, _) if matches!(k.as_ref(), Type::Unknown) => "Dictionary".into(),
+        Type::Map(k, _) if matches!(k.as_ref(), Type::Value) => "Dictionary".into(),
         Type::Array(_) => "any".into(),
         // Instance(id) for XML/XMLList is handled by flash_ts_type_with_names_and_module.
         _ => ts_type_with_names(ty, class_names),

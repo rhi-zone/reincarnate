@@ -443,7 +443,7 @@ fn translate_class_method(
                 class_type_ids.get(short).copied()
             })
             .map(Type::Instance)
-            .unwrap_or(Type::Unknown);
+            .unwrap_or(Type::Value);
         param_types.push(self_ty);
         param_names.push(None); // `this` — backend handles via self_value
     }
@@ -472,7 +472,7 @@ fn translate_class_method(
     // so translate_method_body initializes the register from the function arg.
     let has_rest = method.flags.contains(MethodFlags::NEED_REST);
     if has_rest {
-        param_types.push(Type::Array(Box::new(Type::Unknown)));
+        param_types.push(Type::Array(Box::new(Type::Value)));
         param_names.push(None); // name comes from Op::Debug
     }
 

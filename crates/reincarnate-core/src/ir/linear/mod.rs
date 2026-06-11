@@ -318,7 +318,7 @@ pub(super) fn merge_coalesce_type(a: Type, b: Type) -> Type {
     if is_numeric(&a) && is_numeric(&b) {
         return Type::Float(64);
     }
-    Type::Unknown
+    Type::Value
 }
 
 /// Return true if `init_ty` is assignment-compatible with `decl_ty` for
@@ -338,7 +338,7 @@ fn types_coalesce_compatible(decl_ty: &Type, init_ty: &Type) -> bool {
     // call like `getInstanceField`), TS infers `any` — operations work without
     // narrowing. If the init is a concrete type, TS infers that type directly.
     // Adding `: unknown` overrides both, forcing callers to narrow unnecessarily.
-    if matches!(decl_ty, Type::Unknown) {
+    if matches!(decl_ty, Type::Value) {
         return false;
     }
     if decl_ty == init_ty {

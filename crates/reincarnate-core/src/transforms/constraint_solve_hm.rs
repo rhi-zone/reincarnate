@@ -320,7 +320,7 @@ fn param_used_as_collection(
 }
 
 /// Returns true only when `ty` is a known primitive scalar that can never be a struct instance.
-/// Returns false for `Type::InferVar`, `Type::Unknown`, and any compound or reference type so that
+/// Returns false for `Type::InferVar`, `Type::Value`, and any compound or reference type so that
 /// unresolved type variables are not incorrectly excluded from inter-procedural constraints.
 fn is_definitely_scalar(ty: &crate::ir::Type) -> bool {
     matches!(
@@ -405,7 +405,7 @@ fn seed_param_from_arg(
     };
     // An Unknown argument means call-site evidence is incomplete: record it so the
     // drain site leaves the param free rather than narrowing on a subset.
-    if matches!(arg_ty, Type::Unknown) {
+    if matches!(arg_ty, Type::Value) {
         param_concrete_types
             .entry(param_var)
             .or_default()
@@ -1124,12 +1124,12 @@ impl Transform for ConstraintSolveHM {
                 for (vid, var_id) in &data.value_vars {
                     let old_ty = &func.value_types[*vid];
                     // Only update values that were inference targets.
-                    if !matches!(old_ty, Type::Unknown | Type::InferVar(_)) {
+                    if !matches!(old_ty, Type::Value | Type::InferVar(_)) {
                         continue;
                     }
                     let resolved = resolve(Type::InferVar(*var_id), &arena);
                     // If still unresolved, leave the existing type in place.
-                    // Do not write Type::Unknown — that would conflate
+                    // Do not write Type::Value — that would conflate
                     // "unconstrained" with "genuinely unknown" and block
                     // re-inference on subsequent HM passes.
                     if matches!(&resolved, Type::InferVar(_)) {
@@ -1245,12 +1245,12 @@ impl Transform for ConstraintSolveHM {
                             variants.into_iter().map(|v| resolve(v, arena)).collect();
                         let has_concrete = resolved_variants
                             .iter()
-                            .any(|v| !matches!(v, Type::Unknown | Type::InferVar(_)));
+                            .any(|v| !matches!(v, Type::Value | Type::InferVar(_)));
                         let filtered: Vec<Type> = resolved_variants
                             .into_iter()
                             .filter(|v| {
                                 if has_concrete {
-                                    !matches!(v, Type::Unknown)
+                                    !matches!(v, Type::Value)
                                 } else {
                                     true
                                 }
@@ -1307,7 +1307,7 @@ impl Transform for ConstraintSolveHM {
                 let func_name = module.func_name(fid).to_string();
 
                 for (vid, &var_id) in &data.value_vars {
-                    if !matches!(func.value_types[*vid], Type::Unknown) {
+                    if !matches!(func.value_types[*vid], Type::Value) {
                         continue;
                     }
 

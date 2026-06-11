@@ -353,7 +353,7 @@ pub(super) fn emit_function(
         // Runtime types are pre-interned by intern_runtime_types() in emit_module_to_string/dir.
         let rt_ty = find_type_id(module_types, rt_type_name)
             .map(Type::Instance)
-            .unwrap_or(Type::Unknown);
+            .unwrap_or(Type::Value);
         js_func.params.insert(0, ("_rt".into(), rt_ty));
         js_func.param_defaults.insert(0, None);
         // If a context_type is configured, retype the first Unknown param after `_rt`
@@ -362,9 +362,9 @@ pub(super) fn emit_function(
             let ctx_type_name = ctx_type.name.as_str();
             let ctx_ty = find_type_id(module_types, ctx_type_name)
                 .map(Type::Instance)
-                .unwrap_or(Type::Unknown);
+                .unwrap_or(Type::Value);
             for (_, ty) in &mut js_func.params {
-                if *ty == Type::Unknown {
+                if *ty == Type::Value {
                     *ty = ctx_ty.clone();
                     break;
                 }
@@ -825,7 +825,7 @@ pub(super) fn emit_class(
 /// Appends `| null` to a type string when a field has a `null` default initializer,
 /// unless the type already accommodates null (Unknown → `any`, Option → `T | null`).
 fn widen_type_for_null(ty: &Type, ts: &mut String) {
-    if !matches!(ty, Type::Unknown | Type::Option(_)) {
+    if !matches!(ty, Type::Value | Type::Option(_)) {
         ts.push_str(" | null");
     }
 }
@@ -1217,7 +1217,7 @@ fn emit_class_method(
     if matches!(
         func.method_kind,
         MethodKind::Instance | MethodKind::Constructor
-    ) && js_func.return_ty == Type::Unknown
+    ) && js_func.return_ty == Type::Value
     {
         js_func.return_ty = Type::Void;
     }

@@ -399,7 +399,7 @@ fn promote_multi_store(func: &mut Function) -> bool {
         // ConstraintSolve runs before Mem2Reg and may have narrowed stored value types
         // to concrete types even when the alloc declaration remained Unknown (due to
         // circular load-compute-store dependencies that TypeInference can't resolve).
-        let effective_ty = if matches!(info.ty, Type::Unknown | Type::InferVar(_)) {
+        let effective_ty = if matches!(info.ty, Type::Value | Type::InferVar(_)) {
             let stored_tys: Vec<&Type> = info
                 .stores
                 .iter()
@@ -408,7 +408,7 @@ fn promote_multi_store(func: &mut Function) -> bool {
                         let ty = &func.value_types[*value];
                         // Exclude unresolved types (Unknown or InferVar) — treat them
                         // as abstentions, not as evidence for a concrete type.
-                        if !matches!(ty, Type::Unknown | Type::InferVar(_)) {
+                        if !matches!(ty, Type::Value | Type::InferVar(_)) {
                             Some(ty)
                         } else {
                             None
@@ -419,7 +419,7 @@ fn promote_multi_store(func: &mut Function) -> bool {
                 })
                 .collect();
             if stored_tys.is_empty() {
-                Type::Unknown
+                Type::Value
             } else if stored_tys.iter().all(|t| **t == *stored_tys[0]) {
                 stored_tys[0].clone()
             } else if stored_tys
@@ -428,7 +428,7 @@ fn promote_multi_store(func: &mut Function) -> bool {
             {
                 Type::Float(64)
             } else {
-                Type::Unknown
+                Type::Value
             }
         } else {
             info.ty.clone()
@@ -494,7 +494,7 @@ fn promote_multi_store(func: &mut Function) -> bool {
                 Type::Bool => Constant::Bool(false),
                 Type::Int(_) => Constant::Int(0),
                 Type::UInt(_) => Constant::UInt(0),
-                Type::Float(_) | Type::Unknown | Type::InferVar(_) => Constant::Float(0.0),
+                Type::Float(_) | Type::Value | Type::InferVar(_) => Constant::Float(0.0),
                 // Struct / String / Array / opaque: keep null (not used in
                 // arithmetic; a null struct ref is the right uninitialized
                 // sentinel for reference types).

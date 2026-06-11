@@ -56,7 +56,7 @@ fn strip_int_coerce(expr: JsExpr) -> JsExpr {
         kind: CastKind::Coerce,
     } = expr
     {
-        if matches!(ty, Type::Int(32) | Type::Unknown) {
+        if matches!(ty, Type::Int(32) | Type::Value) {
             return *inner;
         }
         JsExpr::Cast {
@@ -1120,7 +1120,7 @@ fn rewrite_expr_children(
             if matches!(object.as_ref(), JsExpr::This) && is_event_method_name(field) {
                 *object = Box::new(JsExpr::Cast {
                     expr: Box::new(JsExpr::This),
-                    ty: Type::Unknown,
+                    ty: Type::Value,
                     kind: CastKind::NullableCoerce,
                 });
             } else {
@@ -2278,7 +2278,7 @@ mod tests {
         };
         let mut expr = JsExpr::Cast {
             expr: Box::new(cmp),
-            ty: Type::Unknown,
+            ty: Type::Value,
             kind: CastKind::Coerce,
         };
         coerce_to_number(&mut expr);
@@ -2328,7 +2328,7 @@ mod tests {
                 ],
             })],
             param_defaults: vec![],
-            return_ty: Type::Unknown,
+            return_ty: Type::Value,
             is_generator: false,
             visibility: Visibility::Public,
             method_kind: MethodKind::Free,
@@ -2388,7 +2388,7 @@ mod tests {
                 ],
             })],
             param_defaults: vec![],
-            return_ty: Type::Unknown,
+            return_ty: Type::Value,
             is_generator: false,
             visibility: Visibility::Public,
             method_kind: MethodKind::Free,

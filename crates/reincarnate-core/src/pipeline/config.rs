@@ -280,7 +280,7 @@ pub struct LoweringConfig {
     /// built-in global lookups like `Engine.resolve("Date")` are unaffected.
     pub cast_struct_syscall_results_for: Vec<(String, String)>,
 
-    /// When true, any `CallIndirect` whose callee has `Type::Unknown` (i.e.
+    /// When true, any `CallIndirect` whose callee has `Type::Value` (i.e.
     /// would be typed `unknown` in TypeScript) is wrapped in a function-type
     /// cast before emission.  This eliminates TS2571 "Object is of type
     /// 'unknown'" errors at indirect call sites.

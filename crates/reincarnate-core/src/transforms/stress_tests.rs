@@ -157,7 +157,7 @@ fn build_cast_chain(ty: Type) -> crate::ir::Function {
 fn build_bool_return() -> crate::ir::Function {
     let sig = FunctionSig {
         params: vec![Type::Bool],
-        return_ty: Type::Unknown,
+        return_ty: Type::Value,
         ..Default::default()
     };
     let mut fb = FunctionBuilder::new("bool_ret", sig, Visibility::Public);

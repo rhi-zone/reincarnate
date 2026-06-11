@@ -595,21 +595,18 @@ impl<'a> EmitCtx<'a> {
                     ) {
                         coll_expr = Expr::Cast {
                             expr: Box::new(coll_expr),
-                            ty: Type::Unknown,
+                            ty: Type::Value,
                             kind: CastKind::NullableCoerce,
                         };
                     }
                     if self.config.coerce_index_types {
                         // Struct-typed collection + Unknown index → (collection as any)
                         if self.is_struct_needing_index_coerce(*collection)
-                            && matches!(
-                                self.func.value_types.get(*index),
-                                Some(Type::Unknown) | None
-                            )
+                            && matches!(self.func.value_types.get(*index), Some(Type::Value) | None)
                         {
                             coll_expr = Expr::Cast {
                                 expr: Box::new(coll_expr),
-                                ty: Type::Unknown,
+                                ty: Type::Value,
                                 kind: CastKind::NullableCoerce,
                             };
                         }
@@ -659,7 +656,7 @@ impl<'a> EmitCtx<'a> {
                 let callee_ty = self.func.value_types[*callee].clone();
                 let callee_expr = self.build_val(*callee);
                 // When `cast_unknown_indirect_callee` is enabled and the callee is
-                // `unknown` (Type::Unknown), calling it directly causes TS2571.
+                // `unknown` (Type::Value), calling it directly causes TS2571.
                 // Cast to a typed function with matching arity so the call is valid.
                 // Params and return type remain `unknown`; downstream uses of the
                 // return value that need a concrete type require their own cast.
@@ -668,12 +665,12 @@ impl<'a> EmitCtx<'a> {
                 // rewrites (e.g. findPropStrict → bare name) that run after core emit
                 // and cannot see through a cast wrapper.
                 let callee_expr =
-                    if self.config.cast_unknown_indirect_callee && callee_ty == Type::Unknown {
+                    if self.config.cast_unknown_indirect_callee && callee_ty == Type::Value {
                         Expr::Cast {
                             expr: Box::new(callee_expr),
                             ty: Type::Function(Box::new(FunctionSig {
-                                params: vec![Type::Unknown; args.len()],
-                                return_ty: Type::Unknown,
+                                params: vec![Type::Value; args.len()],
+                                return_ty: Type::Value,
                                 ..Default::default()
                             })),
                             kind: CastKind::NullableCoerce,
@@ -699,11 +696,11 @@ impl<'a> EmitCtx<'a> {
                     && method == "new"
                     && self.config.cast_unknown_indirect_callee
                     && !args.is_empty()
-                    && self.func.value_types.get(args[0]) == Some(&Type::Unknown)
+                    && self.func.value_types.get(args[0]) == Some(&Type::Value)
                 {
                     let callee_cast = Expr::Cast {
                         expr: Box::new(self.build_val(args[0])),
-                        ty: Type::Unknown,
+                        ty: Type::Value,
                         kind: CastKind::NullableCoerce,
                     };
                     let rest: Vec<_> = args[1..].iter().map(|a| self.build_val(*a)).collect();
@@ -882,7 +879,7 @@ impl<'a> EmitCtx<'a> {
         if matches!(self.func.value_types[cond], Type::Void) {
             Expr::Cast {
                 expr: Box::new(expr),
-                ty: Type::Unknown,
+                ty: Type::Value,
                 kind: CastKind::NullableCoerce,
             }
         } else {

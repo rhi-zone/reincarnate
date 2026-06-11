@@ -227,7 +227,7 @@ pub(super) fn resolve_scope_call(
                     .get(name.as_str())
                     .copied()
                     .map(Type::Instance)
-                    .unwrap_or(Type::Unknown);
+                    .unwrap_or(Type::Value);
                 return JsExpr::Cast {
                     expr: Box::new(rest_args.into_iter().next().unwrap()),
                     ty,

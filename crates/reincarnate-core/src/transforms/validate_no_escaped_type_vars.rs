@@ -75,7 +75,7 @@ fn contains_nonpersistable_typevar(ty: &Type) -> bool {
         | Type::String
         | Type::Instance(_)
         | Type::ClassRef(_)
-        | Type::Unknown => false,
+        | Type::Value => false,
     }
 }
 

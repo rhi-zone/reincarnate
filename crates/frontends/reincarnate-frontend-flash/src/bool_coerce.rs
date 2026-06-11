@@ -194,9 +194,9 @@ fn coerce_void_brif(func: &mut Function) -> bool {
 
     for (block_id, cond) in targets {
         // Insert cast at end of block's insts.
-        let cast_vid = func.value_types.push(Type::Unknown);
+        let cast_vid = func.value_types.push(Type::Value);
         let cast_iid = func.insts.push(Inst {
-            op: Op::Cast(cond, Type::Unknown, CastKind::NullableCoerce),
+            op: Op::Cast(cond, Type::Value, CastKind::NullableCoerce),
             result: Some(cast_vid),
             span: None,
         });

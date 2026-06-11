@@ -200,7 +200,7 @@ fn cfg_simplify_then_mem2reg() {
 fn full_pipeline_well_formed() {
     let sig = FunctionSig {
         params: vec![Type::Bool],
-        return_ty: Type::Unknown,
+        return_ty: Type::Value,
         ..Default::default()
     };
     let mut fb = FunctionBuilder::new("test", sig, Visibility::Public);
@@ -251,7 +251,7 @@ fn full_pipeline_well_formed() {
 fn full_pipeline_idempotent() {
     let sig = FunctionSig {
         params: vec![Type::Bool],
-        return_ty: Type::Unknown,
+        return_ty: Type::Value,
         ..Default::default()
     };
     let mut fb = FunctionBuilder::new("test", sig, Visibility::Public);

@@ -657,8 +657,8 @@ fn lower_builtin_opt(op_name: &str, args: &[Expr], ctx: &LowerCtx) -> Option<JsE
             };
             let comparator = JsExpr::ArrowFunction {
                 params: vec![
-                    ("a".to_string(), Type::Unknown),
-                    ("b".to_string(), Type::Unknown),
+                    ("a".to_string(), Type::Value),
+                    ("b".to_string(), Type::Value),
                 ],
                 return_ty: Type::Float(64),
                 body: vec![JsStmt::Return(Some(JsExpr::Ternary {

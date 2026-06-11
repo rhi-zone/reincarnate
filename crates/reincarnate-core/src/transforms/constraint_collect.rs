@@ -175,7 +175,7 @@ pub fn resolve(ty: Type, arena: &TypeVarArena) -> Type {
         | Type::String
         | Type::Instance(_)
         | Type::ClassRef(_)
-        | Type::Unknown) => t,
+        | Type::Value) => t,
     }
 }
 
@@ -214,7 +214,7 @@ fn occurs_resolved(id: TypeVarId, ty: &Type, arena: &TypeVarArena) -> bool {
         | Type::String
         | Type::Instance(_)
         | Type::ClassRef(_)
-        | Type::Unknown => false,
+        | Type::Value => false,
     }
 }
 
@@ -269,7 +269,7 @@ fn collect_free_vars(ty: &Type, arena: &TypeVarArena, out: &mut Vec<TypeVarId>) 
         | Type::String
         | Type::Instance(_)
         | Type::ClassRef(_)
-        | Type::Unknown => {}
+        | Type::Value => {}
     }
 }
 
@@ -291,7 +291,7 @@ pub enum UnifyError {
 /// Bind type variable `id` to `ty`, with occurs check and level adjustment.
 ///
 /// - Same-variable self-binding is a no-op.
-/// - Recursive types (occurs check failure) are bound to [`Type::Unknown`] and
+/// - Recursive types (occurs check failure) are bound to [`Type::Value`] and
 ///   return `Ok(())` — recursive structure = genuine opacity.
 /// - Free variables in `ty` whose level exceeds `id`'s level are lowered to
 ///   prevent escaping a generalization scope.
@@ -311,7 +311,7 @@ pub fn bind_var(id: TypeVarId, ty: Type, arena: &mut TypeVarArena) -> Result<(),
     }
 
     if occurs(id, &ty, arena) {
-        arena.bind(id, Type::Unknown);
+        arena.bind(id, Type::Value);
         return Ok(());
     }
 
@@ -333,7 +333,7 @@ pub fn bind_var(id: TypeVarId, ty: Type, arena: &mut TypeVarArena) -> Result<(),
 /// HM unification of two [`Type`] values.
 ///
 /// Returns the unified type on success.  On a concrete-type mismatch (neither
-/// is a type variable or absorbing type) returns [`Type::Unknown`] — the
+/// is a type variable or absorbing type) returns [`Type::Value`] — the
 /// conflict is the conservative fallback.
 ///
 /// TypeVar poisoning: when `a` or `b` is a bound TypeVar that resolves to a
@@ -357,8 +357,8 @@ pub fn unify(a: Type, b: Type, arena: &mut TypeVarArena) -> Result<Type, UnifyEr
 
     match (a, b) {
         (a, b) if a == b => Ok(a),
-        (Type::Unknown, _) | (_, Type::Unknown) => Ok(Type::Unknown),
-        (Type::Union(_), _) | (_, Type::Union(_)) => Ok(Type::Unknown),
+        (Type::Value, _) | (_, Type::Value) => Ok(Type::Value),
+        (Type::Union(_), _) | (_, Type::Union(_)) => Ok(Type::Value),
 
         (Type::InferVar(id), b) => {
             bind_var(id, b.clone(), arena)?;
@@ -431,12 +431,12 @@ pub fn unify(a: Type, b: Type, arena: &mut TypeVarArena) -> Result<Type, UnifyEr
         // Poison bound TypeVars so they return Unknown on future resolve().
         (_a, _b) => {
             if let Some(id) = a_var {
-                arena.force_rebind(id, Type::Unknown);
+                arena.force_rebind(id, Type::Value);
             }
             if let Some(id) = b_var {
-                arena.force_rebind(id, Type::Unknown);
+                arena.force_rebind(id, Type::Value);
             }
-            Ok(Type::Unknown)
+            Ok(Type::Value)
         }
     }
 }
@@ -452,7 +452,7 @@ pub struct ConstraintSet {
     /// Map from [`ValueId`] → [`TypeVarId`].
     ///
     /// Pre-populated during initialisation:
-    /// - Concrete ground types (including [`Type::Unknown`]) get a fresh var
+    /// - Concrete ground types (including [`Type::Value`]) get a fresh var
     ///   that is immediately bound to that type — prior knowledge the solver
     ///   can only confirm, never weaken.
     /// - [`Type::InferVar`] values get fresh, unbound vars (open inference targets).
@@ -483,7 +483,7 @@ pub struct ConstraintSet {
 /// considered concrete.
 pub(crate) fn is_concrete(ty: &Type) -> bool {
     match ty {
-        Type::Unknown => true, // decided: inference exhausted, not a free variable
+        Type::Value => true, // decided: inference exhausted, not a free variable
         // HAZARD: InferVar must return false — leave the arena var unbound.
         // Do NOT call arena.bind here; the unifier owns all bindings.
         // Unknown also leaves inference open — do not collapse it to a ground type.
@@ -643,7 +643,7 @@ pub fn collect_function(
             .and_then(|b| b.as_ref())
             .is_some();
         let should_bind = is_concrete(ty)
-            && (!matches!(ty, Type::Unknown) || (param_pos.is_some() && !has_lower_bound));
+            && (!matches!(ty, Type::Value) || (param_pos.is_some() && !has_lower_bound));
         if should_bind {
             arena.bind(var, ty.clone());
         }
@@ -884,8 +884,7 @@ pub fn collect_function(
                         // The return-type constraint is always emitted regardless of
                         // any per-arg conflicts below.
                         if let Some(rv) = result_var.as_ref() {
-                            if is_concrete(&sig.return_ty)
-                                && !matches!(sig.return_ty, Type::Unknown)
+                            if is_concrete(&sig.return_ty) && !matches!(sig.return_ty, Type::Value)
                             {
                                 constraints
                                     .push(TypeConstraint::Equal(rv.clone(), sig.return_ty.clone()));
@@ -901,8 +900,7 @@ pub fn collect_function(
                                         constraints
                                             .push(TypeConstraint::Equal(arg_var, param_ty.clone()));
                                     }
-                                } else if is_concrete(param_ty)
-                                    && !matches!(param_ty, Type::Unknown)
+                                } else if is_concrete(param_ty) && !matches!(param_ty, Type::Value)
                                 {
                                     if let Some(arg_var) = var_for(arg, &value_vars) {
                                         constraints
@@ -954,8 +952,7 @@ pub fn collect_function(
                         // Result ← callee return type.
                         // Unknown return types are wildcards — see Op::Call comment above.
                         if let Some(rv) = result_var.as_ref() {
-                            if is_concrete(&sig.return_ty)
-                                && !matches!(sig.return_ty, Type::Unknown)
+                            if is_concrete(&sig.return_ty) && !matches!(sig.return_ty, Type::Value)
                             {
                                 constraints
                                     .push(TypeConstraint::Equal(rv.clone(), sig.return_ty.clone()));
@@ -964,7 +961,7 @@ pub fn collect_function(
                         // Receiver → callee param[0] (self).
                         if !sig.params.is_empty() {
                             let recv_ty = &sig.params[0];
-                            if is_concrete(recv_ty) && !matches!(recv_ty, Type::Unknown) {
+                            if is_concrete(recv_ty) && !matches!(recv_ty, Type::Value) {
                                 if let Some(recv_var) = var_for(*receiver, &value_vars) {
                                     constraints
                                         .push(TypeConstraint::Equal(recv_var, recv_ty.clone()));
@@ -985,8 +982,7 @@ pub fn collect_function(
                                         constraints
                                             .push(TypeConstraint::Equal(arg_var, param_ty.clone()));
                                     }
-                                } else if is_concrete(param_ty)
-                                    && !matches!(param_ty, Type::Unknown)
+                                } else if is_concrete(param_ty) && !matches!(param_ty, Type::Value)
                                 {
                                     if let Some(arg_var) = var_for(arg, &value_vars) {
                                         constraints
@@ -1039,7 +1035,7 @@ pub fn collect_function(
                 Op::Alloc(inner_ty) => {
                     if let Some(alloc_result) = inst.result {
                         let cell_var = *value_vars.get(&alloc_result).unwrap();
-                        if is_concrete(inner_ty) && !matches!(inner_ty, Type::Unknown) {
+                        if is_concrete(inner_ty) && !matches!(inner_ty, Type::Value) {
                             constraints.push(TypeConstraint::Equal(
                                 Type::InferVar(cell_var),
                                 inner_ty.clone(),
@@ -1312,17 +1308,14 @@ mod tests {
         assert!(!result.changed, "expected changed=false for empty module");
     }
 
-    /// Type::Unknown is concrete — inference exhausted, not a free variable.
+    /// Type::Value is concrete — inference exhausted, not a free variable.
     /// Type::InferVar is the pre-inference placeholder and is NOT concrete.
     /// This invariant must never regress: code that treats Unknown as solvable
     /// or Var as concrete will produce wrong types throughout the pipeline.
     #[test]
     fn unknown_is_concrete_var_is_not() {
         use crate::ir::ty::TypeVarId;
-        assert!(
-            is_concrete(&Type::Unknown),
-            "Type::Unknown must be concrete"
-        );
+        assert!(is_concrete(&Type::Value), "Type::Value must be concrete");
         assert!(
             !is_concrete(&Type::InferVar(TypeVarId::new(0))),
             "Type::InferVar must not be concrete"
@@ -1332,7 +1325,7 @@ mod tests {
             "Array(Var) must not be concrete"
         );
         assert!(
-            is_concrete(&Type::Array(Box::new(Type::Unknown))),
+            is_concrete(&Type::Array(Box::new(Type::Value))),
             "Array(Unknown) must be concrete"
         );
     }

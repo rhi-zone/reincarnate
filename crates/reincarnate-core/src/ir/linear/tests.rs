@@ -642,7 +642,7 @@ fn reassigned_self_param_renamed() {
     // Instance method with self param named "this".
     // Another value also named "this" — should be renamed to "_this".
     let sig = FunctionSig {
-        params: vec![Type::Unknown, Type::Int(64)],
+        params: vec![Type::Value, Type::Int(64)],
         return_ty: Type::Void,
         ..Default::default()
     };
@@ -737,13 +737,13 @@ fn debug_name_propagates_through_cast() {
     //
     // The name "hp" should propagate back to v_field.
     let sig = FunctionSig {
-        params: vec![Type::Unknown],
+        params: vec![Type::Value],
         return_ty: Type::Int(32),
         ..Default::default()
     };
     let mut fb = FunctionBuilder::new("f", sig, Visibility::Public);
     let obj = fb.param(0);
-    let v_field = fb.get_field(obj, "hp", Type::Unknown);
+    let v_field = fb.get_field(obj, "hp", Type::Value);
     // Don't name v_field — only name the cast result.
     let v_cast = fb.cast(v_field, Type::Int(32));
     fb.name_value(v_cast, "hp".to_string());
@@ -827,15 +827,15 @@ fn flush_skips_consumed_values() {
     // v1 and v2 are both pending lazy. Flushing v2 consumes v1.
     // The flush loop must skip v1 when it tries to flush it.
     let sig = FunctionSig {
-        params: vec![Type::Unknown],
+        params: vec![Type::Value],
         return_ty: Type::Void,
         ..Default::default()
     };
     let mut fb = FunctionBuilder::new("f", sig, Visibility::Public);
     let obj = fb.param(0);
-    let v1 = fb.get_field(obj, "a", Type::Unknown);
-    let v2 = fb.get_field(v1, "b", Type::Unknown);
-    let ptr = fb.alloc(Type::Unknown);
+    let v1 = fb.get_field(obj, "a", Type::Value);
+    let v2 = fb.get_field(v1, "b", Type::Value);
+    let ptr = fb.alloc(Type::Value);
     fb.store(ptr, v2);
     fb.ret(None);
 
@@ -866,14 +866,14 @@ fn flush_scoped_to_prevent_use_before_def() {
     // v_field is defined in the header but used after the if/else.
     // It must NOT be flushed inside then_block's body (use-before-def).
     let sig = FunctionSig {
-        params: vec![Type::Unknown, Type::Bool],
-        return_ty: Type::Unknown,
+        params: vec![Type::Value, Type::Bool],
+        return_ty: Type::Value,
         ..Default::default()
     };
     let mut fb = FunctionBuilder::new("f", sig, Visibility::Public);
     let obj = fb.param(0);
     let cond = fb.param(1);
-    let v_field = fb.get_field(obj, "x", Type::Unknown);
+    let v_field = fb.get_field(obj, "x", Type::Value);
 
     let then_block = fb.create_block();
     let merge = fb.create_block();
@@ -923,7 +923,7 @@ fn se_chain_through_cast() {
         "f",
         FunctionSig {
             params: vec![],
-            return_ty: Type::Unknown,
+            return_ty: Type::Value,
             ..Default::default()
         },
     );
@@ -934,7 +934,7 @@ fn se_chain_through_cast() {
     };
     let mut fb = FunctionBuilder::new("g", sig, Visibility::Public);
     fb.set_registry(mb.runtime_registry().clone());
-    let v_call = fb.call_named("f", &[], Type::Unknown);
+    let v_call = fb.call_named("f", &[], Type::Value);
     fb.name_value(v_call, "result".to_string());
     let v_cast = fb.cast(v_call, Type::Int(32));
     fb.name_value(v_cast, "result".to_string());
@@ -1237,21 +1237,21 @@ fn while_loop_condition_hoisted() {
 fn switch_se_inline_flushed_to_outer_scope() {
     let sig = FunctionSig {
         params: vec![Type::Int(64), Type::Bool],
-        return_ty: Type::Unknown,
+        return_ty: Type::Value,
         ..Default::default()
     };
     let mut mb = ModuleBuilder::new("test");
     let unk_sig = FunctionSig {
         params: vec![],
-        return_ty: Type::Unknown,
+        return_ty: Type::Value,
         ..Default::default()
     };
     mb.register_runtime("foo", unk_sig.clone());
     mb.register_runtime(
         "bar",
         FunctionSig {
-            params: vec![Type::Unknown],
-            return_ty: Type::Unknown,
+            params: vec![Type::Value],
+            return_ty: Type::Value,
             ..Default::default()
         },
     );
@@ -1265,7 +1265,7 @@ fn switch_se_inline_flushed_to_outer_scope() {
     let case1 = fb.create_block();
 
     // Entry: side-effecting call followed by switch.
-    let v_call = fb.call_named("foo", &[], Type::Unknown);
+    let v_call = fb.call_named("foo", &[], Type::Value);
     fb.name_value(v_call, "foo_call".to_string());
     fb.switch(
         v_key,
@@ -1288,7 +1288,7 @@ fn switch_se_inline_flushed_to_outer_scope() {
     // case1 (default): uses v_call.  Without the outer flush, "foo_call" is
     // undeclared here because it was materialised inside case0's scope.
     fb.switch_to_block(case1);
-    let v_result = fb.call_named("bar", &[v_call], Type::Unknown);
+    let v_result = fb.call_named("bar", &[v_call], Type::Value);
     fb.name_value(v_result, "bar_result".to_string());
     fb.ret(Some(v_result));
 

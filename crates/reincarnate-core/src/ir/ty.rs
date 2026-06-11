@@ -49,14 +49,14 @@ pub enum Type {
     ///
     /// INVARIANT: never persisted. This must not appear in `module.types`, nor in
     /// `func.value_types` after inference completes. "Unresolved inference target" in
-    /// persisted IR is spelled `Type::Unknown`, not `InferVar`. The arena is the sole
-    /// allocator (`TypeVarArena::fresh`); frontends emit `Unknown` for unknown-typed values.
+    /// persisted IR is spelled `Type::Value`, not `InferVar`. The arena is the sole
+    /// allocator (`TypeVarArena::fresh`); frontends emit `Value` for genuinely-dynamic values.
     InferVar(TypeVarId),
     /// Union of distinct concrete types.
     Union(Vec<Type>),
-    /// Unknown — type-safe top type representing an inference gap.
-    /// TypeScript: `unknown`; Rust: `Value` enum with runtime dispatch.
-    Unknown,
+    /// The honest type of a genuinely-dynamic value whose source-language type cannot
+    /// be statically determined. Lowers to TypeScript `unknown`.
+    Value,
 }
 
 impl Type {
@@ -113,13 +113,13 @@ impl Default for FunctionSig {
 /// | `"boolean"`   | `Type::Bool`          |
 /// | `"string"`    | `Type::String`        |
 /// | `"void"`      | `Type::Void`          |
-/// | `"*"`         | `Type::Unknown`       |
-/// | `"Function"`  | `Type::Unknown`       |
-/// | `"Array"`     | `Type::Array(Unknown)`|
-/// | `"classref"`  | `Type::Unknown`       |
-/// | `"ClassName"` | `Type::Unknown`       |
+/// | `"*"`         | `Type::Value`       |
+/// | `"Function"`  | `Type::Value`       |
+/// | `"Array"`     | `Type::Array(Value)`  |
+/// | `"classref"`  | `Type::Value`       |
+/// | `"ClassName"` | `Type::Value`       |
 ///
-/// Note: named struct/class types return `Type::Unknown` because `TypeId`s are
+/// Note: named struct/class types return `Type::Value` because `TypeId`s are
 /// not available at parse time — callers that need real `TypeId`s must use the
 /// module's `intern_type` directly.
 pub fn parse_type_notation(s: &str) -> Type {
@@ -132,15 +132,15 @@ pub fn parse_type_notation(s: &str) -> Type {
         "void" => Type::Void,
         // "classref" marks a GML integer object-index parameter in runtime.json.
         // It has no IR equivalent — the backend rewrite resolves integer literals
-        // to class-name Var references; in the IR the parameter type is Unknown.
-        "*" | "any" | "dynamic" | "Function" | "Object" | "Class" | "classref" => Type::Unknown,
-        "Array" => Type::Array(Box::new(Type::Unknown)),
+        // to class-name Var references; in the IR the parameter type is Value.
+        "*" | "any" | "dynamic" | "Function" | "Object" | "Class" | "classref" => Type::Value,
+        "Array" => Type::Array(Box::new(Type::Value)),
         name if name.ends_with("[]") => {
             let elem = &name[..name.len() - 2];
             Type::Array(Box::new(parse_type_notation(elem)))
         }
         // Named struct/class types: callers must use module.intern_type(name) directly.
-        _name => Type::Unknown,
+        _name => Type::Value,
     }
 }
 

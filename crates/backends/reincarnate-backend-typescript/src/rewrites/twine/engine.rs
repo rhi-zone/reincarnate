@@ -487,8 +487,8 @@ mod tests {
     fn rewrite_collection_op_sorted_via_lambda_routes_to_sorted_by() {
         // `(sorted: via _x via _x, a, b)` — first arg is an arrow (already inlined).
         let arrow = JsExpr::ArrowFunction {
-            params: vec![("_x".into(), reincarnate_core::ir::Type::Unknown)],
-            return_ty: reincarnate_core::ir::Type::Unknown,
+            params: vec![("_x".into(), reincarnate_core::ir::Type::Value)],
+            return_ty: reincarnate_core::ir::Type::Value,
             body: vec![JsStmt::Expr(var("_x"))],
             has_rest_param: false,
             cast_as: None,
@@ -652,7 +652,7 @@ mod tests {
         use reincarnate_core::ir::MethodKind;
         JsFunction {
             name: name.into(),
-            params: vec![("_x".into(), Type::Unknown)],
+            params: vec![("_x".into(), Type::Value)],
             param_defaults: vec![],
             return_ty: Type::Bool,
             body: vec![JsStmt::Return(Some(JsExpr::Literal(Constant::Bool(true))))],
@@ -700,7 +700,7 @@ mod tests {
                     } => {
                         assert_eq!(params.len(), 1);
                         assert!(
-                            matches!(&params[0].1, Type::Unknown),
+                            matches!(&params[0].1, Type::Value),
                             "param should be Unknown (inferred by TS)"
                         );
                         assert_eq!(*return_ty, Type::Bool);

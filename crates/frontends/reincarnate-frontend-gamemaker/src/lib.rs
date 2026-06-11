@@ -118,7 +118,7 @@ impl Frontend for GameMakerFrontend {
         let rt_ty = Type::Instance(rt_type_id);
 
         // Populate extern sigs from the GML builtin signature table.
-        // `Type::Unknown` in the generated table means the generator didn't
+        // `Type::Value` in the generated table means the generator didn't
         // have enough information to determine the type — these are inference
         // gaps, not genuine source-language opacity.  Replace them with fresh
         // type variables so the solver can attempt to infer them from call
@@ -189,7 +189,7 @@ impl Frontend for GameMakerFrontend {
             "@@NewGMLArray@@".to_string(),
             FunctionSig {
                 params: vec![],
-                return_ty: Type::Array(Box::new(Type::Unknown)),
+                return_ty: Type::Array(Box::new(Type::Value)),
                 has_rest_param: true,
                 ..Default::default()
             },
@@ -1277,19 +1277,19 @@ fn register_globals(dw: &DataWin, vari: &datawin::chunks::vari::Vari, mb: &mut M
     }
 }
 
-/// Replace `Type::Unknown` in a [`FunctionSig`] with fresh type variables.
+/// Replace `Type::Value` in a [`FunctionSig`] with fresh type variables.
 ///
-/// `Type::Unknown` in `builtins_generated.rs` means the generator did not
+/// `Type::Value` in `builtins_generated.rs` means the generator did not
 /// have enough type information from the GameMaker manual HTML — these are
 /// inference gaps.  This function replaces them with `module.fresh_var()`
 /// so the constraint solver can attempt to resolve them from call sites.
 fn freshen_unknown_types_in_sig(sig: &mut FunctionSig, module: &mut Module) {
     for ty in &mut sig.params {
-        if *ty == Type::Unknown {
+        if *ty == Type::Value {
             *ty = module.fresh_var();
         }
     }
-    if sig.return_ty == Type::Unknown {
+    if sig.return_ty == Type::Value {
         sig.return_ty = module.fresh_var();
     }
 }
@@ -1802,7 +1802,7 @@ fn register_gml_backend_primitives(module: &mut Module) {
     module.register_runtime(
         "variable_struct_exists_rt",
         FunctionSig {
-            params: vec![Type::Unknown, Type::String],
+            params: vec![Type::Value, Type::String],
             return_ty: Type::Bool,
             ..Default::default()
         },
@@ -1812,8 +1812,8 @@ fn register_gml_backend_primitives(module: &mut Module) {
     module.register_runtime(
         "variable_struct_get_rt",
         FunctionSig {
-            params: vec![Type::Unknown, Type::String],
-            return_ty: Type::Unknown,
+            params: vec![Type::Value, Type::String],
+            return_ty: Type::Value,
             ..Default::default()
         },
     );
@@ -1822,7 +1822,7 @@ fn register_gml_backend_primitives(module: &mut Module) {
     module.register_runtime(
         "variable_struct_names_count_rt",
         FunctionSig {
-            params: vec![Type::Unknown],
+            params: vec![Type::Value],
             return_ty: Type::Float(64),
             ..Default::default()
         },
@@ -1832,7 +1832,7 @@ fn register_gml_backend_primitives(module: &mut Module) {
     module.register_runtime(
         "variable_struct_get_names_rt",
         FunctionSig {
-            params: vec![Type::Unknown],
+            params: vec![Type::Value],
             return_ty: Type::Array(Box::new(Type::String)),
             ..Default::default()
         },
@@ -1842,7 +1842,7 @@ fn register_gml_backend_primitives(module: &mut Module) {
     module.register_runtime(
         "variable_struct_set_rt",
         FunctionSig {
-            params: vec![Type::Unknown, Type::String, Type::Unknown],
+            params: vec![Type::Value, Type::String, Type::Value],
             return_ty: Type::Void,
             ..Default::default()
         },
@@ -1852,7 +1852,7 @@ fn register_gml_backend_primitives(module: &mut Module) {
     module.register_runtime(
         "_typeof",
         FunctionSig {
-            params: vec![Type::Unknown],
+            params: vec![Type::Value],
             return_ty: Type::String,
             ..Default::default()
         },
@@ -1898,8 +1898,8 @@ fn register_gml_backend_primitives(module: &mut Module) {
     module.register_runtime(
         "array_pop_arr",
         FunctionSig {
-            params: vec![Type::Array(Box::new(Type::Unknown))],
-            return_ty: Type::Unknown,
+            params: vec![Type::Array(Box::new(Type::Value))],
+            return_ty: Type::Value,
             ..Default::default()
         },
     );
@@ -1908,7 +1908,7 @@ fn register_gml_backend_primitives(module: &mut Module) {
         "array_delete_arr",
         FunctionSig {
             params: vec![
-                Type::Array(Box::new(Type::Unknown)),
+                Type::Array(Box::new(Type::Value)),
                 Type::Float(64),
                 Type::Float(64),
             ],
@@ -1921,9 +1921,9 @@ fn register_gml_backend_primitives(module: &mut Module) {
         "array_insert_arr",
         FunctionSig {
             params: vec![
-                Type::Array(Box::new(Type::Unknown)),
+                Type::Array(Box::new(Type::Value)),
                 Type::Float(64),
-                Type::Unknown,
+                Type::Value,
             ],
             return_ty: Type::Void,
             ..Default::default()
@@ -1933,7 +1933,7 @@ fn register_gml_backend_primitives(module: &mut Module) {
     module.register_runtime(
         "array_resize_arr",
         FunctionSig {
-            params: vec![Type::Array(Box::new(Type::Unknown)), Type::Float(64)],
+            params: vec![Type::Array(Box::new(Type::Value)), Type::Float(64)],
             return_ty: Type::Void,
             ..Default::default()
         },
@@ -1942,7 +1942,7 @@ fn register_gml_backend_primitives(module: &mut Module) {
     module.register_runtime(
         "array_get_index_arr",
         FunctionSig {
-            params: vec![Type::Array(Box::new(Type::Unknown)), Type::Unknown],
+            params: vec![Type::Array(Box::new(Type::Value)), Type::Value],
             return_ty: Type::Float(64),
             ..Default::default()
         },
@@ -1951,7 +1951,7 @@ fn register_gml_backend_primitives(module: &mut Module) {
     module.register_runtime(
         "array_sort_arr",
         FunctionSig {
-            params: vec![Type::Array(Box::new(Type::Unknown)), Type::Bool],
+            params: vec![Type::Array(Box::new(Type::Value)), Type::Bool],
             return_ty: Type::Void,
             ..Default::default()
         },
@@ -1960,8 +1960,8 @@ fn register_gml_backend_primitives(module: &mut Module) {
     module.register_runtime(
         "array_unique_arr",
         FunctionSig {
-            params: vec![Type::Array(Box::new(Type::Unknown))],
-            return_ty: Type::Array(Box::new(Type::Unknown)),
+            params: vec![Type::Array(Box::new(Type::Value))],
+            return_ty: Type::Array(Box::new(Type::Value)),
             ..Default::default()
         },
     );
@@ -1971,7 +1971,7 @@ pub(crate) fn register_gml_syscall_intrinsics(module: &mut Module, rt_ty: Type) 
     // Getter sig: _rt as param 0 (explicit runtime handle), unknown return type.
     let getter = FunctionSig {
         params: vec![rt_ty.clone()],
-        return_ty: Type::Unknown,
+        return_ty: Type::Value,
         ..Default::default()
     };
     // Void setter sig: _rt as param 0.
@@ -2009,8 +2009,8 @@ pub(crate) fn register_gml_syscall_intrinsics(module: &mut Module, rt_ty: Type) 
     module.register_runtime(
         "getInstancesOf",
         FunctionSig {
-            params: vec![Type::Unknown],
-            return_ty: Type::Unknown,
+            params: vec![Type::Value],
+            return_ty: Type::Value,
             ..Default::default()
         },
     );
@@ -2070,13 +2070,13 @@ fn register_arithmetic_any_builtins(module: &mut Module) {
     ];
 
     let bin_any = FunctionSig {
-        params: vec![Type::Unknown, Type::Unknown],
-        return_ty: Type::Unknown,
+        params: vec![Type::Value, Type::Value],
+        return_ty: Type::Value,
         ..Default::default()
     };
     let un_any = FunctionSig {
-        params: vec![Type::Unknown],
-        return_ty: Type::Unknown,
+        params: vec![Type::Value],
+        return_ty: Type::Value,
         ..Default::default()
     };
 

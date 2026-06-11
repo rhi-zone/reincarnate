@@ -1096,7 +1096,7 @@ impl Module {
         let fid = self.register_runtime(
             "array_length_arr",
             FunctionSig {
-                params: vec![Type::Array(Box::new(Type::Unknown))],
+                params: vec![Type::Array(Box::new(Type::Value))],
                 return_ty: Type::Float(64),
                 ..Default::default()
             },
@@ -1106,7 +1106,7 @@ impl Module {
         let fid = self.register_runtime(
             "array_contains_arr",
             FunctionSig {
-                params: vec![Type::Array(Box::new(Type::Unknown)), Type::Unknown],
+                params: vec![Type::Array(Box::new(Type::Value)), Type::Value],
                 return_ty: Type::Bool,
                 ..Default::default()
             },
@@ -1126,7 +1126,7 @@ impl Module {
         let fid = self.register_runtime(
             "to_number_unknown",
             FunctionSig {
-                params: vec![Type::Unknown],
+                params: vec![Type::Value],
                 return_ty: Type::Float(64),
                 ..Default::default()
             },
@@ -1146,7 +1146,7 @@ impl Module {
         let fid = self.register_runtime(
             "to_string_unknown",
             FunctionSig {
-                params: vec![Type::Unknown],
+                params: vec![Type::Value],
                 return_ty: Type::String,
                 ..Default::default()
             },
@@ -1180,7 +1180,7 @@ impl Module {
         let fid = self.register_runtime(
             "is_struct_unknown",
             FunctionSig {
-                params: vec![Type::Unknown],
+                params: vec![Type::Value],
                 return_ty: Type::Bool,
                 ..Default::default()
             },
@@ -1190,7 +1190,7 @@ impl Module {
         let fid = self.register_runtime(
             "is_numeric_unknown",
             FunctionSig {
-                params: vec![Type::Unknown],
+                params: vec![Type::Value],
                 return_ty: Type::Bool,
                 ..Default::default()
             },
@@ -1201,7 +1201,7 @@ impl Module {
         let fid = self.register_runtime(
             "typeof_gml",
             FunctionSig {
-                params: vec![Type::Unknown],
+                params: vec![Type::Value],
                 return_ty: Type::String,
                 ..Default::default()
             },
@@ -1211,8 +1211,8 @@ impl Module {
         let fid = self.register_runtime(
             "select",
             FunctionSig {
-                params: vec![Type::Bool, Type::Unknown, Type::Unknown],
-                return_ty: Type::Unknown,
+                params: vec![Type::Bool, Type::Value, Type::Value],
+                return_ty: Type::Value,
                 ..Default::default()
             },
         );
@@ -1222,7 +1222,7 @@ impl Module {
         // Parameters are (Unknown, Unknown) → Bool so the signature accepts
         // any comparable value without constraining the operand types.
         let cmp_sig = || FunctionSig {
-            params: vec![Type::Unknown, Type::Unknown],
+            params: vec![Type::Value, Type::Value],
             return_ty: Type::Bool,
             ..Default::default()
         };
@@ -1300,15 +1300,15 @@ impl Module {
         self.runtime_registry.get(name).copied()
     }
 
-    /// Return [`Type::Unknown`] for use by frontends that do not yet know a
+    /// Return [`Type::Value`] for use by frontends that do not yet know a
     /// value's type.
     ///
-    /// The constraint solver treats `Type::Unknown` on non-parameter values as
+    /// The constraint solver treats `Type::Value` on non-parameter values as
     /// a free inference target, identical to the former `Type::InferVar` — both
     /// result in a free TypeVar in the HM arena that constraints can bind to a
     /// concrete type.
     pub fn fresh_var(&mut self) -> Type {
-        Type::Unknown
+        Type::Value
     }
 }
 

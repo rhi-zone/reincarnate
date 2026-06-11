@@ -3160,7 +3160,7 @@ mod tests {
         use crate::ir::value::Constant;
 
         let sig = FunctionSig {
-            params: vec![Type::Unknown],
+            params: vec![Type::Value],
             return_ty: Type::Void,
             ..Default::default()
         };

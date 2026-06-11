@@ -2,7 +2,7 @@
 //!
 //! `ConstructorStructInfer` (CSI) records a field on a child type even when an
 //! ancestor already declares that field.  When the child's inferred type is
-//! `Type::Unknown` or `Type::InferVar`, CSI simply lacked ancestor context —
+//! `Type::Value` or `Type::InferVar`, CSI simply lacked ancestor context —
 //! the type is NOT genuinely unknown, it is known on the ancestor.  Dropping
 //! the child's redundant record is correct modeling, not suppression.
 //!
@@ -36,7 +36,7 @@ pub struct RedundantInheritedFieldPrune;
 
 /// Returns true when `ty` is an unresolved/abstaining type.
 fn is_unresolved(ty: &Type) -> bool {
-    matches!(ty, Type::Unknown | Type::InferVar(_))
+    matches!(ty, Type::Value | Type::InferVar(_))
 }
 
 impl Transform for RedundantInheritedFieldPrune {
@@ -200,7 +200,7 @@ mod tests {
         }];
         let child_fields = vec![FieldDef {
             name: "x".to_string(),
-            ty: Type::Unknown,
+            ty: Type::Value,
             default: None,
         }];
         let (module, _pid, cid) = make_module_with_parent_child(parent_fields, child_fields);
@@ -314,7 +314,7 @@ mod tests {
             namespace: vec![],
             fields: vec![FieldDef {
                 name: "f".to_string(),
-                ty: Type::Unknown,
+                ty: Type::Value,
                 default: None,
             }],
             visibility: Visibility::Public,

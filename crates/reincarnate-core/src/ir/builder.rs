@@ -660,13 +660,13 @@ impl FunctionBuilder {
     // ========================================================================
 
     pub fn alloc(&mut self, ty: Type) -> ValueId {
-        self.emit(Op::Alloc(ty), Type::Unknown)
+        self.emit(Op::Alloc(ty), Type::Value)
     }
 
     pub fn load(&mut self, ptr: ValueId, ty: Type) -> ValueId {
         // Unknown on a load result is an inference gap — the type is
         // determinable from the alloc cell constraints.  The constraint solver
-        // treats Type::Unknown as a free variable for non-parameter values and
+        // treats Type::Value as a free variable for non-parameter values and
         // will propagate the alloc's concrete type to this load result.
         self.emit(Op::Load(ptr), ty)
     }
@@ -807,7 +807,7 @@ impl FunctionBuilder {
         // Type inference (TypeInfer pass, Op::StructInit arm) will resolve the
         // correct Instance(TypeId) for this op. Use Unknown here since TypeId
         // is not available during IR construction.
-        self.emit(Op::StructInit { name, fields }, Type::Unknown)
+        self.emit(Op::StructInit { name, fields }, Type::Value)
     }
 
     pub fn array_init(&mut self, elements: &[ValueId], elem_ty: Type) -> ValueId {
@@ -865,15 +865,15 @@ impl FunctionBuilder {
         self.emit(Op::Spread(value), ty)
     }
 
-    /// Return [`Type::Unknown`] for a value whose type the frontend does not
+    /// Return [`Type::Value`] for a value whose type the frontend does not
     /// yet know.
     ///
-    /// The constraint solver treats `Type::Unknown` on non-parameter values as
+    /// The constraint solver treats `Type::Value` on non-parameter values as
     /// an open inference target, identical to the former `Type::InferVar` — both
     /// result in a free TypeVar in the HM arena.  Frontends should call this
     /// wherever a value's concrete type is an inference gap.
     pub fn fresh_var(&mut self) -> Type {
-        Type::Unknown
+        Type::Value
     }
 }
 
@@ -1041,7 +1041,7 @@ impl ModuleBuilder {
         self.module.classes.push(class);
     }
 
-    /// Return [`Type::Unknown`] for use when the frontend does not yet know a
+    /// Return [`Type::Value`] for use when the frontend does not yet know a
     /// value's type.
     ///
     /// Delegates to [`Module::fresh_var`].

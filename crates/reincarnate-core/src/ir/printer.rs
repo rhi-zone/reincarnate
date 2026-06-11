@@ -77,7 +77,7 @@ fn fmt_type(ty: &Type, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             }
             Ok(())
         }
-        Type::Unknown => write!(f, "unknown"),
+        Type::Value => write!(f, "unknown"),
     }
 }
 

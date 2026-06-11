@@ -116,10 +116,10 @@ fn rust_type(type_key: &str) -> &'static str {
         "Bool" => "Type::Bool",
         "String" => "Type::String",
         "Void" => "Type::Void",
-        "Array" => "Type::Array(Box::new(Type::Unknown))",
+        "Array" => "Type::Array(Box::new(Type::Value))",
         "Id" | "Asset" | "Constant" | "Resource" => "Type::Int(32)",
         // Struct, Any, Unknown, and anything else
-        _ => "Type::Unknown",
+        _ => "Type::Value",
     }
 }
 

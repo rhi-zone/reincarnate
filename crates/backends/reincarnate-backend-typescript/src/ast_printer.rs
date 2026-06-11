@@ -269,7 +269,7 @@ fn has_bare_return(stmts: &[JsStmt]) -> bool {
 fn effective_return_type(js: &JsFunction) -> (String, bool) {
     let ret_ty = print_type(&js.return_ty);
     let needs_undefined =
-        !matches!(js.return_ty, Type::Void | Type::Unknown) && has_bare_return(&js.body);
+        !matches!(js.return_ty, Type::Void | Type::Value) && has_bare_return(&js.body);
     if needs_undefined {
         (format!("{ret_ty} | undefined"), true)
     } else {
@@ -481,19 +481,19 @@ fn print_params(
                         // String default is compatible with String type
                         | (Constant::String(_), Type::String)
                         // Null is compatible with Option or Unknown
-                        | (Constant::Null, Type::Option(_) | Type::Unknown)
+                        | (Constant::Null, Type::Option(_) | Type::Value)
                         // Any default is compatible with Unknown
-                        | (_, Type::Unknown)
+                        | (_, Type::Value)
                     )
                 })
                 .unwrap_or(false);
             let effective_ty = if default_mismatches_type {
-                &Type::Unknown
+                &Type::Value
             } else {
                 ty
             };
             let is_rest = has_rest_param && i == params.len() - 1;
-            if infer_dynamic && matches!(ty, Type::Unknown) {
+            if infer_dynamic && matches!(ty, Type::Value) {
                 format!("{prefix}{}{default_suffix}", sanitize_ident(name))
             } else if is_rest {
                 // Rest parameters must be array types: `...args: T[]`.
@@ -593,7 +593,7 @@ fn print_stmt(stmt: &JsStmt, out: &mut String, indent: &str) {
                     // When NULL_ASSERT is active, null prints as `null!` (type `never`)
                     // which is assignable to any type — no widening needed.
                     let is_null_init = matches!(init, JsExpr::Literal(Constant::Null))
-                        && !matches!(ty, Type::Unknown | Type::Option(_))
+                        && !matches!(ty, Type::Value | Type::Option(_))
                         && !NULL_ASSERT.get();
                     let type_str = if is_null_init {
                         format!("{} | null", print_type(ty))
@@ -860,7 +860,7 @@ fn print_stmt(stmt: &JsStmt, out: &mut String, indent: &str) {
             // TypeScript doesn't allow type annotations on for-of bindings
             // (TS2483), so when the binding is typed Unknown (AVM2 for-each-in)
             // we cast the iterable to `any[]` instead.
-            let iterable_str = if matches!(binding_ty, Some(Type::Unknown)) {
+            let iterable_str = if matches!(binding_ty, Some(Type::Value)) {
                 format!("({} as any[])", print_expr(iterable))
             } else {
                 print_expr(iterable)
@@ -1194,7 +1194,7 @@ fn print_expr(expr: &JsExpr) -> String {
                 // NullableCoerce + Unknown → widen to `any`.
                 // Used when a void-typed value is tested as a boolean condition (TS1345):
                 // `Cast(void_val, Unknown, NullableCoerce)` emits `(expr as any)`.
-                (CastKind::NullableCoerce, Type::Unknown) => {
+                (CastKind::NullableCoerce, Type::Value) => {
                     format!("{} as any", print_expr_operand(inner))
                 }
                 // NullableCoerce + ClassRef → widen to `any`. GML object class names (OBJT)

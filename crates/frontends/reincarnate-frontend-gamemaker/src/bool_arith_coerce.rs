@@ -223,13 +223,13 @@ fn peel_dynamic_coerce<'a>(
     result_map: &HashMap<ValueId, InstId>,
 ) -> &'a Type {
     let ty = &func.value_types[v];
-    if !matches!(ty, Type::Unknown) {
+    if !matches!(ty, Type::Value) {
         return ty;
     }
     if let Some(&inst_id) = result_map.get(&v) {
         if let Op::Cast(source, _, CastKind::Coerce) = &func.insts[inst_id].op {
             let src_ty = &func.value_types[*source];
-            if !matches!(src_ty, Type::Unknown) {
+            if !matches!(src_ty, Type::Value) {
                 return src_ty;
             }
         }
@@ -716,7 +716,7 @@ fn needs_coerce(arg_ty: &Type, param_ty: &Type) -> Option<Type> {
     if arg_ty == param_ty {
         return None;
     }
-    if matches!(arg_ty, Type::Unknown) || matches!(param_ty, Type::Unknown) {
+    if matches!(arg_ty, Type::Value) || matches!(param_ty, Type::Value) {
         return None;
     }
     // Skip Void args (shouldn't happen but guard).
@@ -956,7 +956,7 @@ fn coerce_noone_sentinel(func: &mut Function, eq_cmp_fids: &HashSet<FuncId>) -> 
 
     for (inst_id, replace_a, replace_b) in targets {
         if replace_a {
-            let null_vid = func.value_types.push(Type::Option(Box::new(Type::Unknown)));
+            let null_vid = func.value_types.push(Type::Option(Box::new(Type::Value)));
             let null_iid = func.insts.push(Inst {
                 op: Op::Const(Constant::Null),
                 result: Some(null_vid),
@@ -977,7 +977,7 @@ fn coerce_noone_sentinel(func: &mut Function, eq_cmp_fids: &HashSet<FuncId>) -> 
             }
         }
         if replace_b {
-            let null_vid = func.value_types.push(Type::Option(Box::new(Type::Unknown)));
+            let null_vid = func.value_types.push(Type::Option(Box::new(Type::Value)));
             let null_iid = func.insts.push(Inst {
                 op: Op::Const(Constant::Null),
                 result: Some(null_vid),

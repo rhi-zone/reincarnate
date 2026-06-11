@@ -379,7 +379,7 @@ fn infer_bool_return(
     callback_return_intrinsics: &HashSet<FuncId>,
     select_fid: FuncId,
 ) -> bool {
-    if func.sig.return_ty != Type::Unknown {
+    if func.sig.return_ty != Type::Value {
         return false;
     }
 
@@ -642,7 +642,7 @@ mod tests {
     fn no_change_when_no_demands() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Unknown,
+            return_ty: Type::Value,
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Public);
@@ -811,7 +811,7 @@ mod tests {
 
         let then_block = fb.create_block();
         let else_block = fb.create_block();
-        let (merge, merge_vals) = fb.create_block_with_params(&[Type::Unknown]);
+        let (merge, merge_vals) = fb.create_block_with_params(&[Type::Value]);
         fb.br_if(cond, then_block, &[], else_block, &[]);
 
         fb.switch_to_block(then_block);
@@ -849,7 +849,7 @@ mod tests {
     fn infers_bool_return_type() {
         let sig = FunctionSig {
             params: vec![Type::Bool],
-            return_ty: Type::Unknown,
+            return_ty: Type::Value,
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("is_ready", sig, Visibility::Public);
@@ -885,7 +885,7 @@ mod tests {
         // Function that returns 0/1
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Unknown,
+            return_ty: Type::Value,
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("is_ready", sig, Visibility::Public);
@@ -907,7 +907,7 @@ mod tests {
             "is_ready".to_string(),
             is_ready_fid,
         )]));
-        let result = fb.call_named("is_ready", &[], Type::Unknown);
+        let result = fb.call_named("is_ready", &[], Type::Value);
         let _cast = fb.coerce(result, Type::Bool);
         fb.ret(None);
         let caller_func = fb.build();
@@ -1029,7 +1029,7 @@ mod tests {
         use crate::transforms::util::test_helpers::assert_idempotent;
         let sig = FunctionSig {
             params: vec![Type::Bool],
-            return_ty: Type::Unknown,
+            return_ty: Type::Value,
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Public);
@@ -1070,8 +1070,8 @@ mod tests {
         // inferred as Bool, even if the only visible return is `return false`.
         // The real return value is hidden inside the callback via live_result.
         let sig = FunctionSig {
-            params: vec![Type::Unknown],
-            return_ty: Type::Unknown,
+            params: vec![Type::Value],
+            return_ty: Type::Value,
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("getNearestScreenType", sig, Visibility::Public);
@@ -1102,7 +1102,7 @@ mod tests {
             result.module.functions[FuncId::new(Module::NUM_CORE_BUILTINS)]
                 .sig
                 .return_ty,
-            Type::Unknown,
+            Type::Value,
         );
     }
 
@@ -1112,7 +1112,7 @@ mod tests {
         // Should NOT infer Bool return — the bare exit produces `undefined`.
         let sig = FunctionSig {
             params: vec![Type::Bool],
-            return_ty: Type::Unknown,
+            return_ty: Type::Value,
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("step", sig, Visibility::Public);
@@ -1138,7 +1138,7 @@ mod tests {
             result.module.functions[FuncId::new(Module::NUM_CORE_BUILTINS)]
                 .sig
                 .return_ty,
-            Type::Unknown,
+            Type::Value,
         );
     }
 

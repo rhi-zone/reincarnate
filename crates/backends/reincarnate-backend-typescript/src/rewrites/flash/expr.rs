@@ -74,7 +74,7 @@ pub(super) fn rewrite_expr(expr: JsExpr, ctx: &FlashRewriteCtx) -> JsExpr {
                         .get(class_name.as_str())
                         .copied()
                         .map(Type::Instance)
-                        .unwrap_or(Type::Unknown);
+                        .unwrap_or(Type::Value);
                     return JsExpr::Cast {
                         expr: Box::new(rest.into_iter().next().unwrap()),
                         ty,
@@ -191,7 +191,7 @@ pub(super) fn rewrite_expr(expr: JsExpr, ctx: &FlashRewriteCtx) -> JsExpr {
                                 receiver,
                                 JsExpr::Cast {
                                     expr: Box::new(args_array),
-                                    ty: Type::Unknown,
+                                    ty: Type::Value,
                                     kind: CastKind::NullableCoerce,
                                 },
                             ],
@@ -610,7 +610,7 @@ pub(super) fn rewrite_system_call(
         } else if ctx.is_static || ctx.is_cinit {
             vec![JsExpr::Cast {
                 expr: Box::new(JsExpr::Literal(Constant::Null)),
-                ty: Type::Unknown,
+                ty: Type::Value,
                 kind: CastKind::NullableCoerce,
             }]
         } else {
@@ -630,7 +630,7 @@ pub(super) fn rewrite_system_call(
         if matches!(&callee, JsExpr::Var(n) if matches!(n.as_str(), "XML" | "XMLList")) {
             return Some(JsExpr::Cast {
                 expr: Box::new(new_expr),
-                ty: Type::Unknown,
+                ty: Type::Value,
                 kind: CastKind::NullableCoerce,
             });
         }

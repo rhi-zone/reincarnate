@@ -259,7 +259,7 @@ fn constants_all_types() {
         mb.register_runtime(
             "use_val",
             FunctionSig {
-                params: vec![reincarnate_core::ir::Type::Unknown],
+                params: vec![reincarnate_core::ir::Type::Value],
                 return_ty: Type::Void,
                 ..Default::default()
             },
@@ -306,7 +306,7 @@ fn array_and_struct_init() {
         mb.register_runtime(
             "use_val",
             FunctionSig {
-                params: vec![reincarnate_core::ir::Type::Unknown],
+                params: vec![reincarnate_core::ir::Type::Value],
                 return_ty: Type::Void,
                 ..Default::default()
             },
@@ -410,14 +410,14 @@ fn sanitize_ident_escapes_reserved_words() {
 fn bracket_notation_for_non_ident_fields() {
     let out = build_and_emit(|mb| {
         let sig = FunctionSig {
-            params: vec![Type::Unknown],
-            return_ty: Type::Unknown,
+            params: vec![Type::Value],
+            return_ty: Type::Value,
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("get_prop", sig, Visibility::Public);
         let obj = fb.param(0);
         // Qualified field → short name extraction.
-        let result = fb.get_field(obj, "flash.display::Loader", Type::Unknown);
+        let result = fb.get_field(obj, "flash.display::Loader", Type::Value);
         fb.ret(Some(result));
         mb.add_function(fb.build());
     });
@@ -589,7 +589,7 @@ fn emit_class_with_methods() {
 
     // Constructor: (this: unknown) -> void
     let ctor_sig = FunctionSig {
-        params: vec![Type::Unknown],
+        params: vec![Type::Value],
         return_ty: Type::Void,
         ..Default::default()
     };
@@ -604,7 +604,7 @@ fn emit_class_with_methods() {
 
     // Instance method: (this: unknown, amount: i32) -> void
     let method_sig = FunctionSig {
-        params: vec![Type::Unknown, Type::Int(32)],
+        params: vec![Type::Value, Type::Int(32)],
         return_ty: Type::Void,
         ..Default::default()
     };
@@ -623,7 +623,7 @@ fn emit_class_with_methods() {
     // AVM2 register 0 is always reserved, so static methods include
     // a self/scope param that the emitter skips.
     let static_sig = FunctionSig {
-        params: vec![Type::Unknown, Type::Int(32)],
+        params: vec![Type::Value, Type::Int(32)],
         return_ty: Type::Int(32),
         ..Default::default()
     };
@@ -640,7 +640,7 @@ fn emit_class_with_methods() {
 
     // Getter: (this: unknown) -> i32
     let getter_sig = FunctionSig {
-        params: vec![Type::Unknown],
+        params: vec![Type::Value],
         return_ty: Type::Int(32),
         ..Default::default()
     };
@@ -728,7 +728,7 @@ fn emit_class_and_free_functions() {
     });
 
     let sig = FunctionSig {
-        params: vec![Type::Unknown],
+        params: vec![Type::Value],
         return_ty: Type::Void,
         ..Default::default()
     };
@@ -838,7 +838,7 @@ fn emit_nested_class_directory() {
     });
 
     let sig = FunctionSig {
-        params: vec![Type::Unknown],
+        params: vec![Type::Value],
         return_ty: Type::Void,
         ..Default::default()
     };
@@ -926,7 +926,7 @@ fn emit_intra_module_imports() {
     });
 
     let sig = FunctionSig {
-        params: vec![Type::Unknown],
+        params: vec![Type::Value],
         return_ty: Type::Void,
         ..Default::default()
     };
@@ -1036,7 +1036,7 @@ fn construct_super_emits_super_call() {
     });
 
     let sig = FunctionSig {
-        params: vec![Type::Unknown],
+        params: vec![Type::Value],
         return_ty: Type::Void,
         ..Default::default()
     };
@@ -1114,7 +1114,7 @@ fn find_prop_strict_get_field_construct_emits_new() {
 
     // Container constructor does findPropStrict + getField + construct.
     let sig = FunctionSig {
-        params: vec![Type::Unknown],
+        params: vec![Type::Value],
         return_ty: Type::Void,
         ..Default::default()
     };
@@ -1124,11 +1124,11 @@ fn find_prop_strict_get_field_construct_emits_new() {
 
     // findPropStrict("Widget")
     let name = fb.const_string("Widget");
-    let scope = fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Unknown);
+    let scope = fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Value);
     // getField(scope, "Widget")
-    let ctor = fb.get_field(scope, "Widget", Type::Unknown);
+    let ctor = fb.get_field(scope, "Widget", Type::Value);
     // construct(ctor)
-    let obj = fb.system_call("Flash.Object", "construct", &[ctor], Type::Unknown);
+    let obj = fb.system_call("Flash.Object", "construct", &[ctor], Type::Value);
     // Use the result so it's not dead code.
     fb.set_field(_this, "child", obj);
     fb.ret(None);
@@ -1136,7 +1136,7 @@ fn find_prop_strict_get_field_construct_emits_new() {
 
     // Widget constructor (empty).
     let sig2 = FunctionSig {
-        params: vec![Type::Unknown],
+        params: vec![Type::Value],
         return_ty: Type::Void,
         ..Default::default()
     };
@@ -1205,8 +1205,8 @@ fn find_prop_strict_get_field_construct_emits_new() {
 fn qualified_call_emits_method_dispatch() {
     let out = build_and_emit(|mb| {
         let sig = FunctionSig {
-            params: vec![Type::Unknown],
-            return_ty: Type::Unknown,
+            params: vec![Type::Value],
+            return_ty: Type::Value,
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
@@ -1214,7 +1214,7 @@ fn qualified_call_emits_method_dispatch() {
         let arg1 = fb.const_string("text");
         let arg2 = fb.const_bool(true);
         // Method call: receiver.outputText("text", true)
-        let result = fb.call_method(receiver, "outputText", &[arg1, arg2], Type::Unknown);
+        let result = fb.call_method(receiver, "outputText", &[arg1, arg2], Type::Value);
         fb.ret(Some(result));
         mb.add_function(fb.build());
     });
@@ -1233,13 +1233,13 @@ fn qualified_call_emits_method_dispatch() {
 fn qualified_get_field_emits_short_name() {
     let out = build_and_emit(|mb| {
         let sig = FunctionSig {
-            params: vec![Type::Unknown],
-            return_ty: Type::Unknown,
+            params: vec![Type::Value],
+            return_ty: Type::Value,
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
         let obj = fb.param(0);
-        let result = fb.get_field(obj, "classes:BaseContent::flags", Type::Unknown);
+        let result = fb.get_field(obj, "classes:BaseContent::flags", Type::Value);
         fb.ret(Some(result));
         mb.add_function(fb.build());
     });
@@ -1258,7 +1258,7 @@ fn qualified_get_field_emits_short_name() {
 fn qualified_set_field_emits_short_name() {
     let out = build_and_emit(|mb| {
         let sig = FunctionSig {
-            params: vec![Type::Unknown, Type::Int(32)],
+            params: vec![Type::Value, Type::Int(32)],
             return_ty: Type::Void,
             ..Default::default()
         };
@@ -1297,15 +1297,15 @@ fn find_prop_strict_resolves_to_this_for_own_class() {
 
     // Instance method that does findPropStrict("classes:Hero::hp") + getField.
     let sig = FunctionSig {
-        params: vec![Type::Unknown],
-        return_ty: Type::Unknown,
+        params: vec![Type::Value],
+        return_ty: Type::Value,
         ..Default::default()
     };
     let mut fb = FunctionBuilder::new("Hero::getHp", sig, Visibility::Public);
     fb.set_class(vec!["classes".into()], "Hero".into(), MethodKind::Instance);
     let _this = fb.param(0);
     let name = fb.const_string("classes:Hero::hp");
-    let scope = fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Unknown);
+    let scope = fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Value);
     let val = fb.get_field(scope, "classes:Hero::hp", Type::Int(32));
     fb.ret(Some(val));
     let method_id = mb.add_function(fb.build());
@@ -1356,7 +1356,7 @@ fn find_prop_strict_resolves_to_this_for_ancestor() {
         namespace: vec!["classes".into()],
         fields: vec![FieldDef {
             name: "player".into(),
-            ty: Type::Unknown,
+            ty: Type::Value,
             default: None,
         }],
         visibility: Visibility::Public,
@@ -1370,16 +1370,16 @@ fn find_prop_strict_resolves_to_this_for_ancestor() {
 
     // Child instance method does findPropStrict("classes:Base::player") + getField.
     let sig = FunctionSig {
-        params: vec![Type::Unknown],
-        return_ty: Type::Unknown,
+        params: vec![Type::Value],
+        return_ty: Type::Value,
         ..Default::default()
     };
     let mut fb = FunctionBuilder::new("Child::getPlayer", sig, Visibility::Public);
     fb.set_class(vec!["classes".into()], "Child".into(), MethodKind::Instance);
     let _this = fb.param(0);
     let name = fb.const_string("classes:Base::player");
-    let scope = fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Unknown);
-    let val = fb.get_field(scope, "classes:Base::player", Type::Unknown);
+    let scope = fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Value);
+    let val = fb.get_field(scope, "classes:Base::player", Type::Value);
     fb.ret(Some(val));
     let method_id = mb.add_function(fb.build());
 
@@ -1440,13 +1440,13 @@ fn find_prop_strict_in_free_function_resolves_to_bare_name() {
     let out = build_and_emit(|mb| {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Unknown,
+            return_ty: Type::Value,
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("init", sig, Visibility::Public);
         let name = fb.const_string("classes:Hero::hp");
-        let scope = fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Unknown);
-        let val = fb.get_field(scope, "classes:Hero::hp", Type::Unknown);
+        let scope = fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Value);
+        let val = fb.get_field(scope, "classes:Hero::hp", Type::Value);
         fb.ret(Some(val));
         mb.add_function(fb.build());
     });
@@ -1488,15 +1488,15 @@ fn find_prop_strict_non_ancestor_resolves_to_bare_name() {
 
     // Hero method does findPropStrict("classes:Villain::power") — unrelated class.
     let sig = FunctionSig {
-        params: vec![Type::Unknown],
-        return_ty: Type::Unknown,
+        params: vec![Type::Value],
+        return_ty: Type::Value,
         ..Default::default()
     };
     let mut fb = FunctionBuilder::new("Hero::spy", sig, Visibility::Public);
     fb.set_class(vec!["classes".into()], "Hero".into(), MethodKind::Instance);
     let _this = fb.param(0);
     let name = fb.const_string("classes:Villain::power");
-    let scope = fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Unknown);
+    let scope = fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Value);
     let val = fb.get_field(scope, "classes:Villain::power", Type::Int(32));
     fb.ret(Some(val));
     let method_id = mb.add_function(fb.build());
@@ -1562,16 +1562,16 @@ fn unqualified_find_prop_strict_resolves_to_bare_name() {
     // findPropStrict("rand") + getField("rand") → rand
     let out = build_and_emit(|mb| {
         let sig = FunctionSig {
-            params: vec![Type::Unknown],
-            return_ty: Type::Unknown,
+            params: vec![Type::Value],
+            return_ty: Type::Value,
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
         let x = fb.param(0);
         let name = fb.const_string("rand");
-        let scope = fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Unknown);
-        let rand_fn = fb.get_field(scope, "rand", Type::Unknown);
-        let result = fb.call_indirect(rand_fn, &[x], Type::Unknown);
+        let scope = fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Value);
+        let rand_fn = fb.get_field(scope, "rand", Type::Value);
+        let result = fb.call_indirect(rand_fn, &[x], Type::Value);
         fb.ret(Some(result));
         mb.add_function(fb.build());
     });
@@ -1597,7 +1597,7 @@ fn find_property_set_field_resolves_to_bare_assignment() {
         };
         let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
         let name = fb.const_string("X");
-        let scope = fb.system_call("Flash.Scope", "findProperty", &[name], Type::Unknown);
+        let scope = fb.system_call("Flash.Scope", "findProperty", &[name], Type::Value);
         let val = fb.const_int(5, 64);
         fb.set_field(scope, "X", val);
         fb.ret(None);
@@ -1624,14 +1624,14 @@ fn find_property_resolves_to_this_for_ancestor() {
         namespace: vec!["classes".into()],
         fields: vec![FieldDef {
             name: "temp".into(),
-            ty: Type::Unknown,
+            ty: Type::Value,
             default: None,
         }],
         visibility: Visibility::Public,
     });
 
     let sig = FunctionSig {
-        params: vec![Type::Unknown, Type::Unknown],
+        params: vec![Type::Value, Type::Value],
         return_ty: Type::Void,
         ..Default::default()
     };
@@ -1640,7 +1640,7 @@ fn find_property_resolves_to_this_for_ancestor() {
     let _this = fb.param(0);
     let v = fb.param(1);
     let name = fb.const_string("classes:Base::temp");
-    let scope = fb.system_call("Flash.Scope", "findProperty", &[name], Type::Unknown);
+    let scope = fb.system_call("Flash.Scope", "findProperty", &[name], Type::Value);
     fb.set_field(scope, "classes:Base::temp", v);
     fb.ret(None);
     let method_id = mb.add_function(fb.build());
@@ -1688,14 +1688,14 @@ fn qualified_find_prop_strict_non_class_resolves_to_bare_name() {
     let out = build_and_emit(|mb| {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Unknown,
+            return_ty: Type::Value,
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
         let name = fb.const_string("flash.events::Event");
-        let scope = fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Unknown);
-        let event_cls = fb.get_field(scope, "flash.events::Event", Type::Unknown);
-        let change = fb.get_field(event_cls, "CHANGE", Type::Unknown);
+        let scope = fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Value);
+        let event_cls = fb.get_field(scope, "flash.events::Event", Type::Value);
+        let change = fb.get_field(event_cls, "CHANGE", Type::Value);
         fb.ret(Some(change));
         mb.add_function(fb.build());
     });
@@ -1719,7 +1719,7 @@ fn call_unqualified_strips_scope_receiver() {
         let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
         let x = fb.param(0);
         let name = fb.const_string("rand");
-        let scope = fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Unknown);
+        let scope = fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Value);
         let result = fb.call_method(scope, "rand", &[x], Type::Int(64));
         fb.ret(Some(result));
         mb.add_function(fb.build());
@@ -1747,7 +1747,7 @@ fn call_qualified_strips_scope_receiver() {
         };
         let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
         let name = fb.const_string("flash.net::registerClassAlias");
-        let scope = fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Unknown);
+        let scope = fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Value);
         let alias = fb.const_string("Foo");
         let cls = fb.const_string("FooCls");
         fb.call_method(scope, "registerClassAlias", &[alias, cls], Type::Void);
@@ -1837,7 +1837,7 @@ fn standalone_scope_lookup_not_emitted() {
         };
         let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
         let name = fb.const_string("rand");
-        let _scope = fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Unknown);
+        let _scope = fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Value);
         fb.ret(None);
         mb.add_function(fb.build());
     });
@@ -1870,7 +1870,7 @@ fn scope_lookup_call_resolves_to_this_for_inherited_method() {
 
     // Base class with isNaga method.
     let base_sig = FunctionSig {
-        params: vec![Type::Unknown],
+        params: vec![Type::Value],
         return_ty: Type::Bool,
         ..Default::default()
     };
@@ -1899,7 +1899,7 @@ fn scope_lookup_call_resolves_to_this_for_inherited_method() {
 
     // Child class with a method that calls isNaga via scope lookup.
     let child_sig = FunctionSig {
-        params: vec![Type::Unknown],
+        params: vec![Type::Value],
         return_ty: Type::Bool,
         ..Default::default()
     };
@@ -1907,7 +1907,7 @@ fn scope_lookup_call_resolves_to_this_for_inherited_method() {
     fb.set_class(vec![], "Child".into(), MethodKind::Instance);
     let _this = fb.param(0);
     let name = fb.const_string("isNaga");
-    let scope = fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Unknown);
+    let scope = fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Value);
     let result = fb.call_method(scope, "isNaga", &[], Type::Bool);
     fb.ret(Some(result));
     let child_method_id = mb.add_function(fb.build());
@@ -1954,7 +1954,7 @@ fn unqualified_callproperty_emits_receiver_dot_method() {
     // MethodCall pattern: call_method(player, "isNaga", []) → player.isNaga()
     let out = build_and_emit(|mb| {
         let sig = FunctionSig {
-            params: vec![Type::Unknown],
+            params: vec![Type::Value],
             return_ty: Type::Bool,
             ..Default::default()
         };
@@ -1998,7 +1998,7 @@ fn cast_inlined_uses_as_t() {
     // Single-use cast (inlined into return) → needs "as T" wrapper.
     let out = build_and_emit(|mb| {
         let sig = FunctionSig {
-            params: vec![Type::Unknown],
+            params: vec![Type::Value],
             return_ty: Type::Bool,
             ..Default::default()
         };
@@ -2021,7 +2021,7 @@ fn cast_binding_uses_type_annotation() {
     // Both uses must survive DCE to prevent single-use const folding.
     let out = build_and_emit(|mb| {
         let sig = FunctionSig {
-            params: vec![Type::Unknown],
+            params: vec![Type::Value],
             return_ty: Type::Bool,
             ..Default::default()
         };
@@ -2263,7 +2263,7 @@ fn cinit_scope_lookup_emits_this_dot_field() {
 
     // cinit: static initializer that sets a static field via scope lookup
     let sig = FunctionSig {
-        params: vec![Type::Unknown],
+        params: vec![Type::Value],
         return_ty: Type::Void,
         ..Default::default()
     };
@@ -2275,7 +2275,7 @@ fn cinit_scope_lookup_emits_this_dot_field() {
     );
     let _scope_param = fb.param(0);
     let name = fb.const_string("debugBuild");
-    let scope = fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Unknown);
+    let scope = fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Value);
     let val = fb.const_bool(true);
     fb.set_field(scope, "debugBuild", val);
     fb.ret(None);
@@ -2335,7 +2335,7 @@ fn emit_interface_class() {
 
     // Interface constructor (will be skipped).
     let sig = FunctionSig {
-        params: vec![Type::Unknown],
+        params: vec![Type::Value],
         return_ty: Type::Void,
         ..Default::default()
     };
@@ -2401,7 +2401,7 @@ fn emit_class_with_interfaces() {
         visibility: Visibility::Public,
     });
     let sig = FunctionSig {
-        params: vec![Type::Unknown],
+        params: vec![Type::Value],
         return_ty: Type::Void,
         ..Default::default()
     };
@@ -2474,7 +2474,7 @@ fn type_check_struct_uses_is_type() {
     let out = build_and_emit(|mb| {
         let monster_id = mb.intern_type("Monster");
         let sig = FunctionSig {
-            params: vec![Type::Unknown],
+            params: vec![Type::Value],
             return_ty: Type::Bool,
             ..Default::default()
         };
@@ -2500,7 +2500,7 @@ fn cast_struct_uses_as_type() {
     let out = build_and_emit(|mb| {
         let monster_id = mb.intern_type("Monster");
         let sig = FunctionSig {
-            params: vec![Type::Unknown],
+            params: vec![Type::Value],
             return_ty: Type::Instance(monster_id),
             ..Default::default()
         };
@@ -2525,7 +2525,7 @@ fn cast_struct_uses_as_type() {
 fn coerce_int_emits_inline_bitor() {
     let out = build_and_emit(|mb| {
         let sig = FunctionSig {
-            params: vec![Type::Unknown],
+            params: vec![Type::Value],
             return_ty: Type::Int(32),
             ..Default::default()
         };
@@ -2546,7 +2546,7 @@ fn coerce_int_emits_inline_bitor() {
 fn coerce_float_emits_number_call() {
     let out = build_and_emit(|mb| {
         let sig = FunctionSig {
-            params: vec![Type::Unknown],
+            params: vec![Type::Value],
             return_ty: Type::Float(64),
             ..Default::default()
         };
@@ -2567,7 +2567,7 @@ fn coerce_float_emits_number_call() {
 fn coerce_uint_emits_inline_ushr() {
     let out = build_and_emit(|mb| {
         let sig = FunctionSig {
-            params: vec![Type::Unknown],
+            params: vec![Type::Value],
             return_ty: Type::UInt(32),
             ..Default::default()
         };
@@ -2588,7 +2588,7 @@ fn coerce_uint_emits_inline_ushr() {
 fn coerce_string_emits_string_call() {
     let out = build_and_emit(|mb| {
         let sig = FunctionSig {
-            params: vec![Type::Unknown],
+            params: vec![Type::Value],
             return_ty: Type::String,
             ..Default::default()
         };
@@ -2609,7 +2609,7 @@ fn coerce_string_emits_string_call() {
 fn coerce_bool_emits_boolean_call() {
     let out = build_and_emit(|mb| {
         let sig = FunctionSig {
-            params: vec![Type::Unknown],
+            params: vec![Type::Value],
             return_ty: Type::Bool,
             ..Default::default()
         };
@@ -2631,7 +2631,7 @@ fn coerce_struct_emits_ts_assertion() {
     let out = build_and_emit(|mb| {
         let monster_id = mb.intern_type("Monster");
         let sig = FunctionSig {
-            params: vec![Type::Unknown],
+            params: vec![Type::Value],
             return_ty: Type::Instance(monster_id),
             ..Default::default()
         };

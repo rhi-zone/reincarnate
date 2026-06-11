@@ -157,7 +157,7 @@ impl GmlInstanceTypeFlow {
             .collect();
 
         for (vid, class_name) in type_updates {
-            if func.value_types[vid] == Type::Unknown {
+            if func.value_types[vid] == Type::Value {
                 if let Some(&type_id) = type_ids.get(&class_name) {
                     func.value_types[vid] = Type::Instance(type_id);
                     changed = true;

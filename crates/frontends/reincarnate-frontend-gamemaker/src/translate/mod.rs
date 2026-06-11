@@ -172,7 +172,7 @@ pub fn translate_code_entry(
         // Mark as variadic with a rest param.  Type-appropriate defaults for the
         // fixed argument params are set later by GmlDefaultArgRecovery (which runs
         // post-inference and can match defaults to narrowed param types).
-        sig.params.push(Type::Array(Box::new(Type::Unknown)));
+        sig.params.push(Type::Array(Box::new(Type::Value)));
         sig.defaults.push(None);
         sig.has_rest_param = true;
     }
@@ -281,10 +281,10 @@ fn build_signature(ctx: &TranslateCtx) -> FunctionSig {
 }
 
 fn build_signature_with_args(ctx: &TranslateCtx, arg_count: u16) -> FunctionSig {
-    // Returns Type::Unknown for unresolved parameter types.  The constraint
+    // Returns Type::Value for unresolved parameter types.  The constraint
     // solver treats Unknown on non-parameter values as a free inference target
     // and will resolve it from call-site constraints.
-    let fresh = || Type::Unknown;
+    let fresh = || Type::Value;
 
     let mut params = Vec::new();
     let mut defaults = Vec::new();
@@ -309,7 +309,7 @@ fn build_signature_with_args(ctx: &TranslateCtx, arg_count: u16) -> FunctionSig 
         } else {
             // Ownerless script: emit Unknown so the param var stays free, with
             // GMLObject as the lower bound fallback if no call-site narrows it.
-            params.push(Type::Unknown);
+            params.push(Type::Value);
             param_lower_bounds.push(Some(Type::Instance(ctx.gml_object_type_id)));
         }
         defaults.push(None);
@@ -516,7 +516,7 @@ fn datatype_to_ir_type(dt: DataType, fb: &mut FunctionBuilder) -> Type {
         DataType::Bool => Type::Bool,
         DataType::String => Type::String,
         DataType::Variable => fb.fresh_var(),
-        _ => Type::Unknown,
+        _ => Type::Value,
     }
 }
 

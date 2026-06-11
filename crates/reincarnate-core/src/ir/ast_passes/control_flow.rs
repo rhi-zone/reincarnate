@@ -634,7 +634,7 @@ fn try_rewrite_foreach(stmt: &Stmt, iterator_system: &str) -> Option<Stmt> {
     Some(Stmt::ForOf {
         binding,
         declare,
-        binding_ty: Some(Type::Unknown),
+        binding_ty: Some(Type::Value),
         iterable,
         body: new_body,
     })

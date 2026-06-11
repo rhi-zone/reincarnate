@@ -297,7 +297,7 @@ mod tests {
     #[test]
     fn dynamic_to_int_not_redundant() {
         let sig = FunctionSig {
-            params: vec![Type::Unknown],
+            params: vec![Type::Value],
             return_ty: Type::Int(64),
             ..Default::default()
         };

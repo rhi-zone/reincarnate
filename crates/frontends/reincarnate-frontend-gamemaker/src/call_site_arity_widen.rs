@@ -97,7 +97,7 @@ fn widen_function(module: &mut Module, func_id: FuncId, max_arity: usize) -> boo
     // Extra params have no type information — the call sites provide
     // untyped GML values and no constraint can be formed.  Unknown is
     // correct here (genuine opacity, not an inference gap).
-    let fresh_types: Vec<Type> = vec![Type::Unknown; extra];
+    let fresh_types: Vec<Type> = vec![Type::Value; extra];
 
     // Extend sig.params and sig.defaults.
     let func = &mut module.functions[func_id];
@@ -193,7 +193,7 @@ mod tests {
         let mut mb = ModuleBuilder::new("test");
 
         let callee_sig = FunctionSig {
-            params: vec![Type::Unknown],
+            params: vec![Type::Value],
             return_ty: Type::Void,
             ..Default::default()
         };
@@ -219,7 +219,7 @@ mod tests {
 
         let target = &result.module.functions[target_fid];
         assert_eq!(target.sig.params.len(), 2);
-        assert_eq!(target.sig.params[1], Type::Unknown);
+        assert_eq!(target.sig.params[1], Type::Value);
         // New param should have a Null default.
         assert!(target.sig.defaults.len() >= 2);
         assert!(matches!(
@@ -237,7 +237,7 @@ mod tests {
         let mut mb = ModuleBuilder::new("test");
 
         let callee_sig = FunctionSig {
-            params: vec![Type::Unknown, Type::Unknown],
+            params: vec![Type::Value, Type::Value],
             return_ty: Type::Void,
             ..Default::default()
         };
@@ -270,7 +270,7 @@ mod tests {
         let mut mb = ModuleBuilder::new("test");
 
         let callee_sig = FunctionSig {
-            params: vec![Type::Unknown],
+            params: vec![Type::Value],
             return_ty: Type::Void,
             has_rest_param: true,
             ..Default::default()
@@ -305,7 +305,7 @@ mod tests {
         let mut mb = ModuleBuilder::new("test");
 
         let callee_sig = FunctionSig {
-            params: vec![Type::Unknown],
+            params: vec![Type::Value],
             return_ty: Type::Void,
             ..Default::default()
         };

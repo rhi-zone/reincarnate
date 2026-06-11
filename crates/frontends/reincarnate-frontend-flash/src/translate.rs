@@ -952,7 +952,7 @@ fn translate_op(
         }
         Op::CoerceO | Op::ConvertO => {
             if let Some(a) = stack.pop() {
-                let v = fb.coerce(a, Type::Unknown);
+                let v = fb.coerce(a, Type::Value);
                 stack.push(v);
             }
         }
@@ -979,7 +979,7 @@ fn translate_op(
                 let ty = class_value_hints
                     .get(&type_val)
                     .map(|name| type_from_name(name))
-                    .unwrap_or(Type::Unknown);
+                    .unwrap_or(Type::Value);
                 let v = fb.type_check(a, ty);
                 stack.push(v);
             }
@@ -996,7 +996,7 @@ fn translate_op(
                 let ty = class_value_hints
                     .get(&type_val)
                     .map(|name| type_from_name(name))
-                    .unwrap_or(Type::Unknown);
+                    .unwrap_or(Type::Value);
                 let v = fb.cast(a, ty);
                 stack.push(v);
             }
@@ -1006,7 +1006,7 @@ fn translate_op(
                 let ty = class_value_hints
                     .get(&type_val)
                     .map(|name| type_from_name(name))
-                    .unwrap_or(Type::Unknown);
+                    .unwrap_or(Type::Value);
                 let v = fb.type_check(a, ty);
                 stack.push(v);
             }
@@ -1437,7 +1437,7 @@ fn translate_op(
         Op::NewArray { num_args } => {
             let n = *num_args as usize;
             let elems = pop_n(stack, n);
-            let v = fb.array_init(&elems, Type::Unknown);
+            let v = fb.array_init(&elems, Type::Value);
             stack.push(v);
         }
         Op::NewActivation => {
@@ -1463,7 +1463,7 @@ fn translate_op(
                 let closure_method = &abc.methods[method_idx];
                 let closure_body = abc.method_bodies.iter().find(|b| b.method.0 == index.0);
                 if let Some(closure_body) = closure_body {
-                    let mut closure_params = vec![Type::Unknown]; // register 0 = scope
+                    let mut closure_params = vec![Type::Value]; // register 0 = scope
                     let mut closure_param_names: Vec<Option<String>> = vec![None];
                     let mut closure_defaults: Vec<Option<Constant>> = vec![None];
                     for param in &closure_method.params {
@@ -1482,7 +1482,7 @@ fn translate_op(
                     let closure_return = resolve_type(pool, &closure_method.return_type);
                     let has_rest = closure_method.flags.contains(MethodFlags::NEED_REST);
                     if has_rest {
-                        closure_params.push(Type::Array(Box::new(Type::Unknown)));
+                        closure_params.push(Type::Array(Box::new(Type::Value)));
                         closure_param_names.push(None);
                     }
                     let closure_sig = FunctionSig {
@@ -2246,7 +2246,7 @@ mod tests {
         let abc = make_abc(pool, vec![body.clone()], vec![method]);
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Unknown,
+            return_ty: Type::Value,
             ..Default::default()
         };
 
@@ -2284,7 +2284,7 @@ mod tests {
         let abc = make_abc(pool, vec![body.clone()], vec![method]);
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Unknown,
+            return_ty: Type::Value,
             ..Default::default()
         };
 
@@ -2352,7 +2352,7 @@ mod tests {
         let (abc, body) = build_abc(empty_pool(), code, 1, 1);
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Unknown,
+            return_ty: Type::Value,
             ..Default::default()
         };
 
@@ -2383,7 +2383,7 @@ mod tests {
         let (abc, body) = build_abc(empty_pool(), code, 1, 1);
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Unknown,
+            return_ty: Type::Value,
             ..Default::default()
         };
 
@@ -2411,7 +2411,7 @@ mod tests {
         let (abc, body) = build_abc(pool, code, 1, 2);
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Unknown,
+            return_ty: Type::Value,
             ..Default::default()
         };
 
@@ -2444,7 +2444,7 @@ mod tests {
         let (abc, body) = build_abc(pool, code, 1, 2);
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Unknown,
+            return_ty: Type::Value,
             ..Default::default()
         };
 
@@ -2473,7 +2473,7 @@ mod tests {
         let (abc, body) = build_abc(empty_pool(), code, 1, 3);
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Unknown,
+            return_ty: Type::Value,
             ..Default::default()
         };
 
@@ -2502,7 +2502,7 @@ mod tests {
         let (abc, body) = build_abc(pool, code, 1, 2);
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Unknown,
+            return_ty: Type::Value,
             ..Default::default()
         };
 
@@ -2536,7 +2536,7 @@ mod tests {
         ];
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Unknown,
+            return_ty: Type::Value,
             ..Default::default()
         };
 
@@ -2635,7 +2635,7 @@ mod tests {
         let (abc, body) = build_abc(empty_pool(), code, 1, 2);
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Unknown,
+            return_ty: Type::Value,
             ..Default::default()
         };
 
