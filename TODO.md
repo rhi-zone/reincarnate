@@ -26,6 +26,67 @@ Do NOT suppress these diagnostics, disable the pass, or widen a type to silence 
 Each fired diagnostic is a defect report: investigate the inference bug that allowed the
 `InferVar` to escape, and fix the upstream solve or write-back.
 
+## `Type::Value` split — five-role overload finding and phased plan (2026-06-12)
+
+**Finding.** `Type::Unknown` was one IR variant overloaded across five distinct semantic
+roles, the root of repeated session-poisoning ("is `is_concrete(Unknown)==true` a bug?"):
+
+- **J0 — solvable placeholder.** `builder.rs::fresh_var()` returned it; `alloc`/`load`/
+  `StructInit` results; builtin "inference gaps" written before inference runs. Should be a
+  free `InferVar` and must never persist. This is the root: because the variant couldn't
+  distinguish J0 (re-inferable) from J4 (frozen contract), out-of-band disambiguation was
+  forced into every pass that touched the type.
+- **J1 — lattice top / poison.** The `unify` catch-all and occurs-check arm. Arises on
+  joined functions, coroutines, and classrefs.
+- **J2 — honest dynamic source type.** AS3 `*`/`Object`/`Function`; GML
+  `is_real(x: …)`; `runtime.json "any"/"dynamic"`. The value is genuinely untyped in
+  the source language.
+- **J3 — inference-exhausted terminal.** Step-8 diagnostics; the `is_concrete==true`
+  "not a free variable" comment in `constraint_collect.rs`. A diagnostic state, not a type.
+- **J4 — declared accepts-any param contract.** The `param_pos.is_some()` carve-out in
+  `constraint_collect.rs`; the `saw_unknown` evidence gate. Frozen against narrowing.
+
+**Resolution (designed, verified against the code).**
+
+J2 and J4 collapse into one concept — the honest dynamic-value type — because "frozen
+against narrowing" is already the universal `unify` behavior for any concrete type, not a
+J4-specific property. Named **`Type::Value`** (`Value` matches `serde_json::Value` and the
+existing `ty.rs` doc-comment; avoids `Dynamic`'s C# `dynamic`/`any`-checking-disabled
+prior). J1 folds into `Value` (a joined/poisoned value behaves identically to a dynamic
+value at emit and in `unify`). J0 migrates to the existing `Type::InferVar` (solvable,
+validator-forbidden from persisting). J3 is a diagnostic state over a value that stays
+`Type::Value` — not a type variant.
+
+**Open question, deferred.** Do NOT mint distinct `Top`/inference-failure variants — the
+J1/J3 merge is correct for now; revisit only if a future pass needs to treat
+"joined-away" differently from "source-dynamic."
+
+**Phase 0 — DONE (commit `7bd1b624`):** pure mechanical rename `Type::Unknown →
+Type::Value`, byte-identical behavior (55 files, 1091 occurrences).
+
+Key files: `crates/reincarnate-core/src/ir/ty.rs`, `.../ir/builder.rs`,
+`.../transforms/constraint_collect.rs`, `.../transforms/constraint_solve_hm.rs`,
+`.../transforms/validate_no_escaped_type_vars.rs`,
+`reincarnate-backend-typescript/src/types.rs`, CLAUDE.md.
+
+- [ ] **Phase 1 — Extract J0 → InferVar at the builder seam.** Change `fresh_var()`,
+  `alloc`/`load`/`StructInit` results, and `freshen_unknown_types_in_sig` to emit
+  `Type::InferVar`. DELETE the param pre-bind carve-out in `constraint_collect.rs` — it
+  collapses to `let should_bind = is_concrete(ty);`. This is the load-bearing semantic
+  phase; the complexity ratchet must DROP. NOTE: intersects the U4 evidence-gate code
+  touched 2026-06-11 (commit `e48b488c`).
+- [ ] **Phase 2 — Per-site classify remaining `matches!(ty, Value | InferVar)` predicates.**
+  Sites in `mem2reg`, `cfg_simplify`, `redundant_inherited_field`, `constructor_struct_infer`,
+  and Flash gap-vs-dynamic positions. Each is a real semantic decision — "dynamic value"
+  vs "un-inferred value" — not a guess.
+- [ ] **Phase 3 — Rename `saw_unknown → saw_value`; prune stale guard comments; rewrite
+  the CLAUDE.md `Type::Unknown` law bullet** to the corrected two-claim form: `Type::Value`
+  = honest dynamic type, concrete, frozen by `unify`, lowers to `unknown`; an un-inferred
+  value is `InferVar` and must never persist; "inference exhausted" is a diagnostic over a
+  value that stays `Value`, not a type.
+
+---
+
 ## `Type::Template` variant — deferred pending parametric-builtins feature
 
 The `Type::Template(u32)` encoding is locked in [ADR 004](docs/adr/004-type-template-encoding.md).
