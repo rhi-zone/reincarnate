@@ -1250,7 +1250,12 @@ impl Transform for ConstraintSolveHM {
                             .into_iter()
                             .filter(|v| {
                                 if has_concrete {
-                                    !matches!(v, Type::Value)
+                                    // Drop unsettled variants (genuinely-dynamic
+                                    // Value and un-inferred InferVar alike) when a
+                                    // concrete alternative exists; an InferVar left
+                                    // in a persisted field type would violate the
+                                    // never-persist invariant.
+                                    !matches!(v, Type::Value | Type::InferVar(_))
                                 } else {
                                     true
                                 }
