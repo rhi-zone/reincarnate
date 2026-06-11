@@ -69,21 +69,27 @@ Key files: `crates/reincarnate-core/src/ir/ty.rs`, `.../ir/builder.rs`,
 `.../transforms/validate_no_escaped_type_vars.rs`,
 `reincarnate-backend-typescript/src/types.rs`, CLAUDE.md.
 
-- [ ] **Phase 1 — Extract J0 → InferVar at the builder seam.** Change `fresh_var()`,
-  `alloc`/`load`/`StructInit` results, and `freshen_unknown_types_in_sig` to emit
-  `Type::InferVar`. DELETE the param pre-bind carve-out in `constraint_collect.rs` — it
-  collapses to `let should_bind = is_concrete(ty);`. This is the load-bearing semantic
-  phase; the complexity ratchet must DROP. NOTE: intersects the U4 evidence-gate code
-  touched 2026-06-11 (commit `e48b488c`).
-- [ ] **Phase 2 — Per-site classify remaining `matches!(ty, Value | InferVar)` predicates.**
-  Sites in `mem2reg`, `cfg_simplify`, `redundant_inherited_field`, `constructor_struct_infer`,
-  and Flash gap-vs-dynamic positions. Each is a real semantic decision — "dynamic value"
-  vs "un-inferred value" — not a guess.
-- [ ] **Phase 3 — Rename `saw_unknown → saw_value`; prune stale guard comments; rewrite
-  the CLAUDE.md `Type::Unknown` law bullet** to the corrected two-claim form: `Type::Value`
-  = honest dynamic type, concrete, frozen by `unify`, lowers to `unknown`; an un-inferred
-  value is `InferVar` and must never persist; "inference exhausted" is a diagnostic over a
-  value that stays `Value`, not a type.
+- [x] **Phase 1 — DONE (commit `d26cd95b`):** extracted J0 → `Type::InferVar` at the builder seam (`fresh_var()`, `alloc`/`load`/`StructInit` results, `freshen_unknown_types_in_sig`). Deleted the param pre-bind carve-out in `constraint_collect.rs` (collapses to `let should_bind = is_concrete(ty);`). **LOUD posture:** unresolved `InferVar` escapes as hard `RC0006` (EscapedTypeVar) instead of silently lowering to `Value`/`unknown`. `constraint_collect.rs` complexity DROPPED (carve-out deleted). 885 tests green.
+- [x] **Phase 2 — DONE (commit `347349c0`):** classified all `matches!(ty, Value | InferVar)` consumer predicates in `mem2reg`, `cfg_simplify`, `redundant_inherited_field`, `constructor_struct_infer`, and Flash gap-vs-dynamic positions. Fixed one latent never-persist bug: a `Value`-only strip that let `InferVar` persist into a struct field union.
+- [x] **Phase 3 — DONE (commit `03dcc4d7`):** `saw_unknown → saw_value`; pruned stale guard comments; rewrote the CLAUDE.md `Type::Unknown` law bullet to the corrected two-claim form (`Value` = concrete/honest; `InferVar` = solvable/never-persist; unresolved = loud RC0006). Restored the fail-loud mandate a prior edit had weakened.
+
+**Split is COMPLETE. All four phases landed (verified 2026-06-12).**
+
+**Loud-posture impact — deliberate, do not revert.** Dead Estate check total rose from ~25,476 to ~30,282. The delta (~4,878 RC0006) is functions where inference genuinely doesn't resolve — previously hidden by the conflation (spelled `Value`, lowered to `unknown`, only soft filtered diagnostics). Emitted TS is unchanged; only the diagnostic changed. Do NOT "fix" the 30,282 by reverting the loud posture or by lowering unresolved `InferVar` to `Value` — that reintroduces the swallowing the split removed (the CLAUDE.md law now forbids it).
+
+**RC0006 backlog is the quantified work surface.** Clean-HEAD measurement found ~67,810 unresolved cells across ~4,878 functions, by op:
+
+| Op | Unresolved cells | Root cause |
+|---|---|---|
+| `Call` | 35,541 | Constructor-erasure (`@@NewGMLObject@@`) + closure/method-var FuncId loss — call results can't be typed when callee link is lost |
+| `CallIndirect` | 4,478 | Same: indirect dispatch loses callee signature |
+| `GetField` | 16,933 | `self`/`this.field` receiver typing — the dominant known lever, already the NEXT-LEVER target |
+| `GlobalRef` | 7,446 | Unresolved globals |
+| `GetIndex` | 1,616 | Unresolved indexing |
+
+These map exactly to the inference levers already identified and prioritized below. Closing each op category is what drives RC0006 down.
+
+**Minor follow-up (filed):** `ValidateNoEscapedTypeVars` currently breaks after first hit per function, so 4,878 RC0006 undercounts the ~67,810 true unresolved cells. Reporting all escaped cells (not one-per-function) would make the loud count reflect the true backlog.
 
 ---
 
