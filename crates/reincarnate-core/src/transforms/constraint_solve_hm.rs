@@ -136,6 +136,73 @@ fn build_all_fields(
     all_fields
 }
 
+/// The ancestor chain of an instance type, from the type itself up to its root.
+///
+/// Walks `TypeDecl::Object.parent` over `module.types` — `TypeId` + `parent`
+/// only, no engine names. The returned vec begins with `id` and ends at the
+/// root ancestor (the first type with no parent). A bound on iteration guards
+/// against malformed cyclic parent chains.
+fn ancestor_chain(module: &Module, id: TypeId) -> Vec<TypeId> {
+    let mut chain = Vec::new();
+    let mut current = Some(id);
+    let mut guard = 0usize;
+    while let Some(cur) = current {
+        if chain.contains(&cur) {
+            break; // cycle guard
+        }
+        chain.push(cur);
+        guard += 1;
+        if guard > module.types.len() + 1 {
+            break;
+        }
+        current = match module.types.get(cur) {
+            Some(TypeDecl::Object { parent, .. }) => *parent,
+            _ => None,
+        };
+    }
+    chain
+}
+
+/// Least-upper-bound (join) of two source-language types.
+///
+/// This computes a real supertype outside the arena (the arena stays pure
+/// equality). It is engine-neutral: the only structural knowledge it uses is
+/// the `TypeDecl::Object.parent` chain over `module.types`.
+///
+/// - Identical operands → that type.
+/// - Two `Instance(_)` → their least-common-ancestor by walking the parent
+///   chains. If they share no ancestor, fall through to the lower-bound fallback.
+/// - Anything else (mixed instance/non-instance, incompatible primitives) →
+///   the param's declared lower bound if present, else `Type::Value`.
+///
+/// Never returns `Type::Union` — a union immediately collapses to `Value` in
+/// the unifier, which is exactly the behavior this join replaces.
+fn join(module: &Module, lower_bound: Option<&Type>, a: &Type, b: &Type) -> Type {
+    if a == b {
+        return a.clone();
+    }
+    if let (Type::Instance(ia), Type::Instance(ib)) = (a, b) {
+        let chain_a = ancestor_chain(module, *ia);
+        let chain_b: BTreeSet<TypeId> = ancestor_chain(module, *ib).into_iter().collect();
+        // First ancestor of `a` (walking up from `a`) that is also an ancestor
+        // of `b` is their least-common-ancestor.
+        if let Some(&lca) = chain_a.iter().find(|id| chain_b.contains(id)) {
+            return Type::Instance(lca);
+        }
+    }
+    // No common ancestor, or non-instance operands: fall back to the declared
+    // lower bound (a true supertype set by the frontend), else `Value`.
+    lower_bound.cloned().unwrap_or(Type::Value)
+}
+
+/// Left-fold [`join`] over a non-empty list of types. The caller guarantees the
+/// list is non-empty (the single-element case is handled before reaching here).
+fn join_all(module: &Module, lower_bound: Option<&Type>, types: &[Type]) -> Type {
+    let mut iter = types.iter();
+    let first = iter.next().expect("join_all called on empty list").clone();
+    iter.fold(first, |acc, t| join(module, lower_bound, &acc, t))
+}
+
 /// HM-unifier–based constraint solver pass.
 ///
 /// Replaces `TypeInference`, `CallSiteTypeFlow`, `CallSiteTypeWiden`,
@@ -165,6 +232,7 @@ fn process_constraint(
     type_id_to_name: &HashMap<TypeId, String>,
     name_to_type_id: &HashMap<String, TypeId>,
     non_leaf_type_names: &HashSet<String>,
+    join_param_vars: &HashSet<TypeVarId>,
     deferred: &mut Vec<TypeConstraint>,
 ) {
     match c {
@@ -193,7 +261,24 @@ fn process_constraint(
                     }
                     // Unknown field — skip; don't invent a type.
                 }
-                Type::InferVar(_) => {
+                Type::InferVar(var_id) => {
+                    // Join precedence: if this var is a param with COMPLETE call-site
+                    // evidence, its type is decided by the SOUND post-fixpoint join of
+                    // its actual callers — not by the HasField single-owner heuristic.
+                    // The single-owner guess (binding a free receiver to the unique leaf
+                    // type that declares the accessed field) is a fallback for values
+                    // WITHOUT caller evidence; firing it here would pre-bind the param to
+                    // one caller's leaf type, which is unsound when the caller set spans
+                    // siblings. Re-defer so the join binds the var first; once bound, the
+                    // HasField re-resolves against the joined instance type.
+                    if join_param_vars.contains(&var_id) {
+                        deferred.push(TypeConstraint::HasField {
+                            ty: resolved_ty,
+                            field,
+                            field_ty,
+                        });
+                        return;
+                    }
                     // Part 1: if exactly one struct has this field in its own fields,
                     // unify immediately.  Use own_fields — inherited fields are not
                     // discriminants; every child would match and produce multiple candidates.
@@ -368,29 +453,35 @@ fn param_used_with_field_access(
 ///
 /// `call_site` holds concrete argument types observed at call sites; `default`
 /// holds the type of the param's default argument (if any). `incomplete` is set
-/// whenever a caller is dropped from `call_site` without being recorded, so the
-/// remaining evidence no longer enumerates every caller. The drain may narrow a
-/// param from its `call_site` evidence ONLY when `incomplete == false`, i.e. when
-/// `call_site` is a complete enumeration of that param's callers.
+/// only when a caller is genuinely *un-enumerable* — a dynamic value or an opaque
+/// dispatch — so the remaining evidence can never become a complete enumeration.
+/// The drain may join a param from its evidence ONLY when `incomplete == false`.
 ///
-/// A caller is dropped — and therefore marks the evidence incomplete — in three
-/// cases (see `seed_param_from_arg`):
-///  - a genuinely-dynamic (`Type::Value`) argument: not a concrete type to record;
-///  - a body-usage abstention (`usage_suppressed`): the caller declines to contribute;
-///  - a non-concrete argument: linked via an `Equal(arg_var, param_var)` constraint
-///    instead of being pushed to `call_site`.
+/// Completeness distinguishes two kinds of non-concrete caller:
+///  - a genuinely-dynamic (`Type::Value`) argument, a body-usage abstention,
+///    or an opaque/address-taken-indirect callee → truly un-enumerable, sets
+///    `incomplete` (see `seed_param_from_arg` and `mark_func_params_incomplete`);
+///  - a **linked, not-yet-resolved param-var caller** — the arg is a free
+///    `InferVar` because the caller is itself a param whose own type is not yet
+///    resolved at seeding (intra-run ordering). This caller IS enumerable: it
+///    will resolve, via its own evidence, to a concrete type. It is recorded as
+///    a directional lower bound (`lower_bound_vars`) — NOT unified, NOT
+///    marked incomplete. Post-fixpoint the join resolves each such var through
+///    the arena and folds it into the param's lower-bound set.
 ///
-/// In every case the caller is absent from `call_site`, so narrowing the param
-/// from `call_site` alone would narrow over a strict subset of callers and could
-/// be unsound (a dropped caller may supply an incompatible type). An incomplete
-/// param therefore falls back to link-driven unification plus the post-fixpoint
-/// lower-bound fallback — the non-concrete link is still emitted, so if a linked
-/// arg later resolves it flows into the param via unification independently.
+/// The join over the COMPLETE lower-bound set (concrete `call_site` types PLUS
+/// resolved `lower_bound_vars`) is a supertype of every caller, so every caller
+/// value remains assignable to the param — narrowing to the join is sound.
 #[derive(Default)]
 struct ParamEvidence {
     call_site: Vec<Type>,
     default: Option<Type>,
     incomplete: bool,
+    /// Linked, not-yet-resolved param-var callers (free `InferVar` args). Each
+    /// is resolved through the arena post-fixpoint and folded into the join's
+    /// lower-bound set. A directional lower-bound record (a `Subtype`-style edge
+    /// from the caller's var to this param), never unified into equality.
+    lower_bound_vars: Vec<TypeVarId>,
 }
 
 /// Seed a callee param's inference evidence from one caller argument.
@@ -400,17 +491,19 @@ struct ParamEvidence {
 ///  - a `Value` argument marks the evidence incomplete (the caller is dropped),
 ///  - a body-usage abstention (`usage_suppressed`) marks the evidence incomplete
 ///    (the caller declines to contribute, so it is dropped from `call_site`),
-///  - a concrete argument is recorded as call-site evidence, while a non-concrete
-///    argument is linked directly via an `Equal` constraint between the two vars
-///    and marks the evidence incomplete (the caller is not in `call_site`).
+///  - a concrete argument is recorded as call-site evidence;
+///  - a non-concrete argument WITH a caller var (`arg_var`) is a linked,
+///    not-yet-resolved param-var caller: it is recorded as a directional lower
+///    bound (`lower_bound_vars`) — enumerable, NOT incomplete, NOT unified;
+///  - a non-concrete argument WITHOUT a caller var cannot be tracked at all, so
+///    it is genuinely un-enumerable and marks the evidence incomplete.
 ///
-/// Any path that does not push to `call_site` MUST set `incomplete`, so that
-/// `call_site` either enumerates every caller or the param is flagged not to be
-/// narrowed from `call_site` alone.
+/// A caller is dropped — marking the evidence incomplete — only when it is
+/// genuinely un-enumerable (`Value`, usage abstention, no caller var). A linked
+/// param-var caller is enumerable and is folded into the post-fixpoint join.
 #[allow(clippy::too_many_arguments)]
 fn seed_param_from_arg(
     param_concrete_types: &mut BTreeMap<TypeVarId, ParamEvidence>,
-    all_constraints: &mut Vec<TypeConstraint>,
     arg_ty: &Type,
     param_ty: &Type,
     arg_var: Option<TypeVarId>,
@@ -449,21 +542,26 @@ fn seed_param_from_arg(
             .or_default()
             .call_site
             .push(arg_ty.clone());
+    } else if let Some(arg_var) = arg_var {
+        // A non-concrete argument with a caller var is a linked, not-yet-resolved
+        // param-var caller: it WILL resolve via its own evidence. Record it as a
+        // directional lower bound (resolved through the arena post-fixpoint and
+        // folded into the join). It is enumerable, so it does NOT mark the
+        // evidence incomplete, and it is NOT unified into equality — the join is a
+        // supertype relation, not an equality.
+        param_concrete_types
+            .entry(param_var)
+            .or_default()
+            .lower_bound_vars
+            .push(arg_var);
     } else {
-        // A non-concrete argument is linked via unification instead of being pushed
-        // to `call_site`; this caller is therefore absent from `call_site`. Mark the
-        // evidence incomplete so `call_site` alone never narrows the param — the link
-        // still flows the arg's eventual concrete type into the param independently.
+        // A non-concrete argument with no caller var cannot be tracked or resolved
+        // — it is genuinely un-enumerable. Mark the evidence incomplete so
+        // `call_site` alone never narrows the param.
         param_concrete_types
             .entry(param_var)
             .or_default()
             .incomplete = true;
-        if let Some(arg_var) = arg_var {
-            all_constraints.push(TypeConstraint::Equal(
-                Type::InferVar(arg_var),
-                Type::InferVar(param_var),
-            ));
-        }
     }
 }
 
@@ -854,7 +952,6 @@ impl Transform for ConstraintSolveHM {
                                         };
                                         seed_param_from_arg(
                                             &mut param_concrete_types,
-                                            &mut all_constraints,
                                             arg_ty,
                                             param_ty,
                                             caller_data.value_vars.get(&arg).copied(),
@@ -919,7 +1016,6 @@ impl Transform for ConstraintSolveHM {
                                         );
                                         seed_param_from_arg(
                                             &mut param_concrete_types,
-                                            &mut all_constraints,
                                             recv_ty,
                                             param_ty,
                                             caller_data.value_vars.get(receiver).copied(),
@@ -945,7 +1041,6 @@ impl Transform for ConstraintSolveHM {
                                             );
                                         seed_param_from_arg(
                                             &mut param_concrete_types,
-                                            &mut all_constraints,
                                             arg_ty,
                                             param_ty,
                                             caller_data.value_vars.get(&arg).copied(),
@@ -1013,7 +1108,6 @@ impl Transform for ConstraintSolveHM {
                                             );
                                         seed_param_from_arg(
                                             &mut param_concrete_types,
-                                            &mut all_constraints,
                                             capture_ty,
                                             param_ty,
                                             caller_data.value_vars.get(&capture).copied(),
@@ -1108,42 +1202,31 @@ impl Transform for ConstraintSolveHM {
             }
         }
 
-        // Emit union constraints for params called with multiple concrete types.
-        // Collected separately so they can be prepended before HasField constraints —
-        // call-site types must bind param vars before HasField narrowing fires, so
-        // that HasField sees the concrete union type rather than preempting it.
-        let mut union_constraints: Vec<TypeConstraint> = Vec::new();
-        for (param_var, evidence) in param_concrete_types {
-            // Evidence-completeness gate: narrow only when `call_site` enumerates
-            // every caller of the param. Any dropped caller sets `incomplete` (a
-            // `Value` arg, a usage abstention, or a non-concrete linked arg); with
-            // no call-site evidence at all a default alone never narrows. Either way
-            // the param is left free — it resolves via the post-fixpoint lower-bound
-            // fallback or emits as `unknown`, the honest inference-failure outcome.
-            if evidence.incomplete || evidence.call_site.is_empty() {
-                continue;
-            }
-            let mut deduped: Vec<Type> = Vec::new();
-            for ty in evidence.call_site.into_iter().chain(evidence.default) {
-                if !deduped.contains(&ty) {
-                    deduped.push(ty);
-                }
-            }
-            let constraint_ty = if deduped.len() == 1 {
-                deduped.into_iter().next().unwrap()
-            } else {
-                // Multi-type unions are deferred to a later phase: the unifier
-                // collapses Union(...) to Unknown, the safe current behavior.
-                Type::Union(deduped)
-            };
-            union_constraints.push(TypeConstraint::Equal(
-                constraint_ty,
-                Type::InferVar(param_var),
-            ));
-        }
+        // Per-param declared lower bound, used as the join fallback when caller
+        // types share no common ancestor (or are not all instances). Set by the
+        // frontend (e.g. GMLObject for ownerless GML script `self`); never
+        // hardcoded in the join.
+        let param_lower_bounds: HashMap<TypeVarId, Type> = func_data
+            .iter()
+            .flat_map(|fd| fd.constraint_set_param_lower_bounds.iter().cloned())
+            .collect();
+
+        // Params whose call-site evidence is a COMPLETE caller enumeration
+        // (`!incomplete`, non-empty `call_site`). Their type is decided by the
+        // SOUND post-fixpoint join of their actual callers, so the HasField
+        // single-owner heuristic must NOT pre-bind them (join precedence — Part 3):
+        // the heuristic is a fallback for evidence-less values, and binding such a
+        // param to one caller's leaf type is unsound when the caller set spans
+        // siblings. These vars are gated out of HasField narrowing during the
+        // fixpoint and resolved by the post-fixpoint join below.
+        let join_param_vars: HashSet<TypeVarId> = param_concrete_types
+            .iter()
+            .filter(|(_, ev)| !ev.incomplete && !ev.call_site.is_empty())
+            .map(|(var, _)| *var)
+            .collect();
 
         // -----------------------------------------------------------------------
-        // Step 4: solve all constraints jointly.
+        // Step 4: solve the equality constraints jointly.
         //
         // `HasField { ty: Var(_) }` and `Callable { ty: Var(_) }` constraints
         // cannot be resolved until the object/callee type variable is bound by
@@ -1152,32 +1235,122 @@ impl Transform for ConstraintSolveHM {
         // resolved is re-deferred. We stop when either:
         //   (a) the deferred list is empty (all resolved), or
         //   (b) a full pass made no progress (deferred list no shorter than before).
+        //
+        // Call-site param JOINS are NOT applied here — they are computed
+        // post-fixpoint (Step 4.4) over the COMPLETE lower-bound set, which is
+        // only available once linked param-var callers have themselves resolved
+        // via the equality fixpoint.
         // -----------------------------------------------------------------------
-        // Prepend union constraints so they fire before HasField constraints.
-        union_constraints.extend(all_constraints);
-        let mut pending: Vec<TypeConstraint> = union_constraints;
-        let stalled_deferred: Vec<TypeConstraint>;
-        loop {
-            let pending_count = pending.len();
-            let mut deferred: Vec<TypeConstraint> = Vec::new();
-            for c in pending {
-                process_constraint(
-                    c,
-                    &mut arena,
-                    &own_fields,
-                    &all_fields,
-                    &type_id_to_name,
-                    &name_to_type_id,
-                    &non_leaf_type_names,
-                    &mut deferred,
+        let run_fixpoint =
+            |arena: &mut TypeVarArena, mut pending: Vec<TypeConstraint>| -> Vec<TypeConstraint> {
+                loop {
+                    let pending_count = pending.len();
+                    let mut deferred: Vec<TypeConstraint> = Vec::new();
+                    for c in pending {
+                        process_constraint(
+                            c,
+                            arena,
+                            &own_fields,
+                            &all_fields,
+                            &type_id_to_name,
+                            &name_to_type_id,
+                            &non_leaf_type_names,
+                            &join_param_vars,
+                            &mut deferred,
+                        );
+                    }
+                    let did_bind = arena.take_did_bind();
+                    if deferred.is_empty() || (!did_bind && deferred.len() >= pending_count) {
+                        return deferred;
+                    }
+                    pending = deferred;
+                }
+            };
+        let mut stalled_deferred: Vec<TypeConstraint> = run_fixpoint(&mut arena, all_constraints);
+
+        // -----------------------------------------------------------------------
+        // Step 4.4: resolve call-site param JOINS (post-fixpoint).
+        //
+        // For each param with COMPLETE call-site evidence, its lower-bound set is
+        // the concrete `call_site` types PLUS each linked param-var caller
+        // resolved through the arena (now that the equality fixpoint has run). The
+        // JOIN (least-upper-bound; LCA for instances) of that COMPLETE set is a
+        // supertype of every caller, so every caller value remains assignable —
+        // narrowing the param to the join is sound. The join is computed OUTSIDE
+        // the arena and bound once.
+        //
+        // One param's resolved join can feed another's lower bound (a join result
+        // used as an argument), so we iterate to a fixpoint, re-running the
+        // equality fixpoint after each round of joins to propagate. A small cap
+        // bounds the iteration; convergence is asserted.
+        // -----------------------------------------------------------------------
+        {
+            const MAX_JOIN_PASSES: usize = 3;
+            let mut pass = 0;
+            loop {
+                let mut bound_any = false;
+                for (param_var, evidence) in &param_concrete_types {
+                    if !join_param_vars.contains(param_var) {
+                        continue;
+                    }
+                    // Skip params already resolved to a concrete type (bound by an
+                    // equality link during the fixpoint, or by a prior join pass).
+                    let already = resolve(Type::InferVar(*param_var), &arena);
+                    if !matches!(already, Type::InferVar(_)) {
+                        continue;
+                    }
+                    // Lower-bound set: concrete call-site types + default +
+                    // resolved linked param-var callers. A linked caller still
+                    // free (its own evidence not yet resolved) is skipped this
+                    // pass; a later pass picks it up once it resolves.
+                    let mut deduped: Vec<Type> = Vec::new();
+                    for ty in evidence
+                        .call_site
+                        .iter()
+                        .cloned()
+                        .chain(evidence.default.clone())
+                    {
+                        if !deduped.contains(&ty) {
+                            deduped.push(ty);
+                        }
+                    }
+                    for lb_var in &evidence.lower_bound_vars {
+                        let r = resolve(Type::InferVar(*lb_var), &arena);
+                        if !matches!(r, Type::InferVar(_)) && !deduped.contains(&r) {
+                            deduped.push(r);
+                        }
+                    }
+                    if deduped.is_empty() {
+                        continue;
+                    }
+                    let join_ty = if deduped.len() == 1 {
+                        deduped.into_iter().next().unwrap()
+                    } else {
+                        join_all(&module, param_lower_bounds.get(param_var), &deduped)
+                    };
+                    // Bind the terminal free var. The HasField gate kept this var
+                    // free, so the join wins over the single-owner heuristic.
+                    if let Type::InferVar(free_id) = resolve(Type::InferVar(*param_var), &arena) {
+                        if arena.binding_of(free_id).is_none() {
+                            arena.bind(free_id, join_ty);
+                            bound_any = true;
+                        }
+                    }
+                }
+                if !bound_any {
+                    break;
+                }
+                // Propagate the new join bindings (a joined param may unlock a
+                // HasField/Callable, and its result may feed another param's join
+                // lower bound in the next pass).
+                stalled_deferred = run_fixpoint(&mut arena, stalled_deferred);
+                pass += 1;
+                assert!(
+                    pass < MAX_JOIN_PASSES,
+                    "call-site param join did not converge within {} passes",
+                    MAX_JOIN_PASSES
                 );
             }
-            let did_bind = arena.take_did_bind();
-            if deferred.is_empty() || (!did_bind && deferred.len() >= pending_count) {
-                stalled_deferred = deferred;
-                break;
-            }
-            pending = deferred;
         }
 
         // -----------------------------------------------------------------------
@@ -1207,6 +1380,15 @@ impl Transform for ConstraintSolveHM {
             }
 
             for (var_id, fields) in &var_fields {
+                // Join precedence (Part 3): a param with COMPLETE call-site
+                // evidence is resolved by the post-fixpoint join, never by the
+                // multi-field single-owner heuristic. If it is still free here the
+                // join declined to bind it (e.g. no concrete lower bounds), in
+                // which case Step 4.6 applies its declared lower bound — narrowing
+                // it to a sibling leaf type by field-set would be unsound.
+                if join_param_vars.contains(var_id) {
+                    continue;
+                }
                 // Intersect: structs that have ALL the observed fields in their own
                 // (non-inherited) fields.  Using own_fields as discriminant prevents
                 // every GMLObject child from matching on inherited fields like `x` or `y`.
@@ -1262,27 +1444,7 @@ impl Transform for ConstraintSolveHM {
             let mut pending2 = new_from_narrowing;
             // Re-include stalled_deferred so newly-narrowed HasField constraints can resolve.
             pending2.extend(stalled_deferred);
-            loop {
-                let pending_count = pending2.len();
-                let mut deferred: Vec<TypeConstraint> = Vec::new();
-                for c in pending2 {
-                    process_constraint(
-                        c,
-                        &mut arena,
-                        &own_fields,
-                        &all_fields,
-                        &type_id_to_name,
-                        &name_to_type_id,
-                        &non_leaf_type_names,
-                        &mut deferred,
-                    );
-                }
-                let did_bind = arena.take_did_bind();
-                if deferred.is_empty() || (!did_bind && deferred.len() >= pending_count) {
-                    break;
-                }
-                pending2 = deferred;
-            }
+            let _ = run_fixpoint(&mut arena, pending2);
         }
 
         // -----------------------------------------------------------------------
