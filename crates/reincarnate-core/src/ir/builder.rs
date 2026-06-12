@@ -26,9 +26,8 @@ use super::inst::{CastKind, CmpKind, Inst, Op, Terminator};
 use super::module::{
     ClassDef, EntryPoint, EnumDef, ExternalImport, Global, Import, Module, StructDef, TypeDecl,
 };
-use super::ty::{FunctionSig, Type, TypeId, TypeVarId};
+use super::ty::{FunctionSig, Type, TypeId};
 use super::value::{Constant, ValueId};
-use crate::entity::EntityRef;
 
 /// Builder for constructing a single [`Function`].
 ///
@@ -883,7 +882,7 @@ impl FunctionBuilder {
     /// Frontends should call this wherever a value's concrete type is an
     /// inference gap (not where it is genuinely dynamic).
     pub fn fresh_var(&mut self) -> Type {
-        Type::InferVar(TypeVarId::new(0))
+        Type::fresh_var()
     }
 }
 

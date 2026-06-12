@@ -60,6 +60,21 @@ pub enum Type {
 }
 
 impl Type {
+    /// Returns a solvable inference placeholder: [`Type::InferVar`] with a fixed
+    /// id (`0`).
+    ///
+    /// The id is never dereferenced — the constraint collector matches the
+    /// *variant* (`is_concrete(InferVar) == false`) to keep the value free, then
+    /// allocates a fresh arena var keyed by `ValueId`. This is the single
+    /// canonical producer of the frontend-side placeholder; [`ModuleBuilder`] and
+    /// [`FunctionBuilder`] `fresh_var()` and frontend signature construction all
+    /// route through it. Distinct from [`Type::Value`], the honest, concrete type
+    /// of a genuinely-dynamic value, which pre-binds rather than staying free.
+    pub fn fresh_var() -> Type {
+        use crate::entity::EntityRef;
+        Type::InferVar(TypeVarId::new(0))
+    }
+
     /// Returns true for heap-allocated reference types where `GetField`/`GetIndex`
     /// returns a live reference — mutations through the result propagate back to the
     /// source. All backends must preserve this contract.

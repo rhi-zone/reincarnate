@@ -307,9 +307,17 @@ fn build_signature_with_args(ctx: &TranslateCtx, arg_count: u16) -> FunctionSig 
             params.push(Type::Instance(type_id));
             param_lower_bounds.push(None);
         } else {
-            // Ownerless script: emit Unknown so the param var stays free, with
-            // GMLObject as the lower bound fallback if no call-site narrows it.
-            params.push(Type::Value);
+            // Ownerless script (class_name = None): `self` is a solvable
+            // inference placeholder, not a genuinely-dynamic value. Spell it as a
+            // free inference var (the same variant `fresh_var()` yields) so the
+            // collector keeps the param var free: call sites then seed its
+            // receiver type and a single consistent caller narrows it to that
+            // concrete type. If no call site narrows it, the post-fixpoint
+            // lower-bound step binds the `Instance(GMLObject)` fallback floor.
+            // `Type::Value` would be concrete here, pre-binding the var and
+            // blocking both the call-site seeding and the lower-bound fallback —
+            // yielding a raw `self: unknown`.
+            params.push(Type::fresh_var());
             param_lower_bounds.push(Some(Type::Instance(ctx.gml_object_type_id)));
         }
         defaults.push(None);

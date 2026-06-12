@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
-use crate::entity::{EntityRef, PrimaryMap};
+use crate::entity::PrimaryMap;
 use crate::pipeline::Diagnostic;
 use crate::project::{ExternalMethodSig, ExternalTypeDef};
 
@@ -10,7 +10,7 @@ use super::block::{Block, BlockId};
 use super::func::{FuncId, Function, InlineHint, MethodKind, Visibility};
 use super::inst::Terminator;
 use super::name_table::NameTable;
-use super::ty::{FunctionSig, Type, TypeId, TypeVarId};
+use super::ty::{FunctionSig, Type, TypeId};
 use super::value::Constant;
 
 /// Describes how the application is started.
@@ -1310,7 +1310,7 @@ impl Module {
     /// arena var keyed by `ValueId`. Distinct from [`Type::Value`], the honest
     /// type of a genuinely-dynamic value, which is concrete and pre-binds.
     pub fn fresh_var(&mut self) -> Type {
-        Type::InferVar(TypeVarId::new(0))
+        Type::fresh_var()
     }
 }
 
