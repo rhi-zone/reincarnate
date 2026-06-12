@@ -4319,3 +4319,84 @@ From an ecosystem-wide investigation of ad-hoc dispatch architecture (2026-05-29
    (`self` spelling), `crates/reincarnate-core/src/ir/inst.rs` (`Op::CallIndirect`), and the
    constructor-erasure / indirect-call sites in items 7–8 above.
 
+10. **Address-taken gate landed; LCA re-attempt found a DEEPER unsoundness — the Equal-link
+    propagation leak (2026-06-12, commit `864cddf7` = Phase 1; Phase 3 reverted).**
+
+    **Phase 1 DONE (`864cddf7`):** The completeness gate is now sound over ALL call shapes, not
+    just direct `Op::Call`/`Op::MethodCall`. New `compute_address_taken` enumerates the complete
+    set of FuncId-escape routes in this IR — `Op::MakeClosure{func}`, `Op::CoroutineCreate{func}`,
+    `Op::GlobalRef(name)` resolving to a module function (the GMS2.3 pushref→SCPT route). (Validated:
+    `Constant` has no function variant and there is no first-class FuncId value, so storing/passing/
+    returning a FuncId all first route through one of these three.) A function is marked `incomplete`
+    when (a) it is address-taken AND an opaque `Op::CallIndirect` exists (could target it), or (b)
+    its name collides with another function (name-based dispatch is ambiguous). `name_to_idx` now
+    detects collisions instead of silently dropping. Non-address-taken funcs stay sound with no
+    change. Dead Estate: 59 address-taken funcs, opaque_indirect=true, 1 name collision. NO metric
+    moved (only adds incompleteness marks; single-caller/LCA not yet landed) — this is the sound
+    foundation. Unit tests cover all three escape routes + resolvable-vs-opaque indirect dispatch.
+
+    **Phase 2 (seed resolvable CallIndirect callers) — NO-OP in Dead Estate + blocked by calling
+    convention.** One-hop callee tracing (`CallIndirect.callee` → `Op::GlobalRef(known func)` in the
+    same function) resolves ZERO indirect calls in Dead Estate — every `CallV` callee flows through
+    intermediate ops (loads/method-vars), so the GlobalRef does not directly feed the CallIndirect.
+    Separately, even where a callee resolves, seeding is BLOCKED by a Law-2 calling-convention
+    mismatch: `CallV`→`CallIndirect` lowering (`translate/ops.rs:916`) DISCARDS the receiver and does
+    NOT prepend `_rt`, so `CallIndirect.args` are raw user args, while the resolved callee's IR params
+    are `[_rt, self?, user_args...]`. Core cannot know this GML-specific arg offset (it differs per
+    frontend) to align args→params. The correct fix is the TODO-item-8 direction: a frontend (or IR)
+    pass that lowers a constant-pushref `CallV` to a direct `Op::Call` to the resolved FuncId, which
+    makes it visible to the EXISTING direct-call seeding with the correct calling convention — not a
+    core-side CallIndirect arg-alignment hack. Phase 2 as a core change is therefore both useless
+    (0 coverage one-hop) and ill-placed (alignment is frontend knowledge). Deferred to the
+    call-graph-completion lever (item 9 NEXT LEVER).
+
+    **Phase 3 (re-land LCA) — REVERTED: a deeper unsoundness than the indirect-caller gap.** With the
+    Phase-1 gate verified to correctly mark `getPlayerX`'s self param `incomplete=true` (319 call
+    sites incl. `BossKey`, gate fires, drain SKIPS it — confirmed by probe), LCA STILL produced
+    `getPlayerX(self: Enemy)` and +100 `this`-not-assignable (1451→1551). Root cause, fully
+    diagnosed: **the completeness gate gates only the DRAIN decision, but LCA-narrowed concrete types
+    propagate through the `Equal`-link constraint graph into incomplete params, bypassing the gate.**
+    `seed_param_from_arg`'s non-concrete path emits `Equal(arg_var, param_var)` for every non-concrete
+    caller (and links exist between co-calling params). When some OTHER complete-evidence param is
+    LCA-narrowed to `Instance(Enemy)`, unification flows `Enemy` transitively into `getPlayerX`'s
+    incomplete self var — overriding the GMLObject lower-bound fallback that Phase-1 HEAD produced.
+    `BossKey extends WorldObject` (not Enemy), so `this: BossKey` is then not assignable to the
+    leaked `Enemy`. This is NOT the indirect-caller gap (that one the gate now catches); it is a
+    constraint-graph propagation leak that exclusion-from-the-drain does not close.
+
+    **THE REAL FORK for sound LCA (options, none yet chosen — needs a design decision):**
+    - **(A) Gate the propagation, not just the drain.** Prevent any narrowed concrete type from
+      unifying INTO an incomplete param var. Requires the unifier / Equal-processing to know which
+      vars are incomplete and refuse to bind them from a narrowing source (vs. a genuine source).
+      Hard: the arena/`process_constraint` currently has no notion of "this var must not be narrowed";
+      `Equal` is symmetric. Distinguishing "narrowing-derived" bindings from real ones is a solver
+      change, possibly large.
+    - **(B) Don't emit Equal-links from/through incomplete params.** Suppress the
+      `Equal(arg_var, param_var)` for callers of a param that will be marked incomplete. But
+      incompleteness is determined AFTER all seeding (the marking pass runs post-loop), and the link
+      also carries legitimate forward flow; dropping it may lose sound inference elsewhere. Needs a
+      two-phase seed (decide incompleteness first, then emit links) and a coverage measurement.
+    - **(C) Make LCA emit a lower-bound (subtype) constraint, not an `Equal`.** If `Instance(LCA)` is
+      a *lower bound* on the param (param ⊇ LCA) rather than an equality, it would not force the
+      param to exactly LCA and would not over-propagate. Requires a directional/subtype constraint the
+      current HM arena may not support (it is equality-based); also changes what "narrow" means.
+    - **(D) Complete the call graph first (item 9's lever).** With every caller enumerable (constant-
+      pushref CallV→direct Call, constructor-erasure fix), `getPlayerX`'s self would have COMPLETE
+      evidence including BossKey, LCA would correctly compute `WorldObject` (or the true ancestor),
+      and `this: BossKey` would be assignable. This sidesteps the propagation leak by making the
+      narrowed type CORRECT rather than blocking its flow. Strongest soundness story, largest scope
+      (frontend lowering + constructor work).
+
+    Recommendation: **(D)** is the principled root-cause fix (matches item 9's CONVERGENCE), but it
+    is large and partly frontend-side. **(B)** is the smallest sound core-only step IF a coverage
+    measurement shows it doesn't starve legitimate inference. **(A)/(C)** are solver-architecture
+    changes that should not be attempted without a dedicated design pass. LCA stays REVERTED until
+    one of these is chosen and built; the Phase-1 gate is committed and is a prerequisite for all of
+    them.
+
+    Key new code (Phase 1, committed): `compute_address_taken`, `AddressTakenAnalysis`,
+    `resolve_indirect_callee_name`, name-collision detection, the post-loop incomplete-marking pass —
+    all in `constraint_solve_hm.rs`. The LCA helpers (`deepest_common_ancestor`,
+    `lca_of_instance_callers`, `ancestor_chain`) were written, unit-tested, and reverted with the
+    drain branch; re-create from this entry when a fork option is chosen.
+
