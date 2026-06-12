@@ -367,25 +367,46 @@ fn param_used_with_field_access(
 /// Per-parameter inference evidence accumulated across call sites.
 ///
 /// `call_site` holds concrete argument types observed at call sites; `default`
-/// holds the type of the param's default argument (if any). `saw_value` is set
-/// when a call site supplied a genuinely-dynamic (`Type::Value`) argument, so
-/// evidence is incomplete and the param must not be narrowed — it must be left
-/// free rather than narrowed on a subset of call sites.
+/// holds the type of the param's default argument (if any). `incomplete` is set
+/// whenever a caller is dropped from `call_site` without being recorded, so the
+/// remaining evidence no longer enumerates every caller. The drain may narrow a
+/// param from its `call_site` evidence ONLY when `incomplete == false`, i.e. when
+/// `call_site` is a complete enumeration of that param's callers.
+///
+/// A caller is dropped — and therefore marks the evidence incomplete — in three
+/// cases (see `seed_param_from_arg`):
+///  - a genuinely-dynamic (`Type::Value`) argument: not a concrete type to record;
+///  - a body-usage abstention (`usage_suppressed`): the caller declines to contribute;
+///  - a non-concrete argument: linked via an `Equal(arg_var, param_var)` constraint
+///    instead of being pushed to `call_site`.
+///
+/// In every case the caller is absent from `call_site`, so narrowing the param
+/// from `call_site` alone would narrow over a strict subset of callers and could
+/// be unsound (a dropped caller may supply an incompatible type). An incomplete
+/// param therefore falls back to link-driven unification plus the post-fixpoint
+/// lower-bound fallback — the non-concrete link is still emitted, so if a linked
+/// arg later resolves it flows into the param via unification independently.
 #[derive(Default)]
 struct ParamEvidence {
     call_site: Vec<Type>,
     default: Option<Type>,
-    saw_value: bool,
+    incomplete: bool,
 }
 
 /// Seed a callee param's inference evidence from one caller argument.
 ///
 /// Shared body of the Call / MethodCall / MakeClosure arg-seeding loops:
 ///  - already-concrete params need no narrowing (return),
-///  - a `Value` argument marks the evidence incomplete (`saw_value`),
-///  - a body-usage abstention (`usage_suppressed`) declines to contribute,
+///  - a `Value` argument marks the evidence incomplete (the caller is dropped),
+///  - a body-usage abstention (`usage_suppressed`) marks the evidence incomplete
+///    (the caller declines to contribute, so it is dropped from `call_site`),
 ///  - a concrete argument is recorded as call-site evidence, while a non-concrete
-///    argument is linked directly via an `Equal` constraint between the two vars.
+///    argument is linked directly via an `Equal` constraint between the two vars
+///    and marks the evidence incomplete (the caller is not in `call_site`).
+///
+/// Any path that does not push to `call_site` MUST set `incomplete`, so that
+/// `call_site` either enumerates every caller or the param is flagged not to be
+/// narrowed from `call_site` alone.
 #[allow(clippy::too_many_arguments)]
 fn seed_param_from_arg(
     param_concrete_types: &mut BTreeMap<TypeVarId, ParamEvidence>,
@@ -403,14 +424,23 @@ fn seed_param_from_arg(
     let Some(param_var) = param_var else {
         return;
     };
-    // A genuinely-dynamic (`Value`) argument means call-site evidence is
-    // incomplete: record it so the drain site leaves the param free rather than
-    // narrowing on a subset.
+    // A genuinely-dynamic (`Value`) argument means this caller cannot be recorded
+    // as a concrete type: it is dropped from `call_site`, so the evidence no longer
+    // enumerates every caller. Mark it incomplete so the drain leaves the param free.
     if matches!(arg_ty, Type::Value) {
-        param_concrete_types.entry(param_var).or_default().saw_value = true;
+        param_concrete_types
+            .entry(param_var)
+            .or_default()
+            .incomplete = true;
         return;
     }
+    // A body-usage abstention drops this caller from `call_site` without recording
+    // it. The remaining evidence is no longer a complete caller enumeration.
     if usage_suppressed {
+        param_concrete_types
+            .entry(param_var)
+            .or_default()
+            .incomplete = true;
         return;
     }
     if is_concrete(arg_ty) {
@@ -419,11 +449,21 @@ fn seed_param_from_arg(
             .or_default()
             .call_site
             .push(arg_ty.clone());
-    } else if let Some(arg_var) = arg_var {
-        all_constraints.push(TypeConstraint::Equal(
-            Type::InferVar(arg_var),
-            Type::InferVar(param_var),
-        ));
+    } else {
+        // A non-concrete argument is linked via unification instead of being pushed
+        // to `call_site`; this caller is therefore absent from `call_site`. Mark the
+        // evidence incomplete so `call_site` alone never narrows the param — the link
+        // still flows the arg's eventual concrete type into the param independently.
+        param_concrete_types
+            .entry(param_var)
+            .or_default()
+            .incomplete = true;
+        if let Some(arg_var) = arg_var {
+            all_constraints.push(TypeConstraint::Equal(
+                Type::InferVar(arg_var),
+                Type::InferVar(param_var),
+            ));
+        }
     }
 }
 
@@ -902,12 +942,13 @@ impl Transform for ConstraintSolveHM {
         // that HasField sees the concrete union type rather than preempting it.
         let mut union_constraints: Vec<TypeConstraint> = Vec::new();
         for (param_var, evidence) in param_concrete_types {
-            // Evidence-completeness gate: narrow only when every contributing call
-            // site supplied a concrete type. Incomplete evidence (`saw_value`) or
-            // no call-site evidence at all (a default alone never narrows) leaves the
-            // param free — it resolves via the post-fixpoint lower-bound fallback or
-            // emits as `unknown`, the honest inference-failure outcome.
-            if evidence.saw_value || evidence.call_site.is_empty() {
+            // Evidence-completeness gate: narrow only when `call_site` enumerates
+            // every caller of the param. Any dropped caller sets `incomplete` (a
+            // `Value` arg, a usage abstention, or a non-concrete linked arg); with
+            // no call-site evidence at all a default alone never narrows. Either way
+            // the param is left free — it resolves via the post-fixpoint lower-bound
+            // fallback or emits as `unknown`, the honest inference-failure outcome.
+            if evidence.incomplete || evidence.call_site.is_empty() {
                 continue;
             }
             let mut deduped: Vec<Type> = Vec::new();
