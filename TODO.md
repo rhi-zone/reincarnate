@@ -4400,3 +4400,53 @@ From an ecosystem-wide investigation of ad-hoc dispatch architecture (2026-05-29
     `lca_of_instance_callers`, `ancestor_chain`) were written, unit-tested, and reverted with the
     drain branch; re-create from this entry when a fork option is chosen.
 
+11. **Constant-pushref `CallV`→direct `Op::Call` lowering (item-8 / item-9-lever / item-10-option-D)
+    — INVESTIGATED, NO VALID TARGETS IN DEAD ESTATE; the lever's premise is FALSIFIED for this
+    corpus (2026-06-12).** Validated the actual frontend IR before transforming (CLAUDE.md
+    "validate against reality"). Findings:
+
+    - **The canonical failure case is NOT a `CallV` idiom.** `BossKey` (and every other caller of
+      `getPlayerX`) calls it via a *direct* `Call.i[d] gml_Script_getPlayerX` bytecode op → direct
+      `Op::Call(getPlayerX, [_rt, self, args])` in IR → `getPlayerX(this._rt, this, ...)` in emit.
+      The `getPlayerX` call graph is ALREADY COMPLETE via direct calls; it is never dynamically
+      dispatched (`"getPlayerX"` appears 0× as a string const; never an `Op::CallIndirect` target).
+      Disasm confirmed (`disasm --function BossKey`): the only `pushref` ops in BossKey push asset
+      *arguments* (SPRT/SOND refs) to direct `Call`s, not script callees.
+
+    - **At HEAD (LCA reverted), `getPlayerX` emits `self: GMLObject`** — the safe fallback, NOT
+      `Enemy`. `this: BossKey` IS assignable to `GMLObject`. So Phase-1 lowering would not change
+      `getPlayerX` at all (already complete + already sound at the GMLObject fallback).
+
+    - **Of 2269 `Op::CallIndirect` sites in Dead Estate, ZERO are constant-pushref-SCPT idioms.**
+      Callee-definition breakdown (classified from frontend IR dump): 1990 `get_field` (struct
+      method-vars), 271 `call funcN(rt, struct, "fieldname")` = `GameMaker.Instance.getOn` /
+      method-getter helpers (genuinely-dynamic field method-vars: `destroy`, `read`, `readByte`,
+      `live_result`, …), 3 `const`, 3 `load`, 1 `get_index`, and exactly **1** direct `global_ref` —
+      and that one is `"OChallengeCake"`, an **OBJT** (constructor / Phase-3 territory), not a SCPT.
+      Every dynamic dispatch in this game is a real method-variable on a GIF-library / buffer /
+      game-state struct. None is soundly lowerable to a direct `Op::Call`. Phase-1 lowering as
+      specified has **0 targets** here.
+
+    **CONCLUSION / FORK (stopped per task instruction — premise falsified, do not guess a
+    convention for idioms that don't exist):** The task's item-10-option-D plan ("complete the
+    call graph at the source by lowering constant-callee `CallV`, making `getPlayerX`/`BossKey`
+    complete so LCA computes `WorldObject`") rests on a premise that does not hold for Dead Estate:
+    `getPlayerX`'s graph is already complete and BossKey is already a direct caller. The thing that
+    actually blocks sound LCA is unchanged — it is the **Equal-link propagation leak (item 10,
+    options A/B/C)**, NOT call-graph incompleteness for the canonical case. Re-landing LCA now would
+    reproduce the exact +100 `this`-not-assignable regression (1451→1551) item 10 already diagnosed,
+    because the leak path (`seed_param_from_arg` Equal-links flowing a narrowed `Instance(Enemy)`
+    transitively into incomplete params) is independent of whether any `CallV` is lowered.
+
+    Phase-1 lowering remains *correct in principle* for corpora that DO emit constant-pushref-SCPT
+    `CallV` (the reconstruction would be: callee = the pushref'd `global_ref(SCPT_name)` resolved to
+    a module FuncId; convention = prepend `_rt` then the `CallV`-popped receiver/instance — the same
+    `[_rt, self, args]` shape direct script calls already build at ops.rs:865–905), but it is a
+    no-op for the active validation target and therefore cannot be the lever that unblocks LCA here.
+
+    **Recommended next step:** choose among item-10 options **A/B/C** (the solver-side
+    Equal-link/propagation fix — the real blocker), which require a dedicated design pass, NOT more
+    frontend call-graph work. Option D is a dead end for this corpus. Whether constant-pushref `CallV`
+    lowering is worth building at all should be re-evaluated against a corpus that actually contains
+    the idiom (it does not appear in Dead Estate at version 17 bytecode).
+
