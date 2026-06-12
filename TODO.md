@@ -4266,3 +4266,56 @@ From an ecosystem-wide investigation of ad-hoc dispatch architecture (2026-05-29
 
    **Fix direction:** when a `CallV` callee value is provably a constant pushref to a known FuncId (detectable at IR construction or in a dedicated lowering pass), lower it to a direct `Call` to that FuncId. This makes the call visible to call-site inference and eliminates the indirect-call emit. Non-constant `CallV` remains indirect.
 
+9. **`self` receiver typing — progress and the sound-narrowing prerequisite (2026-06-12).**
+
+   **Ownerless-script `self` now narrows (commit `7db18235`):** `self` was a solvable
+   placeholder mis-spelled `Type::Value` — a regression from the Unknown→Value rename. Because
+   `is_concrete(Value) == true` the HM solver treated it as already-resolved and skipped call-site
+   seeding entirely. Re-spelling it as a fresh `InferVar` restored the existing call-site seeding
+   + GMLObject lower-bound fallback. Result: `self: unknown` 979 → 92 (622 → GMLObject, rest →
+   concrete classes). Side-effect: polymorphic ownerless scripts that access object-specific fields
+   through their now-honestly-typed `self` surface ~1,165 TS2339 that `unknown` was swallowing —
+   honest, per the loud posture. Do not revert.
+
+   **Evidence gate is now a true completeness gate (commit `b369cecc`):** `ParamEvidence.saw_value`
+   was renamed/repurposed to `incomplete` and is now set on ALL dropped-caller paths in
+   `seed_param_from_arg` — the silent `usage_suppressed` early-return and the non-concrete-arg link
+   path were both bugs (the gate was certifying "no dynamic caller" rather than "all callers
+   enumerated"). Single-caller (and any union/LCA) narrowing now requires complete caller
+   enumeration. Fixed −22 unsound `this`-not-assignable TS2345 and −155 TS18046; total +87
+   (honest un-narrowing). This completes the U4 evidence-completeness principle for the cases the
+   static call graph can see.
+
+   **Shared-supertype (LCA-of-callers) narrowing — designed, sound-in-isolation, BLOCKED, not
+   committed.** A polymorphic ownerless `self` should narrow to the least-common-ancestor of its
+   caller object-classes in the GML object-parent hierarchy (`TypeDecl::Object.parent`). The
+   design is correct, foundational, and Law-4-forward. The hierarchy supports it: 87% of objects
+   have a real parent; `WorldObject` carries 36 fields, `Enemy` 24. But it is UNSOUND on the
+   current call graph: `Op::CallIndirect` (and method-pointer / `live_call` / dynamic-dispatch)
+   callers are never seeded, so a param with indirect callers cannot be proven complete, and LCA
+   over the visible-only subset excludes real callers — producing `this`-not-assignable. Reverted
+   without a threshold bandaid. The same gap means single-caller narrowing is a KNOWN RESIDUAL
+   UNSOUNDNESS for any param that has un-enumerated indirect callers.
+
+   **THE CONVERGENCE:** Sound call-site receiver narrowing requires a COMPLETE call graph. The
+   incompleteness is the SAME indirect-dispatch gap already recorded in items 7 and 8 above
+   (constructor-erasure / `@@NewGMLObject@@` → `new GMLObject()` and `CallV` / constant-pushref
+   FuncId loss). Threading real FuncIds through indirect and constructor calls unblocks three
+   things at once: (a) sound LCA + closing the residual single-caller unsoundness; (b) dead-code
+   elimination (reachability needs the same edges); (c) Law-3 constructor correctness (`new
+   ColorSwap(...)` instead of `new GMLObject()`). One root, three payoffs — the highest-leverage
+   foundational lever.
+
+   **NEXT LEVER (prioritized):** complete the call graph — thread FuncIds through `CallIndirect`
+   and `@@NewGMLObject@@` / closure / method-var dispatch so every caller is enumerable. Sound LCA
+   + sound single-caller narrowing then land with real coverage. Defer LCA implementation (the
+   helper was written and reverted) until then. A conservative interim (mark `incomplete` whenever
+   any caller reaches via an un-enumerated call shape) would make narrowing fully sound NOW but
+   cover little, because most polymorphic scripts have indirect callers — the call-graph fix is
+   the real unblock.
+
+   Key files: `crates/reincarnate-core/src/transforms/constraint_solve_hm.rs`
+   (seeding / `ParamEvidence` / `incomplete` / drain), `crates/frontends/reincarnate-frontend-gamemaker/src/translate/mod.rs`
+   (`self` spelling), `crates/reincarnate-core/src/ir/inst.rs` (`Op::CallIndirect`), and the
+   constructor-erasure / indirect-call sites in items 7–8 above.
+
