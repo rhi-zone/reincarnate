@@ -26,6 +26,23 @@ Do NOT suppress these diagnostics, disable the pass, or widen a type to silence 
 Each fired diagnostic is a defect report: investigate the inference bug that allowed the
 `InferVar` to escape, and fix the upstream solve or write-back.
 
+## Instance-reference builtin params/returns now `Value` — narrowing opportunity (2026-06-12)
+
+Fixed a Law-4 leak: GML builtins typed their *instance* parameters/returns
+(`Type_ID_Instance`, `Type_Asset_Object` in the manual) as `Type::Int(32)` — the VM
+storage format (instance refs stored as numeric ids), not the source-language type. The
+generator (`tools/gen-gml-builtins`) now maps these to `Type::Value` (honest "dynamic
+instance reference of unknown concrete object type"). This eliminated the
+`Equal(self, Int(32))` constraint that bound ownerless scripts' `self` to `number`
+(`hurt`, `sayOtherExt`, etc. now narrow `self` to their caller-LCA instance type).
+
+**Follow-up (emit quality, not correctness):** an instance-creating builtin like
+`instance_create_depth` now returns `Type::Value` rather than a concrete instance type.
+A human port would type the result as the created object's type. Recovering that requires
+flowing the object-asset argument's classref into the return type (frontend-local, GML
+`instance_create_*` family). Tracked here; not yet done. Until then the return is honestly
+`Value`, not a guessed concrete type.
+
 ## `Type::Value` split — five-role overload finding and phased plan (2026-06-12)
 
 **Finding.** `Type::Unknown` was one IR variant overloaded across five distinct semantic

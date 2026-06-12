@@ -4410,7 +4410,7 @@
         },
         {
           "name": "object",
-          "type_key": "Asset",
+          "type_key": "Instance",
           "optional": true
         },
         {
@@ -4617,7 +4617,7 @@
           "optional": false
         }
       ],
-      "return_type": "Asset",
+      "return_type": "Instance",
       "variadic": false,
       "aliases": []
     },
@@ -4883,7 +4883,7 @@
         },
         {
           "name": "id",
-          "type_key": "Asset",
+          "type_key": "Instance",
           "optional": false
         }
       ],
@@ -5260,7 +5260,7 @@
           "optional": false
         }
       ],
-      "return_type": "Id",
+      "return_type": "Instance",
       "variadic": false,
       "aliases": []
     },
@@ -5351,7 +5351,7 @@
           "optional": false
         }
       ],
-      "return_type": "Id",
+      "return_type": "Instance",
       "variadic": false,
       "aliases": []
     },
@@ -5447,7 +5447,7 @@
           "optional": false
         }
       ],
-      "return_type": "Id",
+      "return_type": "Instance",
       "variadic": false,
       "aliases": []
     },
@@ -5533,7 +5533,7 @@
           "optional": false
         }
       ],
-      "return_type": "Id",
+      "return_type": "Instance",
       "variadic": false,
       "aliases": []
     },
@@ -5619,7 +5619,7 @@
           "optional": false
         }
       ],
-      "return_type": "Id",
+      "return_type": "Instance",
       "variadic": false,
       "aliases": []
     },
@@ -7657,7 +7657,7 @@
       "params": [
         {
           "name": "obj",
-          "type_key": "Asset",
+          "type_key": "Instance",
           "optional": false
         }
       ],
@@ -9299,7 +9299,7 @@
       "params": [
         {
           "name": "instance",
-          "type_key": "Id",
+          "type_key": "Instance",
           "optional": false
         },
         {
@@ -13870,7 +13870,7 @@
     {
       "name": "event_object",
       "params": [],
-      "return_type": "Asset",
+      "return_type": "Instance",
       "variadic": false,
       "aliases": []
     },
@@ -14056,7 +14056,7 @@
       "params": [
         {
           "name": "obj",
-          "type_key": "Asset",
+          "type_key": "Instance",
           "optional": false
         },
         {
@@ -19214,7 +19214,7 @@
     {
       "name": "id",
       "params": [],
-      "return_type": "Id",
+      "return_type": "Instance",
       "variadic": false,
       "aliases": []
     },
@@ -19499,7 +19499,7 @@
       "params": [
         {
           "name": "obj",
-          "type_key": "Asset",
+          "type_key": "Instance",
           "optional": false
         },
         {
@@ -19555,7 +19555,7 @@
       "params": [
         {
           "name": "obj",
-          "type_key": "Asset",
+          "type_key": "Instance",
           "optional": false
         },
         {
@@ -19577,7 +19577,7 @@
           "optional": false
         }
       ],
-      "return_type": "Id",
+      "return_type": "Instance",
       "variadic": false,
       "aliases": []
     },
@@ -19608,7 +19608,7 @@
         },
         {
           "name": "obj",
-          "type_key": "Asset",
+          "type_key": "Instance",
           "optional": false
         },
         {
@@ -19617,7 +19617,7 @@
           "optional": true
         }
       ],
-      "return_type": "Id",
+      "return_type": "Instance",
       "variadic": false,
       "aliases": []
     },
@@ -19641,7 +19641,7 @@
         },
         {
           "name": "obj",
-          "type_key": "Asset",
+          "type_key": "Instance",
           "optional": false
         },
         {
@@ -19650,7 +19650,7 @@
           "optional": true
         }
       ],
-      "return_type": "Id",
+      "return_type": "Instance",
       "variadic": false,
       "aliases": []
     },
@@ -19690,7 +19690,7 @@
       "params": [
         {
           "name": "obj",
-          "type_key": "Asset",
+          "type_key": "Instance",
           "optional": false
         },
         {
@@ -19751,7 +19751,7 @@
       "params": [
         {
           "name": "id",
-          "type_key": "Id",
+          "type_key": "Instance",
           "optional": true
         },
         {
@@ -19769,7 +19769,7 @@
       "params": [
         {
           "name": "obj",
-          "type_key": "Id",
+          "type_key": "Instance",
           "optional": false
         }
       ],
@@ -19782,7 +19782,7 @@
       "params": [
         {
           "name": "obj",
-          "type_key": "Asset",
+          "type_key": "Instance",
           "optional": false
         },
         {
@@ -19791,7 +19791,7 @@
           "optional": false
         }
       ],
-      "return_type": "Id",
+      "return_type": "Instance",
       "variadic": false,
       "aliases": []
     },
@@ -19810,18 +19810,18 @@
         },
         {
           "name": "obj",
-          "type_key": "Asset",
+          "type_key": "Instance",
           "optional": false
         }
       ],
-      "return_type": "Id",
+      "return_type": "Instance",
       "variadic": false,
       "aliases": []
     },
     {
       "name": "instance_id",
       "params": [],
-      "return_type": "Id",
+      "return_type": "Instance",
       "variadic": false,
       "aliases": []
     },
@@ -19834,7 +19834,7 @@
           "optional": false
         }
       ],
-      "return_type": "Id",
+      "return_type": "Instance",
       "variadic": false,
       "aliases": []
     },
@@ -19853,11 +19853,11 @@
         },
         {
           "name": "obj",
-          "type_key": "Asset",
+          "type_key": "Instance",
           "optional": false
         }
       ],
-      "return_type": "Id",
+      "return_type": "Instance",
       "variadic": false,
       "aliases": []
     },
@@ -19866,7 +19866,7 @@
       "params": [
         {
           "name": "obj",
-          "type_key": "Asset",
+          "type_key": "Instance",
           "optional": false
         }
       ],
@@ -19893,7 +19893,7 @@
           "optional": false
         }
       ],
-      "return_type": "Id",
+      "return_type": "Instance",
       "variadic": false,
       "aliases": []
     },
@@ -19949,7 +19949,7 @@
           "optional": false
         }
       ],
-      "return_type": "Id",
+      "return_type": "Instance",
       "variadic": false,
       "aliases": []
     },
@@ -20548,7 +20548,7 @@
         },
         {
           "name": "instance_id",
-          "type_key": "Id",
+          "type_key": "Instance",
           "optional": false
         }
       ],
@@ -21391,7 +21391,7 @@
         },
         {
           "name": "instance_id",
-          "type_key": "Id",
+          "type_key": "Instance",
           "optional": false
         }
       ],
@@ -21426,7 +21426,7 @@
           "optional": false
         }
       ],
-      "return_type": "Id",
+      "return_type": "Instance",
       "variadic": false,
       "aliases": []
     },
@@ -24301,7 +24301,7 @@
           "optional": false
         }
       ],
-      "return_type": "Id",
+      "return_type": "Instance",
       "variadic": false,
       "aliases": []
     },
@@ -24709,7 +24709,7 @@
         },
         {
           "name": "obj",
-          "type_key": "Asset",
+          "type_key": "Instance",
           "optional": false
         },
         {
@@ -25030,7 +25030,7 @@
         },
         {
           "name": "obj",
-          "type_key": "Asset",
+          "type_key": "Instance",
           "optional": false
         }
       ],
@@ -25086,7 +25086,7 @@
         },
         {
           "name": "obj",
-          "type_key": "Asset",
+          "type_key": "Instance",
           "optional": false
         }
       ],
@@ -25162,7 +25162,7 @@
         },
         {
           "name": "obj",
-          "type_key": "Asset",
+          "type_key": "Instance",
           "optional": false
         }
       ],
@@ -25246,7 +25246,7 @@
         },
         {
           "name": "obj",
-          "type_key": "Asset",
+          "type_key": "Instance",
           "optional": false
         }
       ],
@@ -25687,7 +25687,7 @@
       "params": [
         {
           "name": "obj",
-          "type_key": "Asset",
+          "type_key": "Instance",
           "optional": false
         }
       ],
@@ -25700,7 +25700,7 @@
       "params": [
         {
           "name": "obj",
-          "type_key": "Asset",
+          "type_key": "Instance",
           "optional": false
         }
       ],
@@ -25713,7 +25713,7 @@
       "params": [
         {
           "name": "obj",
-          "type_key": "Asset",
+          "type_key": "Instance",
           "optional": false
         }
       ],
@@ -25726,11 +25726,11 @@
       "params": [
         {
           "name": "obj",
-          "type_key": "Asset",
+          "type_key": "Instance",
           "optional": false
         }
       ],
-      "return_type": "Asset",
+      "return_type": "Instance",
       "variadic": false,
       "aliases": []
     },
@@ -25739,7 +25739,7 @@
       "params": [
         {
           "name": "obj",
-          "type_key": "Asset",
+          "type_key": "Instance",
           "optional": false
         }
       ],
@@ -25752,7 +25752,7 @@
       "params": [
         {
           "name": "obj",
-          "type_key": "Asset",
+          "type_key": "Instance",
           "optional": false
         }
       ],
@@ -25765,7 +25765,7 @@
       "params": [
         {
           "name": "obj",
-          "type_key": "Asset",
+          "type_key": "Instance",
           "optional": false
         }
       ],
@@ -25778,7 +25778,7 @@
       "params": [
         {
           "name": "obj",
-          "type_key": "Asset",
+          "type_key": "Instance",
           "optional": false
         }
       ],
@@ -25791,7 +25791,7 @@
       "params": [
         {
           "name": "obj",
-          "type_key": "Asset",
+          "type_key": "Instance",
           "optional": false
         }
       ],
@@ -25802,7 +25802,7 @@
     {
       "name": "object_index",
       "params": [],
-      "return_type": "Asset",
+      "return_type": "Instance",
       "variadic": false,
       "aliases": []
     },
@@ -25811,12 +25811,12 @@
       "params": [
         {
           "name": "obj",
-          "type_key": "Asset",
+          "type_key": "Instance",
           "optional": false
         },
         {
           "name": "par",
-          "type_key": "Asset",
+          "type_key": "Instance",
           "optional": false
         }
       ],
@@ -25829,7 +25829,7 @@
       "params": [
         {
           "name": "index",
-          "type_key": "Asset",
+          "type_key": "Instance",
           "optional": false
         },
         {
@@ -25847,7 +25847,7 @@
       "params": [
         {
           "name": "index",
-          "type_key": "Asset",
+          "type_key": "Instance",
           "optional": false
         },
         {
@@ -25865,7 +25865,7 @@
       "params": [
         {
           "name": "index",
-          "type_key": "Asset",
+          "type_key": "Instance",
           "optional": false
         },
         {
@@ -25883,7 +25883,7 @@
       "params": [
         {
           "name": "index",
-          "type_key": "Asset",
+          "type_key": "Instance",
           "optional": false
         },
         {
@@ -25901,7 +25901,7 @@
       "params": [
         {
           "name": "index",
-          "type_key": "Asset",
+          "type_key": "Instance",
           "optional": false
         },
         {
@@ -28693,7 +28693,7 @@
         },
         {
           "name": "target",
-          "type_key": "Id",
+          "type_key": "Instance",
           "optional": false
         }
       ],
@@ -28711,7 +28711,7 @@
         },
         {
           "name": "target",
-          "type_key": "Id",
+          "type_key": "Instance",
           "optional": false
         },
         {
@@ -29068,12 +29068,12 @@
       "params": [
         {
           "name": "inst1",
-          "type_key": "Id",
+          "type_key": "Instance",
           "optional": false
         },
         {
           "name": "inst2",
-          "type_key": "Id",
+          "type_key": "Instance",
           "optional": false
         },
         {
@@ -29129,12 +29129,12 @@
       "params": [
         {
           "name": "inst1",
-          "type_key": "Id",
+          "type_key": "Instance",
           "optional": false
         },
         {
           "name": "inst2",
-          "type_key": "Id",
+          "type_key": "Instance",
           "optional": false
         },
         {
@@ -29172,12 +29172,12 @@
       "params": [
         {
           "name": "inst1",
-          "type_key": "Id",
+          "type_key": "Instance",
           "optional": false
         },
         {
           "name": "inst2",
-          "type_key": "Id",
+          "type_key": "Instance",
           "optional": false
         },
         {
@@ -29223,12 +29223,12 @@
       "params": [
         {
           "name": "inst1",
-          "type_key": "Id",
+          "type_key": "Instance",
           "optional": false
         },
         {
           "name": "inst2",
-          "type_key": "Id",
+          "type_key": "Instance",
           "optional": false
         },
         {
@@ -29296,12 +29296,12 @@
       "params": [
         {
           "name": "inst1",
-          "type_key": "Id",
+          "type_key": "Instance",
           "optional": false
         },
         {
           "name": "inst2",
-          "type_key": "Id",
+          "type_key": "Instance",
           "optional": false
         },
         {
@@ -29364,12 +29364,12 @@
       "params": [
         {
           "name": "inst1",
-          "type_key": "Id",
+          "type_key": "Instance",
           "optional": false
         },
         {
           "name": "inst2",
-          "type_key": "Id",
+          "type_key": "Instance",
           "optional": false
         },
         {
@@ -29427,12 +29427,12 @@
       "params": [
         {
           "name": "inst1",
-          "type_key": "Id",
+          "type_key": "Instance",
           "optional": false
         },
         {
           "name": "inst2",
-          "type_key": "Id",
+          "type_key": "Instance",
           "optional": false
         },
         {
@@ -29498,12 +29498,12 @@
       "params": [
         {
           "name": "inst1",
-          "type_key": "Id",
+          "type_key": "Instance",
           "optional": false
         },
         {
           "name": "inst2",
-          "type_key": "Id",
+          "type_key": "Instance",
           "optional": false
         },
         {
@@ -29546,12 +29546,12 @@
       "params": [
         {
           "name": "inst1",
-          "type_key": "Id",
+          "type_key": "Instance",
           "optional": false
         },
         {
           "name": "inst2",
-          "type_key": "Id",
+          "type_key": "Instance",
           "optional": false
         },
         {
@@ -30484,7 +30484,7 @@
         },
         {
           "name": "ids",
-          "type_key": "Asset",
+          "type_key": "Instance",
           "optional": false
         },
         {
@@ -30507,7 +30507,7 @@
       "params": [
         {
           "name": "id",
-          "type_key": "Id",
+          "type_key": "Instance",
           "optional": false
         },
         {
@@ -30594,7 +30594,7 @@
         },
         {
           "name": "obj",
-          "type_key": "Asset",
+          "type_key": "Instance",
           "optional": false
         }
       ],
@@ -31025,7 +31025,7 @@
         },
         {
           "name": "obj",
-          "type_key": "Asset",
+          "type_key": "Instance",
           "optional": false
         },
         {
@@ -31500,7 +31500,7 @@
       "params": [
         {
           "name": "object",
-          "type_key": "Asset",
+          "type_key": "Instance",
           "optional": false
         },
         {
@@ -31863,11 +31863,11 @@
         },
         {
           "name": "obj",
-          "type_key": "Asset",
+          "type_key": "Instance",
           "optional": false
         }
       ],
-      "return_type": "Id",
+      "return_type": "Instance",
       "variadic": false,
       "aliases": []
     },
@@ -32310,12 +32310,12 @@
         },
         {
           "name": "object_id",
-          "type_key": "Asset",
+          "type_key": "Instance",
           "optional": false
         },
         {
           "name": "instance_or_object_id",
-          "type_key": "Asset",
+          "type_key": "Instance",
           "optional": false
         }
       ],
@@ -37852,7 +37852,7 @@
       "params": [
         {
           "name": "instance_id",
-          "type_key": "Id",
+          "type_key": "Instance",
           "optional": false
         },
         {
@@ -37870,7 +37870,7 @@
       "params": [
         {
           "name": "instance_id",
-          "type_key": "Id",
+          "type_key": "Instance",
           "optional": false
         },
         {
@@ -37888,7 +37888,7 @@
       "params": [
         {
           "name": "instance_id/global",
-          "type_key": "Id",
+          "type_key": "Instance",
           "optional": false
         }
       ],
@@ -37901,7 +37901,7 @@
       "params": [
         {
           "name": "instance_id",
-          "type_key": "Id",
+          "type_key": "Instance",
           "optional": false
         }
       ],
@@ -37914,7 +37914,7 @@
       "params": [
         {
           "name": "instance_id",
-          "type_key": "Id",
+          "type_key": "Instance",
           "optional": false
         },
         {

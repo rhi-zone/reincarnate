@@ -3746,7 +3746,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
                     Type::Float(64), // width
                     Type::Float(64), // height
                     Type::Float(64), // angle
-                    Type::Int(32),   // object
+                    Type::Value,     // object
                     Type::Float(64), // x_speed
                     Type::Float(64), // y_speed
                     Type::Float(64), // x_border
@@ -3954,7 +3954,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
                 params: vec![
                     Type::Int(32), // camera_id
                 ],
-                return_ty: Type::Int(32),
+                return_ty: Type::Value,
                 defaults: vec![],
                 has_rest_param: false,
                 param_lower_bounds: vec![],
@@ -4162,7 +4162,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             FunctionSig {
                 params: vec![
                     Type::Int(32), // camera_id
-                    Type::Int(32), // id
+                    Type::Value,   // id
                 ],
                 return_ty: Type::Void,
                 defaults: vec![],
@@ -4433,7 +4433,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
                     Type::Bool,      // prec
                     Type::Bool,      // notme
                 ],
-                return_ty: Type::Int(32),
+                return_ty: Type::Value,
                 defaults: vec![],
                 has_rest_param: false,
                 param_lower_bounds: vec![],
@@ -4472,7 +4472,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
                     Type::Bool,      // prec
                     Type::Bool,      // notme
                 ],
-                return_ty: Type::Int(32),
+                return_ty: Type::Value,
                 defaults: vec![],
                 has_rest_param: false,
                 param_lower_bounds: vec![],
@@ -4512,7 +4512,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
                     Type::Bool,      // prec
                     Type::Bool,      // notme
                 ],
-                return_ty: Type::Int(32),
+                return_ty: Type::Value,
                 defaults: vec![],
                 has_rest_param: false,
                 param_lower_bounds: vec![],
@@ -4550,7 +4550,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
                     Type::Bool,      // prec
                     Type::Bool,      // notme
                 ],
-                return_ty: Type::Int(32),
+                return_ty: Type::Value,
                 defaults: vec![],
                 has_rest_param: false,
                 param_lower_bounds: vec![],
@@ -4588,7 +4588,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
                     Type::Bool,      // prec
                     Type::Bool,      // notme
                 ],
-                return_ty: Type::Int(32),
+                return_ty: Type::Value,
                 defaults: vec![],
                 has_rest_param: false,
                 param_lower_bounds: vec![],
@@ -6475,7 +6475,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             "distance_to_object",
             FunctionSig {
                 params: vec![
-                    Type::Int(32), // obj
+                    Type::Value, // obj
                 ],
                 return_ty: Type::Float(64),
                 defaults: vec![],
@@ -7533,7 +7533,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             "draw_skeleton_instance",
             FunctionSig {
                 params: vec![
-                    Type::Int(32),   // instance
+                    Type::Value,     // instance
                     Type::String,    // animname
                     Type::String,    // skinname
                     Type::Float(64), // frame
@@ -10370,7 +10370,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             "event_object",
             FunctionSig {
                 params: vec![],
-                return_ty: Type::Int(32),
+                return_ty: Type::Value,
                 defaults: vec![],
                 has_rest_param: false,
                 param_lower_bounds: vec![],
@@ -10550,7 +10550,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             "event_perform_object",
             FunctionSig {
                 params: vec![
-                    Type::Int(32),   // obj
+                    Type::Value,     // obj
                     Type::Int(32),   // type
                     Type::Float(64), // numb
                 ],
@@ -15311,7 +15311,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             "id",
             FunctionSig {
                 params: vec![],
-                return_ty: Type::Int(32),
+                return_ty: Type::Value,
                 defaults: vec![],
                 has_rest_param: false,
                 param_lower_bounds: vec![],
@@ -15600,8 +15600,8 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             "instance_activate_object",
             FunctionSig {
                 params: vec![
-                    Type::Int(32), // obj
-                    Type::Value,   // collision_space
+                    Type::Value, // obj
+                    Type::Value, // collision_space
                 ],
                 return_ty: Type::Void,
                 defaults: vec![
@@ -15642,8 +15642,8 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             "instance_change",
             FunctionSig {
                 params: vec![
-                    Type::Int(32), // obj
-                    Type::Bool,    // perf
+                    Type::Value, // obj
+                    Type::Bool,  // perf
                 ],
                 return_ty: Type::Void,
                 defaults: vec![],
@@ -15658,7 +15658,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
                 params: vec![
                     Type::Bool, // perf
                 ],
-                return_ty: Type::Int(32),
+                return_ty: Type::Value,
                 defaults: vec![],
                 has_rest_param: false,
                 param_lower_bounds: vec![],
@@ -15683,10 +15683,10 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
                     Type::Float(64), // x
                     Type::Float(64), // y
                     Type::Float(64), // depth
-                    Type::Int(32),   // obj
+                    Type::Value,     // obj
                     Type::Value,     // var_struct
                 ],
-                return_ty: Type::Int(32),
+                return_ty: Type::Value,
                 defaults: vec![
                     None,
                     None,
@@ -15706,10 +15706,10 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
                     Type::Float(64), // x
                     Type::Float(64), // y
                     Type::Int(32),   // layer_id
-                    Type::Int(32),   // obj
+                    Type::Value,     // obj
                     Type::Value,     // var_struct
                 ],
-                return_ty: Type::Int(32),
+                return_ty: Type::Value,
                 defaults: vec![
                     None,
                     None,
@@ -15756,8 +15756,8 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             "instance_deactivate_object",
             FunctionSig {
                 params: vec![
-                    Type::Int(32), // obj
-                    Type::Value,   // collision_space
+                    Type::Value, // obj
+                    Type::Value, // collision_space
                 ],
                 return_ty: Type::Void,
                 defaults: vec![
@@ -15800,8 +15800,8 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             "instance_destroy",
             FunctionSig {
                 params: vec![
-                    Type::Int(32), // id
-                    Type::Bool,    // execute_event_flag
+                    Type::Value, // id
+                    Type::Bool,  // execute_event_flag
                 ],
                 return_ty: Type::Void,
                 defaults: vec![
@@ -15817,7 +15817,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             "instance_exists",
             FunctionSig {
                 params: vec![
-                    Type::Int(32), // obj
+                    Type::Value, // obj
                 ],
                 return_ty: Type::Bool,
                 defaults: vec![],
@@ -15830,10 +15830,10 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             "instance_find",
             FunctionSig {
                 params: vec![
-                    Type::Int(32),   // obj
+                    Type::Value,     // obj
                     Type::Float(64), // n
                 ],
-                return_ty: Type::Int(32),
+                return_ty: Type::Value,
                 defaults: vec![],
                 has_rest_param: false,
                 param_lower_bounds: vec![],
@@ -15846,9 +15846,9 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
                 params: vec![
                     Type::Float(64), // x
                     Type::Float(64), // y
-                    Type::Int(32),   // obj
+                    Type::Value,     // obj
                 ],
-                return_ty: Type::Int(32),
+                return_ty: Type::Value,
                 defaults: vec![],
                 has_rest_param: false,
                 param_lower_bounds: vec![],
@@ -15859,7 +15859,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             "instance_id",
             FunctionSig {
                 params: vec![],
-                return_ty: Type::Int(32),
+                return_ty: Type::Value,
                 defaults: vec![],
                 has_rest_param: false,
                 param_lower_bounds: vec![],
@@ -15872,7 +15872,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
                 params: vec![
                     Type::Float(64), // index
                 ],
-                return_ty: Type::Int(32),
+                return_ty: Type::Value,
                 defaults: vec![],
                 has_rest_param: false,
                 param_lower_bounds: vec![],
@@ -15885,9 +15885,9 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
                 params: vec![
                     Type::Float(64), // x
                     Type::Float(64), // y
-                    Type::Int(32),   // obj
+                    Type::Value,     // obj
                 ],
-                return_ty: Type::Int(32),
+                return_ty: Type::Value,
                 defaults: vec![],
                 has_rest_param: false,
                 param_lower_bounds: vec![],
@@ -15898,7 +15898,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             "instance_number",
             FunctionSig {
                 params: vec![
-                    Type::Int(32), // obj
+                    Type::Value, // obj
                 ],
                 return_ty: Type::Float(64),
                 defaults: vec![],
@@ -15915,7 +15915,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
                     Type::Float(64), // y
                     Type::Value,     // obj
                 ],
-                return_ty: Type::Int(32),
+                return_ty: Type::Value,
                 defaults: vec![],
                 has_rest_param: false,
                 param_lower_bounds: vec![],
@@ -15947,7 +15947,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
                     Type::Float(64), // y
                     Type::Value,     // obj
                 ],
-                return_ty: Type::Int(32),
+                return_ty: Type::Value,
                 defaults: vec![],
                 has_rest_param: false,
                 param_lower_bounds: vec![],
@@ -16546,8 +16546,8 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             "layer_add_instance",
             FunctionSig {
                 params: vec![
-                    Type::String,  // layer_id
-                    Type::Int(32), // instance_id
+                    Type::String, // layer_id
+                    Type::Value,  // instance_id
                 ],
                 return_ty: Type::Void,
                 defaults: vec![],
@@ -17323,8 +17323,8 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             "layer_has_instance",
             FunctionSig {
                 params: vec![
-                    Type::String,  // layer_id
-                    Type::Int(32), // instance_id
+                    Type::String, // layer_id
+                    Type::Value,  // instance_id
                 ],
                 return_ty: Type::Bool,
                 defaults: vec![],
@@ -17353,7 +17353,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
                 params: vec![
                     Type::Int(32), // element_id
                 ],
-                return_ty: Type::Int(32),
+                return_ty: Type::Value,
                 defaults: vec![],
                 has_rest_param: false,
                 param_lower_bounds: vec![],
@@ -19787,7 +19787,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
                 params: vec![
                     Type::Value, // method
                 ],
-                return_ty: Type::Int(32),
+                return_ty: Type::Value,
                 defaults: vec![],
                 has_rest_param: false,
                 param_lower_bounds: vec![],
@@ -20142,7 +20142,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             FunctionSig {
                 params: vec![
                     Type::Int(32), // id
-                    Type::Int(32), // obj
+                    Type::Value,   // obj
                     Type::Bool,    // prec
                 ],
                 return_ty: Type::Void,
@@ -20331,7 +20331,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
                     Type::Float(64), // xgoal
                     Type::Float(64), // ygoal
                     Type::Float(64), // stepsize
-                    Type::Int(32),   // obj
+                    Type::Value,     // obj
                 ],
                 return_ty: Type::Bool,
                 defaults: vec![],
@@ -20363,7 +20363,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
                     Type::Float(64), // xgoal
                     Type::Float(64), // ygoal
                     Type::Float(64), // stepsize
-                    Type::Int(32),   // obj
+                    Type::Value,     // obj
                 ],
                 return_ty: Type::Bool,
                 defaults: vec![],
@@ -20399,7 +20399,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
                     Type::Float(64), // ygoal
                     Type::Float(64), // stepsize
                     Type::Float(64), // factor
-                    Type::Int(32),   // obj
+                    Type::Value,     // obj
                 ],
                 return_ty: Type::Bool,
                 defaults: vec![],
@@ -20447,7 +20447,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
                     Type::Float(64), // xgoal
                     Type::Float(64), // ygoal
                     Type::Float(64), // stepsize
-                    Type::Int(32),   // obj
+                    Type::Value,     // obj
                 ],
                 return_ty: Type::Bool,
                 defaults: vec![],
@@ -20762,7 +20762,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             "object_exists",
             FunctionSig {
                 params: vec![
-                    Type::Int(32), // obj
+                    Type::Value, // obj
                 ],
                 return_ty: Type::Bool,
                 defaults: vec![],
@@ -20775,7 +20775,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             "object_get_mask",
             FunctionSig {
                 params: vec![
-                    Type::Int(32), // obj
+                    Type::Value, // obj
                 ],
                 return_ty: Type::Int(32),
                 defaults: vec![],
@@ -20788,7 +20788,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             "object_get_name",
             FunctionSig {
                 params: vec![
-                    Type::Int(32), // obj
+                    Type::Value, // obj
                 ],
                 return_ty: Type::String,
                 defaults: vec![],
@@ -20801,9 +20801,9 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             "object_get_parent",
             FunctionSig {
                 params: vec![
-                    Type::Int(32), // obj
+                    Type::Value, // obj
                 ],
-                return_ty: Type::Int(32),
+                return_ty: Type::Value,
                 defaults: vec![],
                 has_rest_param: false,
                 param_lower_bounds: vec![],
@@ -20814,7 +20814,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             "object_get_persistent",
             FunctionSig {
                 params: vec![
-                    Type::Int(32), // obj
+                    Type::Value, // obj
                 ],
                 return_ty: Type::Bool,
                 defaults: vec![],
@@ -20827,7 +20827,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             "object_get_physics",
             FunctionSig {
                 params: vec![
-                    Type::Int(32), // obj
+                    Type::Value, // obj
                 ],
                 return_ty: Type::Bool,
                 defaults: vec![],
@@ -20840,7 +20840,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             "object_get_solid",
             FunctionSig {
                 params: vec![
-                    Type::Int(32), // obj
+                    Type::Value, // obj
                 ],
                 return_ty: Type::Bool,
                 defaults: vec![],
@@ -20853,7 +20853,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             "object_get_sprite",
             FunctionSig {
                 params: vec![
-                    Type::Int(32), // obj
+                    Type::Value, // obj
                 ],
                 return_ty: Type::Int(32),
                 defaults: vec![],
@@ -20866,7 +20866,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             "object_get_visible",
             FunctionSig {
                 params: vec![
-                    Type::Int(32), // obj
+                    Type::Value, // obj
                 ],
                 return_ty: Type::Bool,
                 defaults: vec![],
@@ -20879,7 +20879,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             "object_index",
             FunctionSig {
                 params: vec![],
-                return_ty: Type::Int(32),
+                return_ty: Type::Value,
                 defaults: vec![],
                 has_rest_param: false,
                 param_lower_bounds: vec![],
@@ -20890,8 +20890,8 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             "object_is_ancestor",
             FunctionSig {
                 params: vec![
-                    Type::Int(32), // obj
-                    Type::Int(32), // par
+                    Type::Value, // obj
+                    Type::Value, // par
                 ],
                 return_ty: Type::Bool,
                 defaults: vec![],
@@ -20904,7 +20904,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             "object_set_mask",
             FunctionSig {
                 params: vec![
-                    Type::Int(32), // index
+                    Type::Value,   // index
                     Type::Int(32), // spr
                 ],
                 return_ty: Type::Void,
@@ -20918,8 +20918,8 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             "object_set_persistent",
             FunctionSig {
                 params: vec![
-                    Type::Int(32), // index
-                    Type::Bool,    // pers
+                    Type::Value, // index
+                    Type::Bool,  // pers
                 ],
                 return_ty: Type::Void,
                 defaults: vec![],
@@ -20932,8 +20932,8 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             "object_set_solid",
             FunctionSig {
                 params: vec![
-                    Type::Int(32), // index
-                    Type::Bool,    // solid
+                    Type::Value, // index
+                    Type::Bool,  // solid
                 ],
                 return_ty: Type::Void,
                 defaults: vec![],
@@ -20946,7 +20946,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             "object_set_sprite",
             FunctionSig {
                 params: vec![
-                    Type::Int(32), // index
+                    Type::Value,   // index
                     Type::Int(32), // spr
                 ],
                 return_ty: Type::Void,
@@ -20960,8 +20960,8 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             "object_set_visible",
             FunctionSig {
                 params: vec![
-                    Type::Int(32), // index
-                    Type::Bool,    // vis
+                    Type::Value, // index
+                    Type::Bool,  // vis
                 ],
                 return_ty: Type::Void,
                 defaults: vec![],
@@ -23270,7 +23270,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             FunctionSig {
                 params: vec![
                     Type::Int(32), // fixture
-                    Type::Int(32), // target
+                    Type::Value,   // target
                 ],
                 return_ty: Type::Float(64),
                 defaults: vec![],
@@ -23284,7 +23284,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             FunctionSig {
                 params: vec![
                     Type::Int(32),   // fixture
-                    Type::Int(32),   // target
+                    Type::Value,     // target
                     Type::Float(64), // xoffset
                     Type::Float(64), // yoffset
                 ],
@@ -23573,8 +23573,8 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             "physics_joint_distance_create",
             FunctionSig {
                 params: vec![
-                    Type::Int(32),   // inst1
-                    Type::Int(32),   // inst2
+                    Type::Value,     // inst1
+                    Type::Value,     // inst2
                     Type::Float(64), // w_anchor1_x
                     Type::Float(64), // w_anchor1_y
                     Type::Float(64), // w_anchor2_x
@@ -23606,8 +23606,8 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             "physics_joint_friction_create",
             FunctionSig {
                 params: vec![
-                    Type::Int(32),   // inst1
-                    Type::Int(32),   // inst2
+                    Type::Value,     // inst1
+                    Type::Value,     // inst2
                     Type::Float(64), // anchor_x
                     Type::Float(64), // anchor_y
                     Type::Float(64), // max_force
@@ -23625,8 +23625,8 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             "physics_joint_gear_create",
             FunctionSig {
                 params: vec![
-                    Type::Int(32),   // inst1
-                    Type::Int(32),   // inst2
+                    Type::Value,     // inst1
+                    Type::Value,     // inst2
                     Type::Float(64), // joint_1
                     Type::Float(64), // joint_2
                     Type::Float(64), // ratio
@@ -23656,8 +23656,8 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             "physics_joint_prismatic_create",
             FunctionSig {
                 params: vec![
-                    Type::Int(32),   // inst1
-                    Type::Int(32),   // inst2
+                    Type::Value,     // inst1
+                    Type::Value,     // inst2
                     Type::Float(64), // w_anchor_x
                     Type::Float(64), // w_anchor_y
                     Type::Float(64), // w_axis_x
@@ -23681,8 +23681,8 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             "physics_joint_pulley_create",
             FunctionSig {
                 params: vec![
-                    Type::Int(32),   // inst1
-                    Type::Int(32),   // inst2
+                    Type::Value,     // inst1
+                    Type::Value,     // inst2
                     Type::Float(64), // w_anchor1_x
                     Type::Float(64), // w_anchor1_y
                     Type::Float(64), // w_anchor2_x
@@ -23705,8 +23705,8 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             "physics_joint_revolute_create",
             FunctionSig {
                 params: vec![
-                    Type::Int(32),   // inst1
-                    Type::Int(32),   // inst2
+                    Type::Value,     // inst1
+                    Type::Value,     // inst2
                     Type::Float(64), // w_anchor_x
                     Type::Float(64), // w_anchor_y
                     Type::Float(64), // ang_min_limit
@@ -23728,8 +23728,8 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             "physics_joint_rope_create",
             FunctionSig {
                 params: vec![
-                    Type::Int(32),   // inst1
-                    Type::Int(32),   // inst2
+                    Type::Value,     // inst1
+                    Type::Value,     // inst2
                     Type::Float(64), // w_anchor1_x
                     Type::Float(64), // w_anchor1_y
                     Type::Float(64), // w_anchor2_x
@@ -23763,8 +23763,8 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             "physics_joint_weld_create",
             FunctionSig {
                 params: vec![
-                    Type::Int(32),   // inst1
-                    Type::Int(32),   // inst2
+                    Type::Value,     // inst1
+                    Type::Value,     // inst2
                     Type::Float(64), // anchor_x
                     Type::Float(64), // anchor_y
                     Type::Float(64), // ref_angle
@@ -23783,8 +23783,8 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             "physics_joint_wheel_create",
             FunctionSig {
                 params: vec![
-                    Type::Int(32),   // inst1
-                    Type::Int(32),   // inst2
+                    Type::Value,     // inst1
+                    Type::Value,     // inst2
                     Type::Float(64), // anchor_x
                     Type::Float(64), // anchor_y
                     Type::Float(64), // axis_x
@@ -24501,7 +24501,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
                     Type::Float(64), // y_start
                     Type::Float(64), // x_end
                     Type::Float(64), // y_end
-                    Type::Int(32),   // ids
+                    Type::Value,     // ids
                     Type::Bool,      // all_hits
                     Type::Float(64), // max_fraction
                 ],
@@ -24524,7 +24524,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             "physics_remove_fixture",
             FunctionSig {
                 params: vec![
-                    Type::Int(32), // id
+                    Type::Value,   // id
                     Type::Int(32), // fixture
                 ],
                 return_ty: Type::Void,
@@ -24583,7 +24583,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
                     Type::Float(64), // xpos
                     Type::Float(64), // ypos
                     Type::Float(64), // angle
-                    Type::Int(32),   // obj
+                    Type::Value,     // obj
                 ],
                 return_ty: Type::Bool,
                 defaults: vec![],
@@ -24890,7 +24890,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
                 params: vec![
                     Type::Float(64), // x
                     Type::Float(64), // y
-                    Type::Int(32),   // obj
+                    Type::Value,     // obj
                     Type::Bool,      // perf
                 ],
                 return_ty: Type::Void,
@@ -25248,8 +25248,8 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             "rollback_define_player",
             FunctionSig {
                 params: vec![
-                    Type::Int(32), // object
-                    Type::String,  // layer_name
+                    Type::Value,  // object
+                    Type::String, // layer_name
                 ],
                 return_ty: Type::Void,
                 defaults: vec![],
@@ -25611,9 +25611,9 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
                     Type::Int(32),   // index
                     Type::Float(64), // x
                     Type::Float(64), // y
-                    Type::Int(32),   // obj
+                    Type::Value,     // obj
                 ],
-                return_ty: Type::Int(32),
+                return_ty: Type::Value,
                 defaults: vec![],
                 has_rest_param: false,
                 param_lower_bounds: vec![],
@@ -26013,9 +26013,9 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             "sequence_instance_override_object",
             FunctionSig {
                 params: vec![
-                    Type::Value,   // sequence_instance_struct
-                    Type::Int(32), // object_id
-                    Type::Int(32), // instance_or_object_id
+                    Type::Value, // sequence_instance_struct
+                    Type::Value, // object_id
+                    Type::Value, // instance_or_object_id
                 ],
                 return_ty: Type::Void,
                 defaults: vec![],
@@ -30583,8 +30583,8 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             "variable_instance_exists",
             FunctionSig {
                 params: vec![
-                    Type::Int(32), // instance_id
-                    Type::String,  // name
+                    Type::Value,  // instance_id
+                    Type::String, // name
                 ],
                 return_ty: Type::Bool,
                 defaults: vec![],
@@ -30597,8 +30597,8 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             "variable_instance_get",
             FunctionSig {
                 params: vec![
-                    Type::Int(32), // instance_id
-                    Type::String,  // name
+                    Type::Value,  // instance_id
+                    Type::String, // name
                 ],
                 return_ty: Type::Value,
                 defaults: vec![],
@@ -30611,7 +30611,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             "variable_instance_get_names",
             FunctionSig {
                 params: vec![
-                    Type::Int(32), // instance_id/global
+                    Type::Value, // instance_id/global
                 ],
                 return_ty: Type::Array(Box::new(Type::Value)),
                 defaults: vec![],
@@ -30624,7 +30624,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             "variable_instance_names_count",
             FunctionSig {
                 params: vec![
-                    Type::Int(32), // instance_id
+                    Type::Value, // instance_id
                 ],
                 return_ty: Type::Float(64),
                 defaults: vec![],
@@ -30637,9 +30637,9 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str]
             "variable_instance_set",
             FunctionSig {
                 params: vec![
-                    Type::Int(32), // instance_id
-                    Type::String,  // name
-                    Type::Value,   // val
+                    Type::Value,  // instance_id
+                    Type::String, // name
+                    Type::Value,  // val
                 ],
                 return_ty: Type::Void,
                 defaults: vec![],

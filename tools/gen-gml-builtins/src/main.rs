@@ -93,6 +93,21 @@ fn normalize_type(keyref: &str) -> &'static str {
     if keyref == "Type_Struct" {
         return "Struct";
     }
+    // Instance references are NOT integers at the source level: GML stores
+    // instance refs as numeric ids (VM storage format), but an `instance_*`
+    // parameter accepts an *instance value* — `instance_destroy(self)` passes the
+    // calling instance. Typing it `Int(32)` would leak the VM storage format into
+    // the IR signature (Law 4) and force any instance argument's type var to unify
+    // with `Int`. The honest type for "any instance, of any object type" — where
+    // no single concrete `TypeId` applies — is the genuinely-dynamic `Value`
+    // (consistent with the `Object`/`Class` mapping below). `Type_Asset_Object`
+    // (an object asset) flows into the same instance-accepting positions, so it is
+    // treated the same. All other `Type_ID_*` handles (DS maps, buffers, surfaces,
+    // audio emitters, …) and `Type_Asset_*` indices are opaque integer handles at
+    // the GML source level and remain `Int(32)`.
+    if keyref == "Type_ID_Instance" || keyref == "Type_Asset_Object" {
+        return "Instance";
+    }
     if keyref.starts_with("Type_ID_") {
         return "Id";
     }
@@ -118,6 +133,9 @@ fn rust_type(type_key: &str) -> &'static str {
         "Void" => "Type::Void",
         "Array" => "Type::Array(Box::new(Type::Value))",
         "Id" | "Asset" | "Constant" | "Resource" => "Type::Int(32)",
+        // An instance reference of unknown concrete object type — the honest
+        // dynamic type (see `normalize_type`). NOT `Int(32)` (VM storage leak).
+        "Instance" => "Type::Value",
         // Struct, Any, Unknown, and anything else
         _ => "Type::Value",
     }
