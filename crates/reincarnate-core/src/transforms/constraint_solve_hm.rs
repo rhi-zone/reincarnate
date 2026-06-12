@@ -467,6 +467,110 @@ fn seed_param_from_arg(
     }
 }
 
+/// Result of address-taken / indirect-escape analysis over the whole module.
+///
+/// Soundness of call-site param narrowing requires a *complete* enumeration of
+/// every caller of a function. Direct calls (`Op::Call`/`Op::MethodCall`) are
+/// enumerated by the seeding loop. Indirect dispatch (`Op::CallIndirect`) is not
+/// expressed as a static caller→callee edge, so we must bound which functions it
+/// can reach.
+///
+/// A FuncId can only be the target of an indirect call if it first becomes a
+/// *value* somewhere. In this IR a function reference is a value only via a
+/// name-carrying op — `Constant` has no function variant and there is no
+/// first-class `FuncId` value. The complete set of FuncId-escape routes is:
+///  - `Op::MakeClosure { func }` — closure function reference,
+///  - `Op::CoroutineCreate { func }` — coroutine from a function reference,
+///  - `Op::GlobalRef(name)` where `name` resolves to a module function
+///    (the GMS2.3 `pushref`→SCPT route, lowered to `GlobalRef(script_name)`).
+///
+/// Storing a FuncId to a field/global/var, passing it as an argument, or
+/// returning it all first turn it into one of the above as a value, then flow
+/// that value — so the three routes are exhaustive for this IR.
+///
+/// A function NOT in `address_taken` can only be reached by direct calls; its
+/// caller set is fully enumerated and it narrows soundly with no change. A
+/// function in `address_taken` may be the target of `opaque_indirect` if any
+/// `Op::CallIndirect` has a callee value that cannot be traced to a concrete
+/// function reference (a genuinely-dynamic dispatch such as `live_call`, or a
+/// callee flowing from an opaque source). When `opaque_indirect` is set, every
+/// address-taken function has an un-enumerable caller and must be marked
+/// incomplete so neither single-caller nor LCA narrowing fires on partial
+/// evidence.
+struct AddressTakenAnalysis {
+    /// FuncIds whose reference escapes as a value (see routes above).
+    address_taken: HashSet<FuncId>,
+    /// True if any `Op::CallIndirect` callee cannot be resolved to a concrete
+    /// function reference — such a call could target any address-taken function.
+    opaque_indirect: bool,
+}
+
+/// Trace a `CallIndirect` callee `ValueId` back to a concrete function name, if
+/// it is a constant function reference produced by `Op::GlobalRef` in the same
+/// function. Returns `None` for any callee that does not resolve to a single
+/// statically-known function reference (the opaque / genuinely-dynamic case).
+fn resolve_indirect_callee_name<'a>(
+    callee: ValueId,
+    result_to_op: &HashMap<ValueId, &'a Op>,
+) -> Option<&'a str> {
+    match result_to_op.get(&callee)? {
+        Op::GlobalRef(name) => Some(name.as_str()),
+        _ => None,
+    }
+}
+
+/// Compute the address-taken / indirect-escape analysis for the whole module.
+///
+/// `name_to_fid` resolves a function name to its `FuncId`; only names that are
+/// real module functions count as FuncId escapes (a `GlobalRef` to a sprite or
+/// room is not a function reference).
+fn compute_address_taken(
+    module: &Module,
+    name_to_fid: &HashMap<&str, FuncId>,
+) -> AddressTakenAnalysis {
+    let mut address_taken: HashSet<FuncId> = HashSet::new();
+    let mut opaque_indirect = false;
+
+    for (_, func) in module.functions.iter() {
+        // result ValueId → defining Op, for callee tracing within this function.
+        let result_to_op: HashMap<ValueId, &Op> = func
+            .insts
+            .values()
+            .filter_map(|inst| inst.result.map(|r| (r, &inst.op)))
+            .collect();
+
+        for block in func.blocks.values() {
+            for &inst_id in &block.insts {
+                match &func.insts[inst_id].op {
+                    Op::MakeClosure { func: name, .. } | Op::CoroutineCreate { func: name, .. } => {
+                        if let Some(&fid) = name_to_fid.get(name.as_str()) {
+                            address_taken.insert(fid);
+                        }
+                    }
+                    Op::GlobalRef(name) => {
+                        if let Some(&fid) = name_to_fid.get(name.as_str()) {
+                            address_taken.insert(fid);
+                        }
+                    }
+                    Op::CallIndirect { callee, .. } => {
+                        if resolve_indirect_callee_name(*callee, &result_to_op).is_none() {
+                            // Callee is not a statically-known function reference:
+                            // this dispatch could target any address-taken function.
+                            opaque_indirect = true;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    AddressTakenAnalysis {
+        address_taken,
+        opaque_indirect,
+    }
+}
+
 impl Transform for ConstraintSolveHM {
     fn name(&self) -> &str {
         "constraint-solve-hm"
@@ -680,12 +784,27 @@ impl Transform for ConstraintSolveHM {
                 .enumerate()
                 .map(|(idx, fid)| (fid, idx))
                 .collect();
-            let name_to_idx: HashMap<&str, (usize, FuncId)> = module
-                .functions
-                .keys()
-                .enumerate()
-                .map(|(idx, fid)| (module.func_name(fid), (idx, fid)))
-                .collect();
+            // name → (idx, fid). Built by inserting in FuncId order; a name shared
+            // by multiple functions (collision) keeps the last insertion. Collisions
+            // make name-based dispatch (MethodCall / MakeClosure / GlobalRef) ambiguous:
+            // a caller naming a colliding function is attributed to only one of them, so
+            // every same-named function has an under-enumerated caller set. Such
+            // functions are marked incomplete below so they never narrow on partial
+            // evidence.
+            let mut name_to_idx: HashMap<&str, (usize, FuncId)> = HashMap::new();
+            let mut name_seen: HashMap<&str, FuncId> = HashMap::new();
+            let mut name_collisions: HashSet<&str> = HashSet::new();
+            for (idx, fid) in module.functions.keys().enumerate() {
+                let name = module.func_name(fid);
+                if name_seen.insert(name, fid).is_some() {
+                    name_collisions.insert(name);
+                }
+                name_to_idx.insert(name, (idx, fid));
+            }
+            // name → fid for FuncId-escape resolution (any module function name).
+            let name_to_fid: HashMap<&str, FuncId> =
+                name_seen.iter().map(|(&n, &f)| (n, f)).collect();
+            let addr_taken = compute_address_taken(&module, &name_to_fid);
             for (caller_idx, (caller_fid, func)) in module.functions.iter().enumerate() {
                 let _caller_name = module.func_name(caller_fid);
                 let caller_data = &func_data[caller_idx];
@@ -907,6 +1026,59 @@ impl Transform for ConstraintSolveHM {
                             _ => {}
                         }
                     }
+                }
+            }
+
+            // -------------------------------------------------------------------
+            // Completeness marking over all call shapes.
+            //
+            // The seeding loop above enumerates only direct callers. Two classes
+            // of caller are NOT enumerable from that traversal and therefore make
+            // the callee's caller set incomplete:
+            //
+            //  1. Indirect dispatch (`Op::CallIndirect`) with an opaque callee.
+            //     An address-taken function could be the target of any such call,
+            //     so its caller set is under-enumerated. Non-address-taken
+            //     functions are unreachable by indirect dispatch and stay sound.
+            //
+            //  2. Name-collision dispatch. A name shared by multiple functions is
+            //     resolved to a single one by `name_to_idx`; a caller naming a
+            //     colliding function is attributed to only one of them, so every
+            //     same-named function has an under-enumerated caller set.
+            //
+            // In both cases we mark every narrowable param var of the affected
+            // function `incomplete`, so the drain leaves the param free (it still
+            // resolves via link-driven unification or emits as the honest
+            // inference-failure `unknown`). This is the soundness gate over all
+            // call shapes; without it, single-caller or LCA narrowing of a
+            // function with an un-enumerated indirect/colliding caller is unsound.
+            let mark_func_params_incomplete =
+                |param_concrete_types: &mut BTreeMap<TypeVarId, ParamEvidence>,
+                 callee_idx: usize,
+                 callee_func: &crate::ir::Function| {
+                    let callee_data = &func_data[callee_idx];
+                    let entry = callee_func.entry;
+                    for p in &callee_func.blocks[entry].params {
+                        let param_ty = &callee_func.value_types[p.value];
+                        if is_concrete(param_ty) {
+                            continue;
+                        }
+                        if let Some(&param_var) = callee_data.value_vars.get(&p.value) {
+                            param_concrete_types
+                                .entry(param_var)
+                                .or_default()
+                                .incomplete = true;
+                        }
+                    }
+                };
+
+            for (callee_idx, (callee_fid, callee_func)) in module.functions.iter().enumerate() {
+                let name = module.func_name(callee_fid);
+                let unenumerable = name_collisions.contains(name)
+                    || (addr_taken.opaque_indirect
+                        && addr_taken.address_taken.contains(&callee_fid));
+                if unenumerable {
+                    mark_func_params_incomplete(&mut param_concrete_types, callee_idx, callee_func);
                 }
             }
         }
@@ -1452,5 +1624,132 @@ mod tests {
         let pass = ConstraintSolveHM;
         let result = pass.apply(module, None).expect("apply failed");
         assert!(!result.changed);
+    }
+
+    /// Build a module with: `target` (referenced via MakeClosure), `unref` (never
+    /// referenced as a value), and `caller` (takes the closure ref and either
+    /// makes the closure or performs an opaque indirect call).
+    fn module_with_escapes(opaque_indirect: bool) -> Module {
+        let mut mb = ModuleBuilder::new("test");
+
+        let tsig = FunctionSig {
+            params: vec![Type::Float(64)],
+            return_ty: Type::Void,
+            ..Default::default()
+        };
+        let mut tb = FunctionBuilder::new("target", tsig, Visibility::Public);
+        let _ = tb.param(0);
+        tb.ret(None);
+        mb.add_function(tb.build());
+
+        let usig = FunctionSig {
+            params: vec![Type::Float(64)],
+            return_ty: Type::Void,
+            ..Default::default()
+        };
+        let mut ub = FunctionBuilder::new("unref", usig, Visibility::Public);
+        let _ = ub.param(0);
+        ub.ret(None);
+        mb.add_function(ub.build());
+
+        let csig = FunctionSig {
+            params: vec![],
+            return_ty: Type::Void,
+            ..Default::default()
+        };
+        let mut cb = FunctionBuilder::new("caller", csig, Visibility::Public);
+        // MakeClosure("target") makes `target` address-taken.
+        let _clo = cb.make_closure("target", &[], Type::Value);
+        if opaque_indirect {
+            // An indirect call whose callee is an opaque value (a param load, here
+            // a fresh const) — not a GlobalRef to a known function.
+            let opaque = cb.const_float(0.0);
+            let _ = cb.call_indirect(opaque, &[], Type::Value);
+        }
+        cb.ret(None);
+        mb.add_function(cb.build());
+
+        mb.build()
+    }
+
+    #[test]
+    fn address_taken_includes_closure_target_only() {
+        let module = module_with_escapes(false);
+        let name_to_fid: HashMap<&str, FuncId> = module
+            .functions
+            .keys()
+            .map(|fid| (module.func_name(fid), fid))
+            .collect();
+        let analysis = compute_address_taken(&module, &name_to_fid);
+        let target = name_to_fid["target"];
+        let unref = name_to_fid["unref"];
+        assert!(
+            analysis.address_taken.contains(&target),
+            "MakeClosure target must be address-taken"
+        );
+        assert!(
+            !analysis.address_taken.contains(&unref),
+            "a function never referenced as a value must not be address-taken"
+        );
+        assert!(
+            !analysis.opaque_indirect,
+            "no CallIndirect ⇒ no opaque indirect dispatch"
+        );
+    }
+
+    #[test]
+    fn opaque_call_indirect_sets_opaque_flag() {
+        let module = module_with_escapes(true);
+        let name_to_fid: HashMap<&str, FuncId> = module
+            .functions
+            .keys()
+            .map(|fid| (module.func_name(fid), fid))
+            .collect();
+        let analysis = compute_address_taken(&module, &name_to_fid);
+        assert!(
+            analysis.opaque_indirect,
+            "an unresolvable CallIndirect callee must set opaque_indirect"
+        );
+    }
+
+    #[test]
+    fn global_ref_to_function_is_address_taken_but_resolvable_indirect_is_not_opaque() {
+        // caller2: globalref("target") then call_indirect(that ref) — a resolvable
+        // indirect call. `target` is address-taken (its name escaped via GlobalRef),
+        // but the call is NOT opaque because the callee traces to a known function.
+        let mut mb = ModuleBuilder::new("test");
+        let tsig = FunctionSig {
+            params: vec![Type::Float(64)],
+            return_ty: Type::Void,
+            ..Default::default()
+        };
+        let mut tb = FunctionBuilder::new("target", tsig, Visibility::Public);
+        let _ = tb.param(0);
+        tb.ret(None);
+        mb.add_function(tb.build());
+
+        let csig = FunctionSig {
+            params: vec![],
+            return_ty: Type::Void,
+            ..Default::default()
+        };
+        let mut cb = FunctionBuilder::new("caller2", csig, Visibility::Public);
+        let r = cb.global_ref("target", Type::Value);
+        let _ = cb.call_indirect(r, &[], Type::Value);
+        cb.ret(None);
+        mb.add_function(cb.build());
+
+        let module = mb.build();
+        let name_to_fid: HashMap<&str, FuncId> = module
+            .functions
+            .keys()
+            .map(|fid| (module.func_name(fid), fid))
+            .collect();
+        let analysis = compute_address_taken(&module, &name_to_fid);
+        assert!(analysis.address_taken.contains(&name_to_fid["target"]));
+        assert!(
+            !analysis.opaque_indirect,
+            "a CallIndirect whose callee is a GlobalRef to a known function is resolvable, not opaque"
+        );
     }
 }
