@@ -94,19 +94,21 @@ Key files: `crates/reincarnate-core/src/ir/ty.rs`, `.../ir/builder.rs`,
 
 **Loud-posture impact — deliberate, do not revert.** Dead Estate check total rose from ~25,476 to ~30,282. The delta (~4,878 RC0006) is functions where inference genuinely doesn't resolve — previously hidden by the conflation (spelled `Value`, lowered to `unknown`, only soft filtered diagnostics). Emitted TS is unchanged; only the diagnostic changed. Do NOT "fix" the 30,282 by reverting the loud posture or by lowering unresolved `InferVar` to `Value` — that reintroduces the swallowing the split removed (the CLAUDE.md law now forbids it).
 
-**RC0006 backlog is the quantified work surface.** Clean-HEAD measurement found ~67,810 unresolved cells across ~4,878 functions, by op:
+**RC0006 backlog is the quantified work surface.** Clean-HEAD measurement found ~67,810 unresolved cells across ~4,878 functions, by op (pre-arc baseline):
 
 | Op | Unresolved cells | Root cause |
 |---|---|---|
 | `Call` | 35,541 | Constructor-erasure (`@@NewGMLObject@@`) + closure/method-var FuncId loss — call results can't be typed when callee link is lost |
 | `CallIndirect` | 4,478 | Same: indirect dispatch loses callee signature |
-| `GetField` | 16,933 | `self`/`this.field` receiver typing — the dominant known lever, already the NEXT-LEVER target |
+| `GetField` | 16,933 | `self`/`this.field` receiver typing — substantially addressed by the arc below; new dominant lever is TS2339 authored-field inference |
 | `GlobalRef` | 7,446 | Unresolved globals |
 | `GetIndex` | 1,616 | Unresolved indexing |
 
 These map exactly to the inference levers already identified and prioritized below. Closing each op category is what drives RC0006 down.
 
-**Minor follow-up (filed):** `ValidateNoEscapedTypeVars` currently breaks after first hit per function, so 4,878 RC0006 undercounts the ~67,810 true unresolved cells. Reporting all escaped cells (not one-per-function) would make the loud count reflect the true backlog.
+**Post-arc update (2026-06-12):** The receiver-typing arc (commits `7db18235`→`950f5e4a`, see item 9 below) resolved the GetField receiver gap for ownerless scripts. RC0006 count rose slightly to ~4,935 as the loud posture now honestly surfaces more previously-swallowed InferVars. The ~4,935 deliberate loud backlog is the new working baseline; do not revert. Next levers: TS2339 authored-field inference (~7,355) and closing the Call/CallIndirect callee-link gaps.
+
+**Minor follow-up (filed):** `ValidateNoEscapedTypeVars` currently breaks after first hit per function, so 4,935 RC0006 undercounts the ~67,810 true unresolved cells. Reporting all escaped cells (not one-per-function) would make the loud count reflect the true backlog.
 
 ---
 
@@ -4265,7 +4267,7 @@ From an ecosystem-wide investigation of ad-hoc dispatch architecture (2026-05-29
    CONFIRMED facts to reuse:
    - Intentional-any params (select, `_any` builtins, runtime-library sigs) are STRUCTURALLY EXEMPT because `Module::register_runtime` builds them with EMPTY entry-block params, so the seeding loops (which key off entry-block param ValueIds) never reach them.
 
-   **Next lever:** see the NEXT-LEVER entry below (self/this.field pivot).
+   **Next lever:** receiver-typing arc LANDED (item 9 below). Successor lever: TS2339 authored-field inference on now-narrowed receivers (item 10 below).
 
 7. **`@@NewGMLObject@@` constructor erasure — Law 3 behavioral correctness bug (2026-06-12, HIGH PRIORITY).**
 
@@ -4283,187 +4285,78 @@ From an ecosystem-wide investigation of ad-hoc dispatch architecture (2026-05-29
 
    **Fix direction:** when a `CallV` callee value is provably a constant pushref to a known FuncId (detectable at IR construction or in a dedicated lowering pass), lower it to a direct `Call` to that FuncId. This makes the call visible to call-site inference and eliminates the indirect-call emit. Non-constant `CallV` remains indirect.
 
-9. **`self` receiver typing — progress and the sound-narrowing prerequisite (2026-06-12).**
+9. **Receiver-typing inference arc — LANDED (commit chain on master, 2026-06-12).**
 
-   **Ownerless-script `self` now narrows (commit `7db18235`):** `self` was a solvable
-   placeholder mis-spelled `Type::Value` — a regression from the Unknown→Value rename. Because
-   `is_concrete(Value) == true` the HM solver treated it as already-resolved and skipped call-site
-   seeding entirely. Re-spelling it as a fresh `InferVar` restored the existing call-site seeding
-   + GMLObject lower-bound fallback. Result: `self: unknown` 979 → 92 (622 → GMLObject, rest →
-   concrete classes). Side-effect: polymorphic ownerless scripts that access object-specific fields
-   through their now-honestly-typed `self` surface ~1,165 TS2339 that `unknown` was swallowing —
-   honest, per the loud posture. Do not revert.
+   **RESOLVED.** Five commits closed the self/this.field receiver-typing lever, which was the
+   dominant `unknown`→X source. The Equal-link propagation leak (item 10) and the LCA-blocked
+   framing (item 9 prior) are both resolved by `4de16db9`'s post-fixpoint join design. Items 10
+   and 11 are superseded by this arc.
 
-   **Evidence gate is now a true completeness gate (commit `b369cecc`):** `ParamEvidence.saw_value`
-   was renamed/repurposed to `incomplete` and is now set on ALL dropped-caller paths in
-   `seed_param_from_arg` — the silent `usage_suppressed` early-return and the non-concrete-arg link
-   path were both bugs (the gate was certifying "no dynamic caller" rather than "all callers
-   enumerated"). Single-caller (and any union/LCA) narrowing now requires complete caller
-   enumeration. Fixed −22 unsound `this`-not-assignable TS2345 and −155 TS18046; total +87
-   (honest un-narrowing). This completes the U4 evidence-completeness principle for the cases the
-   static call graph can see.
+   Commit chain:
+   - **`7db18235`** — ownerless-script `self` re-spelled as a fresh `InferVar` (was mis-spelled
+     `Type::Value` after the Unknown→Value rename; `is_concrete(Value)==true` caused the solver to
+     skip call-site seeding entirely). Restored call-site seeding + GMLObject lower-bound fallback;
+     `self: unknown` 979 → 92.
+   - **`b369cecc`** — evidence gate enforces true caller completeness. `ParamEvidence.incomplete`
+     now fires on ALL dropped-caller paths (silent `usage_suppressed` early-return and the
+     non-concrete-arg link path were both bugs). Single-caller and union/LCA narrowing require
+     complete caller enumeration. Fixed −22 unsound `this`-not-assignable TS2345.
+   - **`864cddf7`** — address-taken analysis bounds indirect-call incompleteness. `compute_address_taken`
+     enumerates all FuncId-escape routes (`MakeClosure`, `CoroutineCreate`, `GlobalRef`→SCPT). A
+     function is marked `incomplete` only when address-taken AND an opaque `CallIndirect` exists (or
+     name collision). Non-address-taken funcs stay sound. Unit-tested; no metric moved (sound
+     foundation only).
+   - **`4de16db9` — THE root fix:** call-site param inference is a JOIN (LCA over the object-parent
+     hierarchy) of the complete caller set, not equality unification. Three parts: (1) completeness
+     distinguishes genuinely-dynamic callers (`Type::Value`/opaque → `incomplete`) from not-yet-
+     resolved linked param-vars (recorded as directional lower bounds, not poison — removes the
+     Equal-link propagation leak); (2) post-fixpoint join over the complete lower-bound set, iterated
+     to a fixpoint; (3) the sound call-site join takes precedence over the HasField single-owner
+     heuristic (a fallback for evidence-less values only). Result: `getPlayerX.self → GMLObject`
+     (supertype of all 319 callers incl. `BossKey`, not the heuristic's wrong `Enemy`);
+     `drawSelfNormally → WorldObject`; `hurt`/`sayOtherExt.self → concrete instance`. `this`-not-
+     assignable 1451 → 236; `this`-not-assignable-to-`number` 112 → 0.
+   - **`950f5e4a`** — instance-reference builtin params (`instance_destroy`/`instance_exists`/…
+     "Object Instance or Object Asset") were mistyped `Int(32)` by the signature generator (VM
+     storage format leaking into source type, Law 4); now `Type::Value`. Fixed in the frontend
+     generator (`tools/gen-gml-builtins`, Law 2). This eliminated the `Equal(self, Int(32))`
+     constraint that was typing 16 ownerless scripts' `self` as `number`.
 
-   **Shared-supertype (LCA-of-callers) narrowing — designed, sound-in-isolation, BLOCKED, not
-   committed.** A polymorphic ownerless `self` should narrow to the least-common-ancestor of its
-   caller object-classes in the GML object-parent hierarchy (`TypeDecl::Object.parent`). The
-   design is correct, foundational, and Law-4-forward. The hierarchy supports it: 87% of objects
-   have a real parent; `WorldObject` carries 36 fields, `Enemy` 24. But it is UNSOUND on the
-   current call graph: `Op::CallIndirect` (and method-pointer / `live_call` / dynamic-dispatch)
-   callers are never seeded, so a param with indirect callers cannot be proven complete, and LCA
-   over the visible-only subset excludes real callers — producing `this`-not-assignable. Reverted
-   without a threshold bandaid. The same gap means single-caller narrowing is a KNOWN RESIDUAL
-   UNSOUNDNESS for any param that has un-enumerated indirect callers.
+   **Session result:** `this`-not-assignable 1451 → 236; `this`-not-assignable-to-`number` 112 → 0;
+   total ~22,445 (from pre-loud baseline ~25,446, while carrying the deliberate ~4,935 RC0006 loud
+   backlog). Also landed in the same session: TS1243 declare-override 926→0, TS7053 stranded
+   native-dispatch reconnected ~9k→~37, TS2322 void event-returns 727→0, TS2339 GML builtin
+   instance vars/globals ~1,961 fixed, rest-param default syntax.
 
-   **THE CONVERGENCE:** Sound call-site receiver narrowing requires a COMPLETE call graph. The
-   incompleteness is the SAME indirect-dispatch gap already recorded in items 7 and 8 above
-   (constructor-erasure / `@@NewGMLObject@@` → `new GMLObject()` and `CallV` / constant-pushref
-   FuncId loss). Threading real FuncIds through indirect and constructor calls unblocks three
-   things at once: (a) sound LCA + closing the residual single-caller unsoundness; (b) dead-code
-   elimination (reachability needs the same edges); (c) Law-3 constructor correctness (`new
-   ColorSwap(...)` instead of `new GMLObject()`). One root, three payoffs — the highest-leverage
-   foundational lever.
+   **Follow-up (instance-creating builtins, emit quality):** `instance_create_depth` and family now
+   return `Type::Value` rather than `Int(32)`. A human port would type the result as the created
+   object's type. Recovering that requires flowing the object-asset argument's classref into the
+   return type (frontend-local, GML `instance_create_*` family). Tracked; not yet done.
 
-   **NEXT LEVER (prioritized):** complete the call graph — thread FuncIds through `CallIndirect`
-   and `@@NewGMLObject@@` / closure / method-var dispatch so every caller is enumerable. Sound LCA
-   + sound single-caller narrowing then land with real coverage. Defer LCA implementation (the
-   helper was written and reverted) until then. A conservative interim (mark `incomplete` whenever
-   any caller reaches via an un-enumerated call shape) would make narrowing fully sound NOW but
-   cover little, because most polymorphic scripts have indirect callers — the call-graph fix is
-   the real unblock.
+10. **Next levers — current landscape (post-arc, 2026-06-12).**
 
-   Key files: `crates/reincarnate-core/src/transforms/constraint_solve_hm.rs`
-   (seeding / `ParamEvidence` / `incomplete` / drain), `crates/frontends/reincarnate-frontend-gamemaker/src/translate/mod.rs`
-   (`self` spelling), `crates/reincarnate-core/src/ir/inst.rs` (`Op::CallIndirect`), and the
-   constructor-erasure / indirect-call sites in items 7–8 above.
+    - **TS2339 (~7,355) — authored fields on now-narrowed receivers.** Receiver narrowing honestly
+      un-masked field accesses that `unknown` was swallowing: `self.<authored_field>` now needs the
+      field to resolve on the receiver's concrete type. This is the per-object field-inference lever
+      (ConstructorStructInfer / struct-field inference from all events, not just `create`). The
+      largest remaining bucket; the natural next target now that receivers are typed.
 
-10. **Address-taken gate landed; LCA re-attempt found a DEEPER unsoundness — the Equal-link
-    propagation leak (2026-06-12, commit `864cddf7` = Phase 1; Phase 3 reverted).**
+    - **RC0006 (~4,935) — the deliberate loud inference backlog** (Call/GetField/closure results
+      that genuinely don't resolve). Reducing it needs the closure/method-var FuncId threading (the
+      call-graph-completion lever — items 7 and 8 above) and continued field/return inference.
 
-    **Phase 1 DONE (`864cddf7`):** The completeness gate is now sound over ALL call shapes, not
-    just direct `Op::Call`/`Op::MethodCall`. New `compute_address_taken` enumerates the complete
-    set of FuncId-escape routes in this IR — `Op::MakeClosure{func}`, `Op::CoroutineCreate{func}`,
-    `Op::GlobalRef(name)` resolving to a module function (the GMS2.3 pushref→SCPT route). (Validated:
-    `Constant` has no function variant and there is no first-class FuncId value, so storing/passing/
-    returning a FuncId all first route through one of these three.) A function is marked `incomplete`
-    when (a) it is address-taken AND an opaque `Op::CallIndirect` exists (could target it), or (b)
-    its name collides with another function (name-based dispatch is ambiguous). `name_to_idx` now
-    detects collisions instead of silently dropping. Non-address-taken funcs stay sound with no
-    change. Dead Estate: 59 address-taken funcs, opaque_indirect=true, 1 name collision. NO metric
-    moved (only adds incompleteness marks; single-caller/LCA not yet landed) — this is the sound
-    foundation. Unit tests cover all three escape routes + resolvable-vs-opaque indirect dispatch.
+    Key files: `crates/reincarnate-core/src/transforms/constraint_solve_hm.rs` (the join/drain/
+    post-fixpoint machinery), `crates/frontends/reincarnate-frontend-gamemaker/src/transforms/
+    constructor_struct_infer.rs` (field inference — next lever), `tools/gen-gml-builtins` (Law-2
+    boundary for instance-ref builtin types).
 
-    **Phase 2 (seed resolvable CallIndirect callers) — NO-OP in Dead Estate + blocked by calling
-    convention.** One-hop callee tracing (`CallIndirect.callee` → `Op::GlobalRef(known func)` in the
-    same function) resolves ZERO indirect calls in Dead Estate — every `CallV` callee flows through
-    intermediate ops (loads/method-vars), so the GlobalRef does not directly feed the CallIndirect.
-    Separately, even where a callee resolves, seeding is BLOCKED by a Law-2 calling-convention
-    mismatch: `CallV`→`CallIndirect` lowering (`translate/ops.rs:916`) DISCARDS the receiver and does
-    NOT prepend `_rt`, so `CallIndirect.args` are raw user args, while the resolved callee's IR params
-    are `[_rt, self?, user_args...]`. Core cannot know this GML-specific arg offset (it differs per
-    frontend) to align args→params. The correct fix is the TODO-item-8 direction: a frontend (or IR)
-    pass that lowers a constant-pushref `CallV` to a direct `Op::Call` to the resolved FuncId, which
-    makes it visible to the EXISTING direct-call seeding with the correct calling convention — not a
-    core-side CallIndirect arg-alignment hack. Phase 2 as a core change is therefore both useless
-    (0 coverage one-hop) and ill-placed (alignment is frontend knowledge). Deferred to the
-    call-graph-completion lever (item 9 NEXT LEVER).
+11. **Constant-pushref `CallV`→direct `Op::Call` lowering — SUPERSEDED / NO VALID TARGETS IN DEAD ESTATE.**
 
-    **Phase 3 (re-land LCA) — REVERTED: a deeper unsoundness than the indirect-caller gap.** With the
-    Phase-1 gate verified to correctly mark `getPlayerX`'s self param `incomplete=true` (319 call
-    sites incl. `BossKey`, gate fires, drain SKIPS it — confirmed by probe), LCA STILL produced
-    `getPlayerX(self: Enemy)` and +100 `this`-not-assignable (1451→1551). Root cause, fully
-    diagnosed: **the completeness gate gates only the DRAIN decision, but LCA-narrowed concrete types
-    propagate through the `Equal`-link constraint graph into incomplete params, bypassing the gate.**
-    `seed_param_from_arg`'s non-concrete path emits `Equal(arg_var, param_var)` for every non-concrete
-    caller (and links exist between co-calling params). When some OTHER complete-evidence param is
-    LCA-narrowed to `Instance(Enemy)`, unification flows `Enemy` transitively into `getPlayerX`'s
-    incomplete self var — overriding the GMLObject lower-bound fallback that Phase-1 HEAD produced.
-    `BossKey extends WorldObject` (not Enemy), so `this: BossKey` is then not assignable to the
-    leaked `Enemy`. This is NOT the indirect-caller gap (that one the gate now catches); it is a
-    constraint-graph propagation leak that exclusion-from-the-drain does not close.
-
-    **THE REAL FORK for sound LCA (options, none yet chosen — needs a design decision):**
-    - **(A) Gate the propagation, not just the drain.** Prevent any narrowed concrete type from
-      unifying INTO an incomplete param var. Requires the unifier / Equal-processing to know which
-      vars are incomplete and refuse to bind them from a narrowing source (vs. a genuine source).
-      Hard: the arena/`process_constraint` currently has no notion of "this var must not be narrowed";
-      `Equal` is symmetric. Distinguishing "narrowing-derived" bindings from real ones is a solver
-      change, possibly large.
-    - **(B) Don't emit Equal-links from/through incomplete params.** Suppress the
-      `Equal(arg_var, param_var)` for callers of a param that will be marked incomplete. But
-      incompleteness is determined AFTER all seeding (the marking pass runs post-loop), and the link
-      also carries legitimate forward flow; dropping it may lose sound inference elsewhere. Needs a
-      two-phase seed (decide incompleteness first, then emit links) and a coverage measurement.
-    - **(C) Make LCA emit a lower-bound (subtype) constraint, not an `Equal`.** If `Instance(LCA)` is
-      a *lower bound* on the param (param ⊇ LCA) rather than an equality, it would not force the
-      param to exactly LCA and would not over-propagate. Requires a directional/subtype constraint the
-      current HM arena may not support (it is equality-based); also changes what "narrow" means.
-    - **(D) Complete the call graph first (item 9's lever).** With every caller enumerable (constant-
-      pushref CallV→direct Call, constructor-erasure fix), `getPlayerX`'s self would have COMPLETE
-      evidence including BossKey, LCA would correctly compute `WorldObject` (or the true ancestor),
-      and `this: BossKey` would be assignable. This sidesteps the propagation leak by making the
-      narrowed type CORRECT rather than blocking its flow. Strongest soundness story, largest scope
-      (frontend lowering + constructor work).
-
-    Recommendation: **(D)** is the principled root-cause fix (matches item 9's CONVERGENCE), but it
-    is large and partly frontend-side. **(B)** is the smallest sound core-only step IF a coverage
-    measurement shows it doesn't starve legitimate inference. **(A)/(C)** are solver-architecture
-    changes that should not be attempted without a dedicated design pass. LCA stays REVERTED until
-    one of these is chosen and built; the Phase-1 gate is committed and is a prerequisite for all of
-    them.
-
-    Key new code (Phase 1, committed): `compute_address_taken`, `AddressTakenAnalysis`,
-    `resolve_indirect_callee_name`, name-collision detection, the post-loop incomplete-marking pass —
-    all in `constraint_solve_hm.rs`. The LCA helpers (`deepest_common_ancestor`,
-    `lca_of_instance_callers`, `ancestor_chain`) were written, unit-tested, and reverted with the
-    drain branch; re-create from this entry when a fork option is chosen.
-
-11. **Constant-pushref `CallV`→direct `Op::Call` lowering (item-8 / item-9-lever / item-10-option-D)
-    — INVESTIGATED, NO VALID TARGETS IN DEAD ESTATE; the lever's premise is FALSIFIED for this
-    corpus (2026-06-12).** Validated the actual frontend IR before transforming (CLAUDE.md
-    "validate against reality"). Findings:
-
-    - **The canonical failure case is NOT a `CallV` idiom.** `BossKey` (and every other caller of
-      `getPlayerX`) calls it via a *direct* `Call.i[d] gml_Script_getPlayerX` bytecode op → direct
-      `Op::Call(getPlayerX, [_rt, self, args])` in IR → `getPlayerX(this._rt, this, ...)` in emit.
-      The `getPlayerX` call graph is ALREADY COMPLETE via direct calls; it is never dynamically
-      dispatched (`"getPlayerX"` appears 0× as a string const; never an `Op::CallIndirect` target).
-      Disasm confirmed (`disasm --function BossKey`): the only `pushref` ops in BossKey push asset
-      *arguments* (SPRT/SOND refs) to direct `Call`s, not script callees.
-
-    - **At HEAD (LCA reverted), `getPlayerX` emits `self: GMLObject`** — the safe fallback, NOT
-      `Enemy`. `this: BossKey` IS assignable to `GMLObject`. So Phase-1 lowering would not change
-      `getPlayerX` at all (already complete + already sound at the GMLObject fallback).
-
-    - **Of 2269 `Op::CallIndirect` sites in Dead Estate, ZERO are constant-pushref-SCPT idioms.**
-      Callee-definition breakdown (classified from frontend IR dump): 1990 `get_field` (struct
-      method-vars), 271 `call funcN(rt, struct, "fieldname")` = `GameMaker.Instance.getOn` /
-      method-getter helpers (genuinely-dynamic field method-vars: `destroy`, `read`, `readByte`,
-      `live_result`, …), 3 `const`, 3 `load`, 1 `get_index`, and exactly **1** direct `global_ref` —
-      and that one is `"OChallengeCake"`, an **OBJT** (constructor / Phase-3 territory), not a SCPT.
-      Every dynamic dispatch in this game is a real method-variable on a GIF-library / buffer /
-      game-state struct. None is soundly lowerable to a direct `Op::Call`. Phase-1 lowering as
-      specified has **0 targets** here.
-
-    **CONCLUSION / FORK (stopped per task instruction — premise falsified, do not guess a
-    convention for idioms that don't exist):** The task's item-10-option-D plan ("complete the
-    call graph at the source by lowering constant-callee `CallV`, making `getPlayerX`/`BossKey`
-    complete so LCA computes `WorldObject`") rests on a premise that does not hold for Dead Estate:
-    `getPlayerX`'s graph is already complete and BossKey is already a direct caller. The thing that
-    actually blocks sound LCA is unchanged — it is the **Equal-link propagation leak (item 10,
-    options A/B/C)**, NOT call-graph incompleteness for the canonical case. Re-landing LCA now would
-    reproduce the exact +100 `this`-not-assignable regression (1451→1551) item 10 already diagnosed,
-    because the leak path (`seed_param_from_arg` Equal-links flowing a narrowed `Instance(Enemy)`
-    transitively into incomplete params) is independent of whether any `CallV` is lowered.
-
-    Phase-1 lowering remains *correct in principle* for corpora that DO emit constant-pushref-SCPT
-    `CallV` (the reconstruction would be: callee = the pushref'd `global_ref(SCPT_name)` resolved to
-    a module FuncId; convention = prepend `_rt` then the `CallV`-popped receiver/instance — the same
-    `[_rt, self, args]` shape direct script calls already build at ops.rs:865–905), but it is a
-    no-op for the active validation target and therefore cannot be the lever that unblocks LCA here.
-
-    **Recommended next step:** choose among item-10 options **A/B/C** (the solver-side
-    Equal-link/propagation fix — the real blocker), which require a dedicated design pass, NOT more
-    frontend call-graph work. Option D is a dead end for this corpus. Whether constant-pushref `CallV`
-    lowering is worth building at all should be re-evaluated against a corpus that actually contains
-    the idiom (it does not appear in Dead Estate at version 17 bytecode).
+    Investigated 2026-06-12: of 2269 `Op::CallIndirect` sites in Dead Estate, ZERO are constant-
+    pushref-SCPT idioms (all are genuine struct method-vars or dynamic helpers). The canonical
+    `getPlayerX` case was always reached via direct `Call.i` ops — its call graph was already
+    complete. The Equal-link propagation leak that blocked LCA has been fixed by `4de16db9`'s
+    directional lower-bound design (item 9). Phase-1 lowering remains correct in principle for
+    corpora that DO emit constant-pushref-SCPT `CallV`, but is a no-op for Dead Estate. Re-evaluate
+    against a corpus that actually contains the idiom before building.
 
