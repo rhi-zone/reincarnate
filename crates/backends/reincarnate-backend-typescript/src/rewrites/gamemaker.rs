@@ -216,6 +216,30 @@ fn callee_is(callee: &JsExpr, name: &str) -> bool {
     extract_dotted_callee_name(callee).as_deref() == Some(name)
 }
 
+/// Recognize the stateful-lowered GML runtime-call shape and split its dotted
+/// FuncId name into `(system, method)`.
+///
+/// `lower::lower_call` lowers a call to a registered runtime function (whose IR
+/// signature begins with the `_rt` handle) into
+/// `Call { callee: Field { object: <rt>, field: "GameMaker.Instance.getField" }, args }`
+/// — the runtime handle becomes the JS receiver and the dotted FuncId name
+/// becomes a single field. Because the field is the full dotted name rather than
+/// a `GameMaker.Instance.getField` Var-chain, `try_rewrite_system_call` (which
+/// matches `JsExpr::SystemCall`) never reaches it, leaving the call as a
+/// string-keyed property access (`_rt["GameMaker.Instance.getField"](...)`).
+///
+/// Returns `Some((system, method))` when `callee` is `Field { field: "A.b.c" }`
+/// whose field is a dotted name (the receiver — `_rt` / `this._rt` — is
+/// irrelevant; the native rewrite re-derives its own receiver). `(system,
+/// method)` is the name split at the last `.`.
+fn stateful_dotted_system_method(callee: &JsExpr) -> Option<(&str, &str)> {
+    let JsExpr::Field { field, .. } = callee else {
+        return None;
+    };
+    let dot = field.rfind('.')?;
+    Some((&field[..dot], &field[dot + 1..]))
+}
+
 /// Rewrite a function's body, resolving GameMaker SystemCalls.
 ///
 /// `event_name` is the method name of the enclosing event handler (e.g.
@@ -1020,6 +1044,30 @@ fn rewrite_expr(
             global_state_type_id,
             event_name,
         ),
+        // Stateful-lowered GML runtime call:
+        //   Call { callee: Field { object: _rt, field: "GameMaker.Instance.getField" }, args }
+        // Split the dotted FuncId name and dispatch to the same native rewrite as
+        // the SystemCall path. The `_rt` receiver is discarded — the native forms
+        // (`global.name`, `ObjName.instances[0]!.field`, `getInstanceField(...)`,
+        // etc.) re-derive their own receiver. This removes the string-keyed
+        // `_rt["GameMaker.Instance.getField"](...)` dispatch (TS7053) and emits the
+        // direct method/field access a hand port would write.
+        JsExpr::Call { callee, args } => match stateful_dotted_system_method(callee) {
+            Some((system, method)) => {
+                let (system, method) = (system.to_string(), method.to_string());
+                try_rewrite_system_call(
+                    &system,
+                    &method,
+                    args,
+                    object_names,
+                    closure_bodies,
+                    name_map,
+                    global_state_type_id,
+                    event_name,
+                )
+            }
+            None => None,
+        },
         _ => None,
     };
 
