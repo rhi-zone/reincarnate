@@ -1151,6 +1151,32 @@ fn emit_class_method(
     crate::ast_passes::coalesce_array_strings(&mut js_func.body);
     crate::ast_passes::simplify_boolean_returns(&mut js_func.body);
     crate::ast_passes::hoist_else_after_terminal(&mut js_func.body);
+    // GML event handlers (Instance/Constructor methods) don't return meaningful values:
+    // the GML runtime discards any value returned from an event callback (Behavioral
+    // Equivalence — the value is unobservable). The frontend declares their IR return
+    // type as Void, but the constraint solver can widen it back to Value when the body
+    // contains a `return <expr>;` early-exit idiom; restore Void here so the emitted TS
+    // signature is `(): void` (not `(): unknown`), avoiding TS2416 (override return
+    // mismatch) and TS2345 (`this` not assignable).
+    //
+    // This is GameMaker-specific: "an instance-method return is discarded" is source-
+    // engine knowledge (Law 2). In other engines (e.g. Flash/AS3) an instance method or
+    // getter genuinely returns its value, so coercing Value→Void there would drop an
+    // observable result. Gating on `engine` keeps the void/discard semantics confined to
+    // the engine whose runtime actually discards event returns.
+    //
+    // Must run BEFORE strip_void_returns so a `return <expr>;` in the body is rewritten
+    // to a faithful discard (`<expr>; return;`, preserving side effects) rather than left
+    // as `return 0.0;` inside a `void` method (TS2322).
+    if engine == EngineKind::GameMaker
+        && matches!(
+            func.method_kind,
+            MethodKind::Instance | MethodKind::Constructor
+        )
+        && js_func.return_ty == Type::Value
+    {
+        js_func.return_ty = Type::Void;
+    }
     // For void methods, rewrite `return <expr>;` → `<expr>; return;` to satisfy TS2322.
     if js_func.return_ty == Type::Void {
         crate::ast_passes::strip_void_returns(&mut js_func);
@@ -1217,17 +1243,6 @@ fn emit_class_method(
     } else {
         0
     };
-    // GML event handlers (Instance/Constructor methods) don't return meaningful values;
-    // their IR return type is Unknown (inference found no return). Override to void so
-    // the emitted TS signature is `(): void` instead of `(): unknown`, avoiding TS2416
-    // (method override return type mismatch) and TS2345 (`this` not assignable).
-    if matches!(
-        func.method_kind,
-        MethodKind::Instance | MethodKind::Constructor
-    ) && js_func.return_ty == Type::Value
-    {
-        js_func.return_ty = Type::Void;
-    }
     // Flash/AS3: null is valid for any reference type. Under strictNullChecks,
     // bare `null` causes TS2322/TS2345. Enable null! assertion for Flash output.
     crate::ast_printer::NULL_ASSERT.set(engine == EngineKind::Flash);
@@ -1283,7 +1298,12 @@ fn collect_ancestor_field_names(
 /// of after the switch.  This prevents TS7027 ("Unreachable code") when
 /// TypeScript can prove the switch is exhaustive from the discriminant type.
 fn ensure_trailing_unreachable(func: &Function, js_func: &mut JsFunction) {
-    if matches!(func.sig.return_ty, Type::Void) {
+    // Key off the effective emitted return type (`js_func.return_ty`), not the raw
+    // IR signature: a GML event method's IR return is `Value` but is emitted as
+    // `void`, and `strip_void_returns` has already removed any trailing `return;`.
+    // Appending an unreachable throw to such a void method is wrong — control simply
+    // falls off the end, which is valid for `void`.
+    if matches!(js_func.return_ty, Type::Void) || matches!(func.sig.return_ty, Type::Void) {
         return;
     }
     if crate::ast_printer::ends_with_terminal(&js_func.body) {
