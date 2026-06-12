@@ -165,6 +165,47 @@ export class GameRuntime {
   room = 0;
   room_speed = 60;
   fps_real = 1;
+
+  /** GML built-in global `room_width` — width in pixels of the current room. */
+  get room_width(): number { return this._roomDatas[this.room]?.size.width ?? 0; }
+  /** GML built-in global `room_height` — height in pixels of the current room. */
+  get room_height(): number { return this._roomDatas[this.room]?.size.height ?? 0; }
+
+  /**
+   * GML built-in global `current_time` — milliseconds since the game started.
+   * `_startTimeMs` is captured at construction; `current_time` is the delta.
+   */
+  private _startTimeMs = currentTimeMs();
+  get current_time(): number { return Math.floor(currentTimeMs() - this._startTimeMs); }
+
+  // GML built-in globals for the current wall-clock date/time (read-only).
+  /** Current year (e.g. 2024). */
+  get current_year(): number { return new Date().getFullYear(); }
+  /** Current month, 1-12. */
+  get current_month(): number { return new Date().getMonth() + 1; }
+  /** Current day of the month, 1-31. */
+  get current_day(): number { return new Date().getDate(); }
+  /** Current weekday, 0 (Sunday) - 6 (Saturday). */
+  get current_weekday(): number { return new Date().getDay(); }
+  /** Current hour, 0-23. */
+  get current_hour(): number { return new Date().getHours(); }
+  /** Current minute, 0-59. */
+  get current_minute(): number { return new Date().getMinutes(); }
+  /** Current second, 0-59. */
+  get current_second(): number { return new Date().getSeconds(); }
+
+  /**
+   * GML built-in global `view_camera` — array of camera IDs per viewport (0..7).
+   * The runtime uses identity camera handles (`view_get_camera(v) === v`), so the
+   * array is `[0, 1, ..., 7]`.
+   */
+  view_camera: number[] = [0, 1, 2, 3, 4, 5, 6, 7];
+
+  /**
+   * GML built-in global `async_load` — holds a DS Map handle during asynchronous
+   * events and an invalid handle (-1) at all other times.
+   */
+  async_load = -1;
   roomVariables: GMLObject[] = [];
   classes: (typeof GMLObject)[] = [];
   _roomDatas: Room[] = [];
@@ -181,7 +222,7 @@ export class GameRuntime {
   // Global variable object — GML's `global` is an object instance (id=-5) that holds
   // global variables. Typed as GMLObject so it can be used in instance contexts
   // (with(global), instance_destroy(global), place_meeting(..., global), etc.).
-  global: GMLObject = Object.assign(new GMLObject(), { score: 0, health: 0, lives: 0, async_load: -1 });
+  global: GMLObject = Object.assign(new GMLObject(), { _rt: this, score: 0, health: 0, lives: 0 });
 
   // Sprites enum (per-runtime)
   Sprites: Record<string, number> = {};

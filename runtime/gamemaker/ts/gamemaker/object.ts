@@ -46,6 +46,98 @@ export class GMLObject {
   gravity_direction = 270;
   image_speed = 1;
   image_angle = 0;
+  /** GML built-in instance variable `image_blend` — sprite tint; default -1 (c_white). */
+  image_blend = -1;
+
+  // ---- GML built-in read-only instance properties (computed from sprite + transform) ----
+
+  /** Number of sub-images in the assigned sprite (`sprite_get_number`). */
+  get image_number(): number { return this._rt.sprite_get_number(this.sprite_index); }
+
+  /** Sprite width scaled by `image_xscale` (`sprite_get_width * abs(image_xscale)`). */
+  get sprite_width(): number {
+    return this._rt.sprite_get_width(this.sprite_index) * Math.abs(this.image_xscale);
+  }
+  /** Sprite height scaled by `image_yscale` (`sprite_get_height * abs(image_yscale)`). */
+  get sprite_height(): number {
+    return this._rt.sprite_get_height(this.sprite_index) * Math.abs(this.image_yscale);
+  }
+  /** Sprite x-origin scaled by `image_xscale`. */
+  get sprite_xoffset(): number {
+    return this._rt.sprite_get_xoffset(this.sprite_index) * this.image_xscale;
+  }
+  /** Sprite y-origin scaled by `image_yscale`. */
+  get sprite_yoffset(): number {
+    return this._rt.sprite_get_yoffset(this.sprite_index) * this.image_yscale;
+  }
+
+  // Bounding box in room coordinates. World position of a local sprite coordinate is
+  // `x + (local - origin) * image_xscale`; the AABB spans the scaled bbox edges.
+  // Rotation (`image_angle`) is not applied, matching the runtime's axis-aligned
+  // collision model (see `activateMouse`, `place_meeting`).
+  private _bboxX(local: number): number {
+    return this.x + (local - this._rt.sprite_get_xoffset(this.sprite_index)) * this.image_xscale;
+  }
+  private _bboxY(local: number): number {
+    return this.y + (local - this._rt.sprite_get_yoffset(this.sprite_index)) * this.image_yscale;
+  }
+  /** Left edge of the instance bounding box, in room coordinates (read-only). */
+  get bbox_left(): number {
+    return Math.min(
+      this._bboxX(this._rt.sprite_get_bbox_left(this.sprite_index)),
+      this._bboxX(this._rt.sprite_get_bbox_right(this.sprite_index)),
+    );
+  }
+  /** Right edge of the instance bounding box, in room coordinates (read-only). */
+  get bbox_right(): number {
+    return Math.max(
+      this._bboxX(this._rt.sprite_get_bbox_left(this.sprite_index)),
+      this._bboxX(this._rt.sprite_get_bbox_right(this.sprite_index)),
+    );
+  }
+  /** Top edge of the instance bounding box, in room coordinates (read-only). */
+  get bbox_top(): number {
+    return Math.min(
+      this._bboxY(this._rt.sprite_get_bbox_top(this.sprite_index)),
+      this._bboxY(this._rt.sprite_get_bbox_bottom(this.sprite_index)),
+    );
+  }
+  /** Bottom edge of the instance bounding box, in room coordinates (read-only). */
+  get bbox_bottom(): number {
+    return Math.max(
+      this._bboxY(this._rt.sprite_get_bbox_top(this.sprite_index)),
+      this._bboxY(this._rt.sprite_get_bbox_bottom(this.sprite_index)),
+    );
+  }
+
+  // ---- GML built-in globals (shared via the runtime; readable from any instance) ----
+
+  /** GML built-in global `room_width` — width of the current room. */
+  get room_width(): number { return this._rt.room_width; }
+  /** GML built-in global `room_height` — height of the current room. */
+  get room_height(): number { return this._rt.room_height; }
+  /** GML built-in global `current_time` — milliseconds since the game started. */
+  get current_time(): number { return this._rt.current_time; }
+  /** GML built-in global `current_year`. */
+  get current_year(): number { return this._rt.current_year; }
+  /** GML built-in global `current_month` (1-12). */
+  get current_month(): number { return this._rt.current_month; }
+  /** GML built-in global `current_day` (1-31). */
+  get current_day(): number { return this._rt.current_day; }
+  /** GML built-in global `current_weekday` (0-6). */
+  get current_weekday(): number { return this._rt.current_weekday; }
+  /** GML built-in global `current_hour` (0-23). */
+  get current_hour(): number { return this._rt.current_hour; }
+  /** GML built-in global `current_minute` (0-59). */
+  get current_minute(): number { return this._rt.current_minute; }
+  /** GML built-in global `current_second` (0-59). */
+  get current_second(): number { return this._rt.current_second; }
+  /** GML built-in global `view_camera` — per-viewport camera ID array (settable). */
+  get view_camera(): number[] { return this._rt.view_camera; }
+  set view_camera(v: number[]) { this._rt.view_camera = v; }
+  /** GML built-in global `async_load` — DS Map handle during async events, else -1. */
+  get async_load(): number { return this._rt.async_load; }
+  set async_load(v: number) { this._rt.async_load = v; }
 
   get alarm(): number[] {
     if (this.#alarm === null) {
